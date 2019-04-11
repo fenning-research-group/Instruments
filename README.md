@@ -43,10 +43,8 @@ Based on the example, I run the following
 mypowderref = getlambdadata
 ```  
 ### 4. Look in the UV-Vis/Data Processing folder to see if there is a Tauc plot analysis code already
-   #### - If yes, run the script using the recently loaded data in matlab (again, refer to the code header for specific use instructions  
-        - If the script does not work, and you fix it, consider submitting a pull request to update the shared script
-```
-  
-```
+   #### - If yes, run the script using the recently loaded data in matlab (again, refer to the code header for specific use instructions
+  ####    - If the script does not work, and you fix it, consider submitting a pull request to update the shared script
+
    #### - If no, and you make one that works, consider submitting a pull request to share the script
 
