@@ -10,4 +10,7 @@ function plotxrdoffset(scans)
         normalized_counts = normalized_counts + offset*(idx-1);
         plot(scans(idx).TwoTheta, normalized_counts);
     end
+    
+    xlabel('Two Theta (\circ)');
+    ylabel('Normalized Counts')
 end
