@@ -1,8 +1,13 @@
-function plotxrdoffset(scans)
+function plotxrdoffset(scans, offset)
 %% Parameters
-    offset = 1;
+    offset_default = 1;
 
 
+%% Parse Inputs
+    if nargin < 2
+        offset = offset_default;
+    end
+    
 %% Code Start
     figure, hold on;
     for idx = 1:numel(scans)
