@@ -8,14 +8,18 @@ function output = gettracer(filepath)
     fid = fopen(filepath,'r');
     output = struct();
     
-    fgetl(fid);
+    linedata{6,1} = fgetl(fid);
+    linedata{6,2} = 'Run Id';
+    linedata{6,3} = 'Run';
+    
     linedata{1,1} = fgetl(fid);
     linedata{1,2} = 'Device';
     linedata{1,3} = 'Title';
     
-    curvetype_line = fgetl(fid);
-%     curvetype_idx = strfind(curvetype_line, 'Curve');
-%     curvetype_idx = [curvetype_idx, numel(curvetype_idx)];
+    linedata{7,1} = fgetl(fid);
+    linedata{7,2} = 'Curve	';
+    linedata{7,3} = 'CurveType';
+    
     linedata{2,1} = fgetl(fid);
     linedata{2,2} = 'Size [cm2]';
     linedata{2,3} = 'Area';
@@ -40,7 +44,7 @@ function output = gettracer(filepath)
     fgetl(fid);
     fgetl(fid);
     
-    convert_to_num = [0, 1, 0, 0, 1];
+    convert_to_num = [0, 1, 0, 0, 1, 0, 0];
     
     for i = 1:size(linedata, 1)
         output = parse_file(linedata{i,1}, linedata{i,2}, output, linedata{i,3}, convert_to_num(i));
