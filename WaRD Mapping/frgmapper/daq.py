@@ -1,7 +1,8 @@
+import ctypes
 from mcculw import ul
-from mcculw.enums import ULRange
-from mcculw.enums import ScanOptions, ChannelType, ULRange, DigitalPortType
+from mcculw.enums import ScanOptions, ChannelType, ULRange, InterfaceType
 from mcculw.ul import ULError
+import numpy as np
 
 board_num = 0
 channel_intSphere = 0
@@ -9,11 +10,11 @@ channel_ref = 2
 ai_range = ULRange.BIP5VOLTS
 
 
-class daq():
+class daq(object):
 
-    def __init__(channel_intSphere = 0, channel_ref = 2, rate = 200, dwelltime = 0.1):
+    def __init__(self, channel_intSphere = 0, channel_ref = 2, rate = 200, dwelltime = 0.1):
         self.board_num = 0
-        self.ai_range = ULRange.BIP5VOLTS
+        # self.ai_range = ULRange.BIP5VOLTS
         self.rate = rate
         self.dwelltime = dwelltime
         self.countsPerChannel = round(self.dwelltime * self.rate)   #counts per channel = rate (Hz) * dwelltime (s)
@@ -30,7 +31,7 @@ class daq():
 
     def read(self):
         totalCount = len(self.channels['Number']) * self.countsPerChannel
-        memhandle = ul.scaled_win_buff_alloc(totalCount)
+        memhandle = ul.scaled_win_buf_alloc(totalCount)
         ctypesArray = ctypes.cast(memhandle, ctypes.POINTER(ctypes.c_double))
         
         scan_options = ScanOptions.FOREGROUND | ScanOptions.SCALEDATA
@@ -49,15 +50,31 @@ class daq():
             )
 
         data = {}
+        for ch in self.channels['Label']:
+        	data[ch] = {
+        		'Raw':[],
+        		'Mean': None,
+        		'Std': None
+        		}
+
         dataIndex = 0
-        for ch in len(self.channels['Label']):
-            tempdat = {'Raw': []}
-            for each in range(self.countsPerChannel):
-                tempdat['Raw'].append(ctypesArray[dataIndex])
-                dataIndex += 1
-            tempdat['Mean'] = mean(tempdat['Raw'])
-            tempdat['Std'] = std(tempdat['Raw'])
-            data[ch] = tempdat
+        for each in range(self.countsPerChannel):
+        	for ch in self.channels['Label']:
+        		data[ch]['Raw'].append(ctypesArray[dataIndex])
+        		dataIndex += 1
+
+        for ch in self.channels['Label']:
+        	data[ch]['Mean'] = np.mean(data[ch]['Raw'])
+        	data[ch]['Std'] = np.std(data[ch]['Raw'])
+
+        # for ch in self.channels['Label']:
+        #     tempdat = {'Raw': []}
+        #     for each in range(self.countsPerChannel):
+        #         tempdat['Raw'].append(ctypesArray[dataIndex])
+        #         dataIndex += 1
+        #     tempdat['Mean'] = np.mean(tempdat['Raw'])
+        #     tempdat['Std'] = np.std(tempdat['Raw'])
+        #     data[ch] = tempdat
 
         ul.win_buf_free(memhandle)
 
