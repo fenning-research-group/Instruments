@@ -92,7 +92,7 @@ class stage(object):
 		return True
 
 	def waitforstage(self):
-		#method to ensure the 
+		#method to pause until the stage has finished moving.
 		moving = False
 
 		while not moving:
