@@ -63,18 +63,16 @@ class stage(object):
 
 		return True
 
-		
 	def moveto(self, x = position[0], y = position[1]):
 		if not self.premove(x = x, y = y):
 			return False
 
 		if x is not self.position[0]:
-
+			self.__handle.write('4/1/{0:d}/'.format(x).encode())
 			self.waitforstage()
 		if y is not self.position[1]:
-
+			self.__handle.write('4/2/{0:d}/'.format(y).encode())
 			self.waitforstage()
-
 
 		self.postmove()
 		return True
@@ -84,11 +82,49 @@ class stage(object):
 			return False
 
 		if x:
-
+			self.__handle.write('2/1/{0:d}/'.format(x).encode())
 			self.waitforstage()
-
 		if y:
+			self.__handle.write('2/2/{0:d}/'.format(y).encode())
 			self.waitforstage()
 
 		self.postmove()
 		return True
+
+	def waitforstage(self):
+		#method to ensure the 
+		moving = False
+
+		while not moving:
+			while self.__handle.in_waiting > 0:
+				update = self.__handle.readline()
+
+				if update == (str(91) + '\n').encode():	#message saying axis 1 has begun moving
+					update = ser.readline()
+					if update == ('1\n').encode():
+						axis = 1
+						moving = True
+						break
+				if update == (str(92) + '\n').encode(): #message saying axis 2 has begun moving
+					update = ser.readline()
+					if update == ('1\n').encode():
+						axis = 2
+						moving = True
+						break
+				if update == (str(52) + '\n').encode():
+					print('Error flagged by arduino, movement not executed')
+					return
+			time.sleep(1)
+
+		# print('Moving!')
+
+		while moving:
+			while ser.in_waiting > 0:
+				update = ser.readline()
+				# print(update)
+				if update == (str(90 + axis) + '\n').encode():	#message saying that axis which had previously begun moving has now stopped moving
+					update = ser.readline()
+					if update == ('0\n').encode():
+						moving = False
+						break
+			time.sleep(1)
