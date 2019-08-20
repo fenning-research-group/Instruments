@@ -5,6 +5,7 @@ import os
 import PySpin
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.animation as animation
 
 class camera:
 	def __init__(self, port = None):
@@ -78,6 +79,31 @@ class camera:
 
 		return avg, std, raw
 
-	# def preview(self):
-		
+	def preview(self):
+		def getframe(cam):
+			acquired = False
+
+			while not acquired:
+				image_result = self._cam.GetNextImage()
+				if not image_result.IsIncomplete():
+					acquired = True
+
+				img = image_result.Convert(PySpin.PixelFormat_Mono16, PySpin.HQ_LINEAR).GetNDArray()
+				image_result.Release()
+				raw[:, :, idx] = img[1:self._resolution[0]+1, :self._resolution[1]]	#throw away pixels outside of desired resolution (specifically one column is inactive in InGaAs camera)
+			return raw
+
+		def animate(i):
+			ax.clear()
+			img = getframe(self._cam)
+			ax.imshow(img)
+
+		fig, ax = plt.subplots()
+		ani = animation.FuncAnimation(fig, animate, interval=250) 
+		self._cam.BeginAcquisition()
+		plt.show()
+		self._cam.EndAcquisition()
+
+		while True:
+
 
