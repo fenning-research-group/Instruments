@@ -23,18 +23,15 @@ class laser:
 		return True
 
 	def checkInterlock(self):
-
-
-
-
+		return True
 
 	def on(self):
 		self.checkInterlock()	
-		self.__handle.write('LR')
+		self.__handle.write('LR\r'.encode())
 		return True
 
 	def off(self):
-		self.__handle.write('LS')
+		self.__handle.write('LS\r'.encode())
 		return True
 
 	def setPower(self, power):
@@ -43,7 +40,7 @@ class laser:
 			return False
 		else:
 			current = self.__maxcurrent * power
-			self.__handle.write('LCT {0:.1f}'.format(current))
+			self.__handle.write('LCT {0:.1f}\r'.format(current).encode())
 			return True
 
 
