@@ -101,9 +101,9 @@ class camera:
 		fig, ax = plt.subplots()
 		ani = animation.FuncAnimation(fig, animate, interval=250) 
 		self._cam.BeginAcquisition()
+		plt.ion()
 		plt.show()
+		input('Press [enter] to close preview window')
+		plt.ioff()
 		self._cam.EndAcquisition()
-
-		while True:
-
 
