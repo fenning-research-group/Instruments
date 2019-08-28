@@ -6,20 +6,26 @@ from PyDAQmx.DAQmxTypes import *
 class daq:
 	def __init__(self, port = 'COM1'):
 		self.connect(port = port)	
-		self.__photodetector = 'Dev2/ai0'
+		self.__photodetector = 'Dev2/ai2'
 		self.__range = (-10, 10)
 		self.__rate = 1000
 		self.__counts = 1000
 
 	def connect(self, port = 'COM1'):
-		self.__handle = serial.Serial(port)
+		# self.__handle = serial.Serial(port)
 		return True
 
 	def disconnect(self):
 		self.__handle.close()
 		return True
 
-	def acquire(self, counts = self.__counts, rate = self.__rate):
+	def acquire(self, counts = None, rate = None):
+		if not counts:
+			counts = self.__counts
+
+		if not rate:
+			rate = self.__rate
+			
 		taskHandle = TaskHandle()
 		read = int32()
 		data = numpy.zeros((counts,), dtype=numpy.float64)		
@@ -40,7 +46,7 @@ class daq:
 			# print "Acquired %d points"%read.value
 
 		except DAQError as err:
-			print "DAQmx Error: %s"%err
+			print("DAQmx Error: {0:s}".format(err))
 		finally:
 			if taskHandle:
 				# DAQmx Stop Code

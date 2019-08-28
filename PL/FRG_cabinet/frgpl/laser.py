@@ -34,7 +34,7 @@ class laser:
 		self.__handle.write('LS\r'.encode())
 		return True
 
-	def setPower(self, power):
+	def set(self, power):
 		#set power to some fraction of the maximum current. No PWM 
 		if (power >= 1) or (power < 0):
 			return False

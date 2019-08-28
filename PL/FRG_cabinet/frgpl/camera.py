@@ -6,10 +6,13 @@ import PySpin
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+import time
 
 class camera:
 	def __init__(self, port = None):
 		self.__system = PySpin.System.GetInstance()
+		self.connect()
 	def connect(self, port = None):
 		def setContinuousAcquisition(nodemap):
 			### set acquisition mode to continuous. mode is left as continuous for both continous feed and snapping images, so we do it here. code from PySpin example "Acquisition.py"
@@ -53,10 +56,15 @@ class camera:
 		return True
 
 	def disconnect(self):
+		try:
+			self._cam.EndAcquisition()
+		except:
+			pass
+
 		self._cam.DeInit()
 		return True
 
-	def snap(self, frames = 100):
+	def capture(self, frames = 100):
 		raw = np.zeros((self._resolution[0], self._resolution[1], frames))
 
 		self._cam.BeginAcquisition()
@@ -89,21 +97,29 @@ class camera:
 					acquired = True
 
 				img = image_result.Convert(PySpin.PixelFormat_Mono16, PySpin.HQ_LINEAR).GetNDArray()
+				raw = img[1:self._resolution[0]+1, :self._resolution[1]]	#throw away pixels outside of desired resolution (specifically one column is inactive in InGaAs camera)
 				image_result.Release()
-				raw[:, :, idx] = img[1:self._resolution[0]+1, :self._resolution[1]]	#throw away pixels outside of desired resolution (specifically one column is inactive in InGaAs camera)
 			return raw
 
 		def animate(i):
 			ax.clear()
 			img = getframe(self._cam)
-			ax.imshow(img)
+			im_handle = ax.imshow(img)
+			cax.clear()
+			fig.colorbar(im_handle, cax = cax)
 
+		def handle_close(evt, cam = self._cam):
+			cam.EndAcquisition()
+
+		plt.ioff()
 		fig, ax = plt.subplots()
+		divider = make_axes_locatable(ax)
+		cax = divider.append_axes('right', size='5%', pad=0.05)
 		ani = animation.FuncAnimation(fig, animate, interval=250) 
+		fig.canvas.mpl_connect('close_event', lambda x: handle_close(x, cam = self._cam))
 		self._cam.BeginAcquisition()
+
 		plt.ion()
 		plt.show()
-		input('Press [enter] to close preview window')
-		plt.ioff()
-		self._cam.EndAcquisition()
+		input('Press [enter] to continue. Close preview window to release camera control.')
 
