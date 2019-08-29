@@ -112,6 +112,8 @@ class control(object):
 			ax[1].title.set_text('Y Scan')
 			plt.show()
 		# return the centroid, width/bounds if found
+		
+		# HERE add code to find sample area based on the variation of reflectance
 
 	def scanArea(self, label, wavelengths, xsize, ysize, xsteps = 21, ysteps = 21, export = True, verbose = False):
 		x0, y0 = self._stage.position
@@ -122,11 +124,19 @@ class control(object):
 
 		firstscan = True
 		lastscan = False
+		reverse=-1 # for snaking
 		for xidx, x in enumerate(allx):
+			reverse=reverse*(-1)
 			for yidx, y in enumerate(ally):
 				if xidx == xsteps-1 and yidx == ysteps-1:
 					lastScan = True
-				data[xidx, yidx, :] = self.scanroutine(wavelengths = wavelengths, firstscan = firstscan, lastscan = lastscan)
+				# Condition to map in a snake pattern rather than coming back to first x point
+				if reverse > 0: #go in the forward direction
+					self._stage.moveto(x = x, y = y)
+					data[xidx, yidx, :] = self.scanroutine(wavelengths = wavelengths, firstscan = firstscan, lastscan = lastscan)
+				else # go in the reverse direction
+					self._stage.moveto(x = x, y = ally[xsteps-1-yidx])
+					data[xidx, xsteps-1-yidx, :] = self.scanroutine(wavelengths = wavelengths, firstscan = firstscan, lastscan = lastscan)
 				firstscan = False
 
 		if export:
@@ -139,7 +149,10 @@ class control(object):
 				'Wavelengths': wavelengths,
 				'Reflectance': data
 			}
-
+			
+			# export as a hfile
+			
+			# export as a text file
 			fpath = os.path.join(self.outputdir, label + '.json')
 			with open(fpath, 'w') as f:
 				json.dump(output, f)
