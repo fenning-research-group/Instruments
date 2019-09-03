@@ -1,6 +1,6 @@
 import NKTP_DLL as nktdll
 
-## TO DO
+## TO DO (ctrl-f TODO)
 #
 # 1. connect to hardware
 #		- figure out com port for each, fill in portName fields (ctrl-f INSERTDEFAULT)
@@ -10,9 +10,16 @@ import NKTP_DLL as nktdll
 #
 # 2. select
 #		- three things to set per each of 8 channels: wavelength, amplitude, gain. 
-#		- what should the gain be left at by default- 100%, or 0%? currently sets to 100
+#		- what should the gain be left at by default- 100%, or 0%? currently sets to 0
 #		- how do we select the proper AOTF? Maybe by connecting to select on its own (you can connect to two device #'s - 66 = select + rf driver (currently being used), or 67 = only select')
-#			- looks like theres an option to RF switch with 67, hopefully this is the way to switch them. Does it automatically under select.connect(), line 210
+#			- looks like theres an option to RF switch with 67, hopefully this is the way to switch them. Attempt to do this automatically under select.connect(), line ~217
+#		- determine optimum RF power to avoid side bands taking over main optical band (refer to manual)
+#			- make 3d dataset of wavelength, RF power, measured signal at int sphere detector
+#			- at each wavelength, find first local maximum in rf power vs measured signal plot. this is the optimum RF power
+#			- store a csv/json/something in the library file with table of optimum powers
+#			- add a step to read this in when initializing
+#			- when using setAOTF, make amplitude default to optimum power per wavelength when value is not specified
+#				- interpolate or find nearest neighbor of specified wavelength from calibration, use this RF power.
 
 class compact(object):
 
@@ -28,8 +35,8 @@ class compact(object):
 	def connect(self, portName = 'INSERTDEFAULTCOMPACTPORTHERE'):
 		result, devList = nktdll.deviceGetAllTypes(portName)
 		for devId in range(0, len(devList)):
-			if int(devList[devId], 16) == 74:		#portData should hold a hex value corresponding to device found at this port. Compact = 74, select = 66. 
-				# portData = nktdll.openPorts(portName, 0, 0) #I think the port is still open after running nktdll.deviceGetAllTypes(portName), but if not we can reconnect here
+			if int(devList[devId], 16) == 74:		# TODO portData should hold a hex value corresponding to device found at this port. Compact = 74, select = 66. 
+				# portData = nktdll.openPorts(portName, 0, 0) # TODO I think the port is still open after running nktdll.deviceGetAllTypes(portName), but if not we can reconnect here
 				print('Connected to NKT COMPACT')
 				self.__handle = portName
 				self.__address = devId
@@ -195,19 +202,19 @@ class select(object):
 		result, devList = nktdll.deviceGetAllTypes(portName)
 		success = 0
 		for devId in range(0, len(devList)):
-			if int(devList[devId], 16) == 66:		#portData should hold a hex value corresponding to device found at this port. Compact = 74, select = 67 (? not sure why its here on its own), select + rf driver = 66. 
-				# portData = nktdll.openPorts(portName, 0, 0) #I think the port is still open after running nktdll.deviceGetAllTypes(portName), but if not we can reconnect here
+			if int(devList[devId], 16) == 66:		#TODO portData should hold a hex value corresponding to device found at this port. Compact = 74, select = 67 (? not sure why its here on its own), select + rf driver = 66. 
+				# portData = nktdll.openPorts(portName, 0, 0) # TODO I think the port is still open after running nktdll.deviceGetAllTypes(portName), but if not we can reconnect here
 				print('Connected to NKT SELECT + RF (66)')
 				self.__handle = portName
 				self.__address = devId
 				success = success + 1
-			if int(devList[devId], 16) == 67:		#portData should hold a hex value corresponding to device found at this port. Compact = 74, select = 67 (? not sure why its here on its own), select + rf driver = 66. 
-				# portData = nktdll.openPorts(portName, 0, 0) #I think the port is still open after running nktdll.deviceGetAllTypes(portName), but if not we can reconnect here
+			if int(devList[devId], 16) == 67:		#TODO portData should hold a hex value corresponding to device found at this port. Compact = 74, select = 67 (? not sure why its here on its own), select + rf driver = 66. 
+				# portData = nktdll.openPorts(portName, 0, 0) # TODO I think the port is still open after running nktdll.deviceGetAllTypes(portName), but if not we can reconnect here
 				print('Connected to NKT SELECT (67)')
 				self.__handle = portName
 				self.__address2 = devId
 				success = success + 1
-				result = nktdll.registerWriteU8(self.__handle, self.__address2, 0x34, 1, -1)	#set to 1, assuming that this corresponds to the IR aotf. may need to change this to properly select the IR aotf
+				result = nktdll.registerWriteU8(self.__handle, self.__address2, 0x34, 1, -1)	#TODO set to 1, assuming that this corresponds to the IR aotf. may need to change this to properly select the IR aotf
 				if result != 0:
 					print('Error encountered when trying to direct RF to IR AOTF:', RegisterResultTypes(result))
 					success = False
@@ -251,7 +258,7 @@ class select(object):
 		else:
 			return True
 
-	def set(self, wavelength, amplitude = None, gain = None):
+	def setAOTF(self, wavelength, amplitude = None, gain = None):
 		### takes input to set wavelength. 
 		# takes input 0-1 to set amplitude
 		# takes input 0-1 to set gain (input * 0.1 = %)
@@ -289,7 +296,7 @@ class select(object):
 				else:
 					gain[idx] = round(g * 1000	)
 		else:
-			gain = [1000 for x in wavelength] #when talking to select,  (input * 0.1 = %. 1000 = 100%)
+			gain = [0 for x in wavelength] #when talking to select,  (input * 0.1 = %. 1000 = 100%)
 
 		for idx in range(len(wavelength), 8):	#pad so all 8 wavelength channels are accounted for when talking to select
 			wavelength = wavelength + self.__defaultWavelengths[idx]
@@ -355,7 +362,7 @@ class select(object):
 			print('Error encountered when trying to change laser power level:', RegisterResultTypes(result))
 			return False
 
-	def wavelengthRange(self, wmin = None, wmax = None):
+	def setWavelengthRange(self, wmin = None, wmax = None):
 		## takes inputs in nm
 
 		#revert to default bounds if none specified
