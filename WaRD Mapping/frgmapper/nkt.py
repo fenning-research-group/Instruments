@@ -12,7 +12,7 @@ import NKTP_DLL as nktdll
 #		- three things to set per each of 8 channels: wavelength, amplitude, gain. 
 #		- what should the gain be left at by default- 100%, or 0%? currently sets to 100
 #		- how do we select the proper AOTF? Maybe by connecting to select on its own (you can connect to two device #'s - 66 = select + rf driver (currently being used), or 67 = only select')
-#			- looks like theres an option to "monitor switch" with 67, hopefully this is the way to switch them. Would need to connect to 66 and 67, which is fine. For not probably just have the IR AOTF selected, maybe by NKT's own gui, then leave it that way
+#			- looks like theres an option to RF switch with 67, hopefully this is the way to switch them. Does it automatically under select.connect(), line 210
 
 class compact(object):
 
@@ -193,23 +193,38 @@ class select(object):
 
 	def connect(self, portName = 'INSERTDEFAULTSELECTPORTHERE'):
 		result, devList = nktdll.deviceGetAllTypes(portName)
+		success = 0
 		for devId in range(0, len(devList)):
 			if int(devList[devId], 16) == 66:		#portData should hold a hex value corresponding to device found at this port. Compact = 74, select = 67 (? not sure why its here on its own), select + rf driver = 66. 
 				# portData = nktdll.openPorts(portName, 0, 0) #I think the port is still open after running nktdll.deviceGetAllTypes(portName), but if not we can reconnect here
-				print('Connected to NKT SELECT')
+				print('Connected to NKT SELECT + RF (66)')
 				self.__handle = portName
 				self.__address = devId
-				return True
-		#if we made it here, we didnt find the COMPACT at the supplied portName
-		closePorts(portName)
-		print('NKT SELECT not found at port {0}. Not connected.'.format(portName))
-		return False
+				success = success + 1
+			if int(devList[devId], 16) == 67:		#portData should hold a hex value corresponding to device found at this port. Compact = 74, select = 67 (? not sure why its here on its own), select + rf driver = 66. 
+				# portData = nktdll.openPorts(portName, 0, 0) #I think the port is still open after running nktdll.deviceGetAllTypes(portName), but if not we can reconnect here
+				print('Connected to NKT SELECT (67)')
+				self.__handle = portName
+				self.__address2 = devId
+				success = success + 1
+				result = nktdll.registerWriteU8(self.__handle, self.__address2, 0x34, 1, -1)	#set to 1, assuming that this corresponds to the IR aotf. may need to change this to properly select the IR aotf
+				if result != 0:
+					print('Error encountered when trying to direct RF to IR AOTF:', RegisterResultTypes(result))
+					success = False
+								
+		if success == 2:	#found both addresses, no issues setting to IR aotf
+			return True
+		else:
+			closePorts(portName)
+			print('Not connected.'.format(portName))
+			return False
 
 	def disconnect(self):
 		if self.__handle is not None:
 			nktdll.closePorts(self.__handle)
 			self.__handle = None
 			self.__address = None
+			self.__address2 = None
 
 	def on(self):
 		if not self.rfOn:
