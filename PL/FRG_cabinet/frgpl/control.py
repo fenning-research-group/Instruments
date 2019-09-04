@@ -64,26 +64,37 @@ class control:
 			print('Could not disconnect DAQ')
 
 	def setmeas(self,
-		bias = self._bias,
-		laserpower = self._laserpower,
-		saturationtime = self._saturationtime,
-		numIV = self._numIV,
-		numframes = self._numframes):
+		bias = None,
+		laserpower = None,
+		saturationtime = None,
+		numIV = None,
+		numframes = None):
+
+		if bias is None:
+			bias = self._bias
+		if laserpower is None:
+			laserpower = self._laserpower
+		if saturationtime is None:
+			saturationtime = self._saturationtime
+		if numIV is None:
+			numIV = self._numIV
+		if numframes is None:
+			numframes = self._numframes
 
 		result = self._kepco.set(voltage = bias)
 		if result:
 			self._bias = bias
 		else:
 			print('Error setting kepco')
-			return False
+			# return False
 
-		result = self._laser.set(power = laserpower):			
+		result = self._laser.set(power = laserpower)
 
 		if result:
 			self._laserpower = laserpower
 		else:
 			print('Error setting laser')
-			return False
+			# return False
 
 		self._numIV = numIV
 		self._numframes = numframes
@@ -94,12 +105,12 @@ class control:
 			self.__laserON = True
 		if not self.__kepcoON and self._bias is not 0:
 			self._kepco.on()	#turn on the kepco source
-			self.__kepcoON == True
+			self.__kepcoON = True
 
 		time.sleep(self._saturationtime)
 
 		#take image, take IV meas during image
-		im = self._camera.capture(frames = self._numframes)
+		im, _, _ = self._camera.capture(frames = self._numframes, imputeHotPixels = True)
 		v, i = self._kepco.read(counts = self._numIV)
 
 		if self.__laserON and lastmeasurement:
@@ -111,20 +122,28 @@ class control:
 
 		return im, v, i
 	
-	# def findonesun(self, jsc):
-	# 	laserpowers = np.linspace(0,0.5, 5)[1:]	#skip 0, lean on lower end to reduce incident power
-	# 	self._kepco.set(voltage = 0)
+	def findonesun(self, jsc, area):
+		### finds fraction laser power for which measured jsc = target value from solar simulator JV testing.
+		# jsc: short circuit current density in mA/cm^2 (positive)
+		# area: active area cm^2
+		isc = -jsc * area 	#negative total current, since kepco will be measuring total photocurrent
 
-	# 	laserjsc = np.zeros(len(laserpowers))		
-	# 	self._laser.on()
-	# 	for idx, power in enumerate(laserpowers):
-	# 		self._laser.set(power = power)
-	# 		time.sleep(self._saturationtime)
-	# 		_,laserjsc[idx] = self._kepco.read()
-	# 	self._laser.off()
-	# 	pfit = np.polyfit(laserjsc, laserpowers, 2)
-	# 	p = np.poly1d()	#polynomial fit object where x = measured jsc, y = laser power applied
-	# 	return p(jsc)	#return laser power to match target jsc
+		laserpowers = np.linspace(0,0.8, 7)[1:]	#skip 0, lean on lower end to reduce incident power
+		self._kepco.set(voltage = 0)
+
+		laserjsc = np.zeros(len(laserpowers))
+
+		self._laser.set(power = laserpowers[0])		#set to first power before turning on laser
+		self._laser.on()
+		for idx, power in enumerate(laserpowers):
+			self._laser.set(power = power)
+			time.sleep(self._saturationtime)
+			_,laserjsc[idx] = self._kepco.read(counts = 25)
+		self._laser.off()
+		pfit = np.polyfit(laserjsc, laserpowers, 2)
+		p = np.poly1d(pfit)	#polynomial fit object where x = measured jsc, y = laser power applied
+		
+		return p(isc), laserpowers, laserjsc	#return laser power to match target jsc
 
 
 

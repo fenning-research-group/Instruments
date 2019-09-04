@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import time
+from scipy.signal import medfilt
 
 class camera:
 	def __init__(self, port = None):
@@ -64,7 +65,7 @@ class camera:
 		self._cam.DeInit()
 		return True
 
-	def capture(self, frames = 100):
+	def capture(self, frames = 100, imputeHotPixels = True):
 		raw = np.zeros((self._resolution[0], self._resolution[1], frames))
 
 		self._cam.BeginAcquisition()
@@ -84,6 +85,10 @@ class camera:
 		avg = np.mean(raw, axis = 2)
 		std = np.std(raw, axis = 2)
 
+		if imputeHotPixels:
+			mask = avg > (avg.mean() + 3*avg.std())	#flag values 3 std devs over the mean
+			medvals = medfilt(avg, 3)	#3x3 median filter
+			avg[mask] = medvals[mask]
 
 		return avg, std, raw
 

@@ -48,6 +48,7 @@ class kepco:
 				self.__handle.write('FUNC:MODE CURR\n'.encode())
 				self.__mode = 'CURR'
 			self.__handle.write('CURR {0:0.4f}\n'.format(current).encode())
+		return True
 
 	def read(self, counts = 10):
 		current = np.zeros((counts,1))
