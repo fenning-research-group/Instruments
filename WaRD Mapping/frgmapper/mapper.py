@@ -4,10 +4,11 @@ import os
 import serial
 import time
 import json
-from .stage import stage
-from .mono import mono
-from .daq import daq
+from stage import stage
+from mono import mono
+from daq import daq
 import datetime
+import pdb
 
 class control(object):
 	def __init__(self, outputdir = None, dwelltime = 0.1):
@@ -15,15 +16,20 @@ class control(object):
 		self.dwelltime = dwelltime
 		self.__baselineTaken = False
 		self.__baseline = {}
+		self._stage=object()
+		self._daq=object(dwelltime = dwelltime)
 
 	def connect(self):
 		#connect to spectrometer hardware
 		self._mono = mono()
 		self._daq = daq(dwelltime = self.dwelltime)
+		print("mono connected")
+		print("daq connected")
 
 	def connectStage(self):
 		#connect to stage hardware
 		self._stage = stage()
+		print("stage connected")
 
 	def takeBaseline(self, wavelengths):
 		#light baseline
@@ -36,6 +42,8 @@ class control(object):
 		self.__baseline['DarkRaw'] = out['IntSphere']['Mean']
 		self.__baseline['DarkRefRaw'] = out['Reference']['Mean']
 		self.__baseline['Dark'] = self.__baseline['DarkRaw'] / self.__baseline['DarkRefRaw']
+		
+		#pdb.set_trace()
 
 		self.__baselineTaken = True
 
@@ -67,16 +75,22 @@ class control(object):
 		if plot:
 			plt.plot(data['Wavelengths'],data['Reflectance'])
 			plt.xlabel('Wavelength (nm)')
-			plt.ylabel('Reflectance (%)')
+			plt.ylabel('Reflectance')
 			plt.title(label)
 			plt.show()
 
-	def findArea(self, wavelength, xsize = 30, ysize = 30, xsteps = 21, ysteps = 21, plot = True, export = False):
+	def findArea(self, wavelength, xsize = 30, ysize = 30, xsteps = 6, ysteps = 6, plot = True, export = False):
+	# method to find sample edges
+		#wavelength must be entered as a list
+		self.connectStage() # connect stage
+		self.connect() # connect mono
+		self._stage.gotocenter()
+		self._stage.postmove()
 		x0, y0 = self._stage.position
 		allx = np.linspace(x0 - xsize/2, x0 + xsize/2, xsteps)
 		ally = np.linspace(y0 - ysize/2, y0 + ysize/2, ysteps)
 		
-		self._mono.goToWavelength(wavelength)
+		self._mono.goToWavelength(wavelength[0])
 		
 		self._stage.moveto(x = allx[0], y = y0)
 		self._mono.openShutter()		
@@ -84,18 +98,23 @@ class control(object):
 		for x in allx:
 			self._stage.moveto(x = x)
 			out = self._daq.read()
-			reflectance = self.baselinecorrectionroutine(wavelengths = wavelength, signal = out['IntSphere']['Mean'], reference = out['Reference']['Mean'])
-			xdata.append(reflectance)
+			intsignal=[] # for consistency: signal must be a list for baselinecorrectionroutine and signal is a list in scanroutine
+			ref=[]
+			intsignal.append(out['IntSphere']['Mean'])
+			ref.append(out['Reference']['Mean'])
+			#pdb.set_trace()
+			#reflectance = self.baselinecorrectionroutine(wavelengths = wavelength, signal = intsignal, reference = ref)
+			#xdata.append(reflectance)
 		self._mono.closeShutter()
 
 		self._stage.moveto(x = x0, y = ally[0])
-		self._mono.openShutter()		
+		self._mono.openShutter()
 		ydata = []
 		for y in ally:
 			self._stage.moveto(y = y)
 			out = self._daq.read()
-			reflectance = self.baselinecorrectionroutine(wavelengths = wavelength, signal = out['IntSphere']['Mean'], reference = out['Reference']['Mean'])
-			ydata.append(reflectance)
+			#reflectance = self.baselinecorrectionroutine(wavelengths = wavelength, signal = out['IntSphere']['Mean'], reference = out['Reference']['Mean'])
+			#ydata.append(reflectance)
 		self._mono.closeShutter()
 		self._stage.moveto(x = x0, y = y0) #return to original position
 
@@ -116,7 +135,13 @@ class control(object):
 		# HERE add code to find sample area based on the variation of reflectance
 
 	def scanArea(self, label, wavelengths, xsize, ysize, xsteps = 21, ysteps = 21, export = True, verbose = False):
-		x0, y0 = self._stage.position
+		self.connectStage() # connect stage
+		# self._stage.gohome() # home stage and update position (in stage.py)
+		# set x0 and y0 in the middle for testing purposes
+		#x0=50
+		#y0=50
+		self._stage.gotocenter()
+		x0, y0 = self._stage.position # return position
 		allx = np.linspace(x0 - xsize/2, x0 + xsize/2, xsteps)
 		ally = np.linspace(y0 - ysize/2, y0 + ysize/2, ysteps)
 
@@ -133,10 +158,12 @@ class control(object):
 				# Condition to map in a snake pattern rather than coming back to first x point
 				if reverse > 0: #go in the forward direction
 					self._stage.moveto(x = x, y = y)
-					data[xidx, yidx, :] = self.scanroutine(wavelengths = wavelengths, firstscan = firstscan, lastscan = lastscan)
-				else # go in the reverse direction
-					self._stage.moveto(x = x, y = ally[xsteps-1-yidx])
-					data[xidx, xsteps-1-yidx, :] = self.scanroutine(wavelengths = wavelengths, firstscan = firstscan, lastscan = lastscan)
+					signal, reference = self.scanroutine(wavelengths = wavelengths, firstscan = firstscan, lastscan = lastscan)
+					data[xidx, yidx, :] = self.baselinecorrectionroutine(wavelengths, signal, reference)
+				else: # go in the reverse direction
+					self._stage.moveto(x = x, y = ally[ysteps-1-yidx])
+					signal,reference = self.scanroutine(wavelengths = wavelengths, firstscan = firstscan, lastscan = lastscan)
+					data[xidx, ysteps-1-yidx, :]=self.baselinecorrectionroutine(wavelengths, signal, reference) # baseline correction
 				firstscan = False
 
 		if export:
@@ -153,16 +180,19 @@ class control(object):
 			# export as a hfile
 			
 			# export as a text file
-			fpath = os.path.join(self.outputdir, label + '.json')
-			with open(fpath, 'w') as f:
-				json.dump(output, f)
+			#fpath = os.path.join(self.outputdir, label + '.json')
+			#with open(fpath, 'w') as f:
+			#	json.dump(output, f)
 
 	# internal methods
 	def baselinecorrectionroutine(self, wavelengths, signal, reference):
 		corrected = []
+		if self.__baselineTaken == False:
+			raise ValueError("Take baseline first")
+
 		for idx, wl in enumerate(wavelengths):
 			meas = signal[idx]/reference[idx]
-
+			#pdb.set_trace()
 			bl_idx = self.__baseline['Wavelengths'].index(wl)
 			corrected.append((meas-self.__baseline['Dark']) / (self.__baseline['Light'][bl_idx]-self.__baseline['Dark']))
 
@@ -185,3 +215,14 @@ class control(object):
 			self._mono.closeShutter()
 
 		return signal, ref
+
+	def measspectra(self):
+		wave=np.linspace(1700,2000,151,dtype=int)
+		wave=wave.tolist()
+		self.connect()
+		self.connectStage()
+		self.takeBaseline(wave)
+		input()
+		self.takeScan("test",wave,True,False,False) # green stage
+		input()
+		self.takeScan("test",wave,True,False,False) # minimodule

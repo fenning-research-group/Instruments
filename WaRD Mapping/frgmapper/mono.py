@@ -5,7 +5,9 @@ class mono(object):
 
 	def __init__(self, monoAddress = 'GPIB0::4::INSTR'):
 		self.pauseTime = 0.1
+		#self.handle = pyvisa.ResourceManager().open_resource(monoAddress)
 		self.handle = pyvisa.ResourceManager().open_resource(monoAddress)
+		self.handle.timeout=10000 # set timeout to 10 s
 		time.sleep(self.pauseTime)
 		self.handle.read_termination = '\r\n'
 		self.handle.write_termination = '\r\n'
@@ -83,7 +85,7 @@ class mono(object):
 				waitingForMonoMove = False
 
 			timer = timer + 1
-			if timer > 30/self.pauseTime: #equivalent to 30 seconds
+			if timer > (30/self.pauseTime): #equivalent to 300 seconds
 				print('MonoMoveError')
 				return False
 

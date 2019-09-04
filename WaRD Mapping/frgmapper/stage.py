@@ -37,7 +37,7 @@ class stage(object):
 		if not self.premove():
 			return False
 		
-		self.moveto(x = 43, y = 77) 	#position where sample is roughly centered on int sphere port 2019-08-13
+		self.moveto(x = 50, y = 100) 	#position where sample is roughly centered on int sphere port 2019-08-13
 
 		return True
 
@@ -46,6 +46,7 @@ class stage(object):
 			return False
 		
 		self.moveto(x = 149, y = 1) 	#position where sample can be easily loaded 2019-08-13
+		self.postmove()
 
 		return True
 
@@ -76,9 +77,9 @@ class stage(object):
 		if not self.premove():
 			return False
 
-		if x:
+		if x is not None:
 			self.x.move_by(x)
-		if y:
+		if y is not None:
 			self.y.move_by(y)
 		while not (not self.x.is_in_motion and not self.y.is_in_motion):
 			time.sleep(0.1)
