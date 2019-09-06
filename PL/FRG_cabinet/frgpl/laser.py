@@ -36,7 +36,7 @@ class laser:
 
 	def set(self, power):
 		#set power to some fraction of the maximum current. No PWM 
-		if (power >= 1) or (power < 0):
+		if (power > 1) or (power < 0):
 			return False
 		else:
 			current = self.__maxcurrent * power

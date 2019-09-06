@@ -4,16 +4,14 @@ import serial
 import time
 
 class stage:
-	def __init__(self, port = 'COM11'):
+	def __init__(self, port = 'COM8'):
 		self.__xlim = (500, 205500)
 		self.__ylim = (500, 194500)
 		self.position = (None, None)
 		self.connect(port = port)	
-		self.samplePosition = (133850, 53500)	#stage coordinates where sample is in camera FOV. might move to parent class
-		self.__detectorOffset = (4850, 59000)	# offset between sample center and photodetector. might move to parent class
 		self.__homed = False
 
-	def connect(self, port = 'COM11'):
+	def connect(self, port = 'COM8'):
 		self.__handle = serial.Serial(port)
 		return True
 
@@ -48,25 +46,25 @@ class stage:
 
 		return True
 
-	def gotosample(self):
-		x = self.samplePosition[0]
-		y = self.samplePosition[1]
+	# def gotosample(self):
+	# 	x = self.samplePosition[0]
+	# 	y = self.samplePosition[1]
 
-		if not self.premove(x = x, y = y):
-			return False
+	# 	if not self.premove(x = x, y = y):
+	# 		return False
 		
-		self.moveto(x = x, y = y) 	#position where sample is roughly centered on int sphere port 2019-08-13
+	# 	self.moveto(x = x, y = y) 	#position where sample is roughly centered on int sphere port 2019-08-13
 
-		return True
+	# 	return True
 
-	def gotodetector(self):
-		x = self.samplePosition[0]+self.__detectorOffset[0]
-		y = self.samplePosition[1]+self.__detectorOffset[1]
+	# def gotodetector(self):
+	# 	x = self.samplePosition[0]+self.__detectorOffset[0]
+	# 	y = self.samplePosition[1]+self.__detectorOffset[1]
 
-		if not self.premove(x = x, y = y):
-			return False
+	# 	if not self.premove(x = x, y = y):
+	# 		return False
 		
-		self.moveto(x = x, y = y) 	#position where Si photodetector is in center of camera FOV
+	# 	self.moveto(x = x, y = y) 	#position where Si photodetector is in center of camera FOV
 
 		return True
 

@@ -4,12 +4,13 @@ import os
 import serial
 import time
 import h5py
+import sys
 from camera import camera
 from stage import stage
 from kepco import kepco
 from daq import daq
 from laser import laser
-
+import datetime
 
 root = 'C:\\Users\\Operator\\Desktop\\frgPL'
 if not os.path.exists(root):
@@ -46,8 +47,8 @@ class control:
 		self.__dataBuffer = [] # buffer to hold data files during sequential measurements of single sample. Held until a batch export
 
 		# stage/positioning constants
-		self.__sampleposition = (133850, 53500)	#position where TEC stage is centered in camera FOV, um
-		self.__detectoroffset = (4850, 59000)	#delta position between detector and sampleposition, um.
+		self.__sampleposition = (34915, 69000)	#position where TEC stage is centered in camera FOV, um
+		self.__detectorposition = (49333, 125500)	#delta position between detector and sampleposition, um.
 		self.__fov = (38000, 34000)	#dimensions of FOV, um
 
 	def connect(self):
@@ -55,8 +56,8 @@ class control:
 		self._kepco = kepco()		# connect to Kepco
 		self._laser = laser()		# Connect to OSTECH Laser
 		self._daq = daq()			# connect to NI-USB6000 DAQ
-		self._stage = stage()
-	
+		self._stage = stage()		# connect to FRG stage
+		
 	def disconnect(self):
 		try:
 			self._camera.disconnect()
@@ -75,16 +76,21 @@ class control:
 			self._daq.disconnect()
 		except:
 			print('Could not disconnect DAQ')
+		try:
+			self._stage.disconnect()
+		except:
+			print('Could not disconnect stage')
+
 
 	### basic use functions
 
 	def setMeas(self, bias = None, laserpower = None, suns = None, saturationtime = None, numIV = None, numframes = None):
 
 		if bias is None:
-			bias = self._bias
+			bias = self.bias
 		if laserpower is None:
-			if suns = None:
-				laserpower = self._laserpower
+			if suns is None:
+				laserpower = self.laserpower
 			else:
 				if self._sampleOneSun is None:
 					print('Error: can\'t use "suns =" without calibration -  please run .findOneSun to calibrate one-sun power level for this sample.')
@@ -96,15 +102,15 @@ class control:
 						print('Error: {0} suns is out of range! Based on laser power and current sample, allowed suns range = 0 - {1}.'.format(suns, maxsuns))
 						return False
 		if saturationtime is None:
-			saturationtime = self._saturationtime
+			saturationtime = self.saturationtime
 		if numIV is None:
-			numIV = self._numIV
+			numIV = self.numIV
 		if numframes is None:
-			numframes = self._numframes
+			numframes = self.numframes
 
 		result = self._kepco.set(voltage = bias)
 		if result:
-			self._bias = bias
+			self.bias = bias
 		else:
 			print('Error setting kepco')
 			# return False
@@ -112,30 +118,30 @@ class control:
 		result = self._laser.set(power = laserpower)
 
 		if result:
-			self._laserpower = laserpower
+			self.laserpower = laserpower
 		else:
 			print('Error setting laser')
 			# return False
 
-		self._numIV = numIV
-		self._numframes = numframes
+		self.numIV = numIV
+		self.numframes = numframes
 
 	def takeMeas(self, lastmeasurement = True):
 		### takes a measurement with settings stored in method (can be set with .setMeas()).
 		#	measurement settings + results are appended to .__dataBuffer
-		if not self.__laserON and self._laserpower > 0:
+		if not self.__laserON and self.laserpower > 0:
 			self._laser.on()
 			self.__laserON = True
-		if not self.__kepcoON and self._bias is not 0:
+		if not self.__kepcoON and self.bias is not 0:
 			self._kepco.on()	#turn on the kepco source
 			self.__kepcoON = True
 
-		time.sleep(self._saturationtime)
+		time.sleep(self.saturationtime)
 
 		#take image, take IV meas during image
 		measdatetime = datetime.datetime.now()
-		im, _, _ = self._camera.capture(frames = self._numframes, imputeHotPixels = True)
-		v, i = self._kepco.read(counts = self._numIV)
+		im, _, _ = self._camera.capture(frames = self.numframes, imputeHotPixels = True)
+		v, i = self._kepco.read(counts = self.numIV)
 
 		if self.__laserON and lastmeasurement:
 			self._laser.off()
@@ -176,7 +182,7 @@ class control:
 		if not os.path.exists(self.outputDirectory):
 			os.mkdir(self.outputDirectory)
 
-		fids = os.listdir(self.outputDirectory):
+		fids = os.listdir(self.outputDirectory)
 		sampleNumber = 1
 		for fid in fids:
 			if 'frgPL' in fid:
@@ -208,7 +214,7 @@ class control:
 		# 	'image':	im,
 		# }
 
-		numData = len(self.__buffer)
+		numData = len(self.__dataBuffer)
 
 		data = {}
 		for field in self.__dataBuffer[0].keys():
@@ -218,8 +224,8 @@ class control:
 		# 	data['image_norm'] = []
 
 		for meas in self.__dataBuffer:
-			for field, data in meas.items():
-				data[field].append(data)
+			for field, measdata in meas.items():
+				data[field].append(measdata)
 				### normalize PL images here
 				# if field is 'image' and self._spotmap is not None:
 				# 	data['image_norm']
@@ -235,11 +241,11 @@ class control:
 			temp = info.create_dataset('name', data = self.sampleName.encode('utf-8'))
 			temp.attrs['description'] = 'Sample name.'
 
-			date = info.create_dataset('date', data = np.array(data['date']))
+			date = info.create_dataset('date', data = np.array([x.encode('utf-8') for x in data['date']]))
 			temp.attrs['description'] = 'Measurement date.'
 
 			
-			temp = info.create_dataset('time', data =  np.array(data['time']))
+			temp = info.create_dataset('time', data =  np.array([x.encode('utf-8') for x in data['time']]))
 			temp.attrs['description'] = 'Measurement time of day.'
 
 
@@ -295,10 +301,10 @@ class control:
 			temp = rawdata.create_dataset('image', data = np.array(data['image']), chunks = True, compression = 'gzip')
 			temp.attrs['description'] = 'Raw images acquired for each measurement.'
 
-			temp = rawdata.create_dataset('v', data = np.array(data['v']))
+			temp = rawdata.create_dataset('v', data = np.array(data['v_meas']))
 			temp.attrs['description'] = 'Voltage measured during measurement'
 
-			temp = rawdata.create_dataset('i', data = np.array(data['i']))
+			temp = rawdata.create_dataset('i', data = np.array(data['i_meas']))
 			temp.attrs['description'] = 'Current (not current density!) measured during measurement'
 
 		print('Data saved to {0}'.format(fpath))
@@ -345,23 +351,26 @@ class control:
 		return p(isc), laserpowers, laserjsc	#return laser power to match target jsc
 
 	def calibrateSpot(self, numx = 21, numy = 21, rngx = None, rngy = None, laserpower = 0.5):
-		### maps an area around the sample center position, finds the optical power at each point
-		if not self._stage.moveto(x = self.__fov[0], self.__fov[1]):
-			print('Error moving stage to starting position - stage is probably not homed. run method ._stage.gohome()')
-		#default calibration area = camera FOV
+		### maps an area around the sample FOV, finds the optical power at each point
+
+		#default calibration area range = camera FOV
 		if rngx is None:
 			rngx = self.__fov[0]
 		if rngy is None:
 			rngy = self.__fov[1]
 
-		xpos = np.linspace(self.__fov[0] - rngx/2, self.__fov[0] + rngx/2, numx, type = np.uint8)
-		ypos = np.linspace(self.__fov[1] - rngy/2, self.__fov[1] + rngy/2, numy, type = np.uint8)
+		xpos = np.linspace(self.__detectorposition[0] - (rngx/2), self.__detectorposition[0] + (rngx/2), numx).astype(int)
+		ypos = np.linspace(self.__detectorposition[1] - (rngy/2), self.__detectorposition[1] + (rngy/2), numy).astype(int)
 		
 
 		self._laser.set(power = laserpower)
-		self.__spotMap = power_readings = np.zeros(numx, numy)
-		self._stage.moveto(x = xpos[0], y = ypos[0])
+		self._spotMap = np.zeros((numx, numy))
 		
+		print('Moving to start position ({0}, {1})'.format(xpos[0], ypos[0]))
+		if not self._stage.moveto(x = xpos[0], y = ypos[0]):
+			print('Error moving stage to starting position ({0}, {1}) - stage is probably not homed. run method ._stage.gohome()'.format(xpos[0], ypos[0]))		
+			return False
+
 		self._laser.on()
 		flip = 1
 		for m, x in enumerate(xpos):
@@ -369,11 +378,12 @@ class control:
 			self._stage.moveto(x = x)
 			for n in range(len(ypos)):
 				if flip > 0:		#use nn instead of n, accounts for snaking between lines
-					nn = len(ypos) - n
+					nn = len(ypos) - n - 1
 				else:
 					nn = n
 				self._stage.moveto(y = ypos[nn])
 				self._spotMap[nn,m] = self.getOpticalPower()
+		self._laser.off()
 
 		self._stage.moveto(x = self.__sampleposition[0], y = self.__sampleposition[1])	#return stage to camera FOV
 
@@ -381,12 +391,24 @@ class control:
 
 	def getOpticalPower(self):
 		### reads signal from photodetector, converts to optical power using calibration vs thorlabs Si power meter (last checked 2019-08-20)
-		calibrationfit = [-0.1145, 9.1180]; #polyfit of detector reading vs (Si power meter / detector reading), 2019-08-20
+		calibrationFit = [-0.1145, 9.1180]; #polyfit of detector reading vs (Si power meter / detector reading), 2019-08-20
 		voltage, _, _ = self._daq.acquire()
 		power = voltage * (calibrationFit[0]*voltage + calibrationFit[1])	#measured optical power, units of mW/cm^2
 
 		return power
 
-
+	#def progressbar(self, it, prefix="", size=60, file=sys.stdout):
+		count = len(it)
+		def show(j):
+			x = int(size*j/count)
+			file.write("%s[%s%s] %i/%i\r" % (prefix, "#"*x, "."*(size-x), j, count))
+			file.flush()        
+		show(0)
+		for i, item in enumerate(it):
+			yield item
+			show(i+1)
+		file.write("\n")
+		file.flush()
 	#def normalizePL(self):
 	### used laser spot power map to normalize PL counts to incident optical power
+
