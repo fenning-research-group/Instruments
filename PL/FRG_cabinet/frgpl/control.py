@@ -398,17 +398,17 @@ class control:
 		return power
 
 	#def progressbar(self, it, prefix="", size=60, file=sys.stdout):
-		count = len(it)
-		def show(j):
-			x = int(size*j/count)
-			file.write("%s[%s%s] %i/%i\r" % (prefix, "#"*x, "."*(size-x), j, count))
-			file.flush()        
-		show(0)
-		for i, item in enumerate(it):
-			yield item
-			show(i+1)
-		file.write("\n")
-		file.flush()
+		# count = len(it)
+		# def show(j):
+		# 	x = int(size*j/count)
+		# 	file.write("%s[%s%s] %i/%i\r" % (prefix, "#"*x, "."*(size-x), j, count))
+		# 	file.flush()        
+		# show(0)
+		# for i, item in enumerate(it):
+		# 	yield item
+		# 	show(i+1)
+		# file.write("\n")
+		# file.flush()
 	#def normalizePL(self):
 	### used laser spot power map to normalize PL counts to incident optical power
 
