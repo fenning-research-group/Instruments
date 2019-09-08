@@ -252,14 +252,21 @@ class control(object):
 
 		return signal, ref
 
-	### should remove this and make a wrapper function to execute these commands instead of building it into the class
+
+	### Test Methods: should remove these and make a wrapper function to execute these commands instead of building it into the class
+	#
+	#	This method has been saved under /tests/scanStageModule as an example test. Only thing we need to do is install the frgmapper package
+	#	instead of calling the filepath directly. Can be done by moving to the WaRD Mapping directory and running pip install -e frgmapper. The
+	# 	-e flag (editable) makes future changes reflected in the module, so we can use import frmapper / reload(frgmapper) from anywhe (including
+	#	within the test script)
+
 	def measspectra(self):
 		wave=np.linspace(1700,2000,151,dtype=int)
 		wave=wave.tolist()
 		self.connect()
 		self.connectStage()
 		self.takeBaseline(wave)
-		input()
+		input('Place stage on integrating sphere: press enter to scan')
 		self.takeScan("test",wave,True,False,False) # green stage
-		input()
+		input('Place mini module on sphere: press enter to scan')
 		self.takeScan("test",wave,True,False,False) # minimodule
