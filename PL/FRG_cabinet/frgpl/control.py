@@ -35,6 +35,7 @@ class control:
 		self.saturationtime = 0.5	#delay between applying voltage/illumination and beginning measurement
 		self.numIV = 10		#number of IV measurements to average
 		self.numframes = 50	#number of image frames to average
+		self.note = ''
 		self._spotMap = None	# optical power map of laser spot, used for PL normalization
 		self._sampleOneSun = None # fractional laser power with which to approximate one-sun injection levels
 		self._sampleOneSunJsc = None # target Jsc, matching of which is used for one-sun injection level is approximated
@@ -84,7 +85,7 @@ class control:
 
 	### basic use functions
 
-	def setMeas(self, bias = None, laserpower = None, suns = None, saturationtime = None, numIV = None, numframes = None):
+	def setMeas(self, bias = None, laserpower = None, suns = None, saturationtime = None, numIV = None, numframes = None, note = ''):
 
 		if bias is None:
 			bias = self.bias
@@ -125,10 +126,49 @@ class control:
 
 		self.numIV = numIV
 		self.numframes = numframes
+		self.note = note
 
 	def takeMeas(self, lastmeasurement = True):
 		### takes a measurement with settings stored in method (can be set with .setMeas()).
 		#	measurement settings + results are appended to .__dataBuffer
+		#
+		#	if .__dataBuffer is empty (ie, no measurements have been taken yet), takeMeas() will 
+		#	automatically take a 0 bias, 0 laser power baseline measurement before the scheduled
+		#	measurement.
+
+		if len(self.__dataBuffer) == 0: # sample is being measured for the first time, take a baseline image
+			# store scheduled measurement parameters
+			savedlaserpower = self.laserpower
+			savedbias = self.bias
+			savednote = self.note
+
+			# take a 0 bias, 0 laserpower measurement, append to .__dataBuffer
+			self.setMeas(bias = 0, laserpower = 0, note = 'automatic baseline image')
+			measdatetime = datetime.datetime.now()
+			im, _, _ = self._camera.capture(frames = self.numframes, imputeHotPixels = True)
+			v, i = self._kepco.read(counts = self.numIV)
+			meas = {
+				'sample': 	self.sampleName,
+				'note':		self.note,
+				'date': 	measdatetime.strftime('%Y-%m-%d'),
+				'time':		measdatetime.strftime('%H:%M:%S'),
+				'cameraFOV':self.__fov,
+				'bias':		self.bias,
+				'laserpower': self.laserpower,
+				'saturationtime': self.saturationtime,
+				'numIV':	self.numIV,
+				'numframes':self.numframes,
+				'v_meas':	v,
+				'i_meas':	i,
+				'image':	im,
+			}
+			self.__dataBuffer.append(meas)	
+
+			# restore scheduled measurement parameters + continue 	
+			self.laserpower = savedlaserpower
+			self.bias = savedbias
+			self.note = savednote
+
 		if not self.__laserON and self.laserpower > 0:
 			self._laser.on()
 			self.__laserON = True
@@ -152,6 +192,7 @@ class control:
 
 		meas = {
 			'sample': 	self.sampleName,
+			'note':		self.note,
 			'date': 	measdatetime.strftime('%Y-%m-%d'),
 			'time':		measdatetime.strftime('%H:%M:%S'),
 			'cameraFOV':self.__fov,
