@@ -8,7 +8,6 @@ from stage import stage
 from mono import mono
 from daq import daq
 import datetime
-import pdb
 
 class control(object):
 	def __init__(self, outputdir = None, dwelltime = 0.1):
@@ -16,8 +15,9 @@ class control(object):
 		self.__dwelltime = dwelltime
 		self.__baselineTaken = False
 		self.__baseline = {}
-		# self._stage=object()
-		# self._daq=object(dwelltime = dwelltime)
+		self._stage = None
+		self._mono = None
+		self._daq = None
 
 	@property
 	def dwelltime(self):
@@ -26,13 +26,13 @@ class control(object):
 	@dwelltime.setter
 	def dwelltime(self, x):
 		# sets daq counts to match desired measurement time (x, in seconds)
-		self._daq.countsPerChannel = round(x*self._daq.rate)
+		self._daq.dwelltime = x
 		self.__dwelltime = x
 
 	def connect(self):
 		#connect to spectrometer hardware
 		self._mono = mono()
-		self._daq = daq(dwelltime = self.dwelltime)
+		self._daq = daq(rate = 1000, counts = round(1000 * self.dwelltime))
 		print("mono connected")
 		print("daq connected")
 
@@ -42,10 +42,15 @@ class control(object):
 		print("stage connected")
 
 	def takeBaseline(self, wavelengths):
+		# clean up wavelengths input
+		if type(wavelengths) is not list:
+			wavelengths = [wavelengths]
+		wavelengths = np.array(wavelengths)
+
 		#light baseline
 		self.__baseline['Wavelengths'] = wavelengths
 		self.__baseline['LightRaw'], self.__baseline['LightRefRaw'] = self.scanroutine(wavelengths)
-		self.__baseline['Light'] = [self.__baseline['LightRaw'][x] / self.__baseline['LightRefRaw'][x] for x in range(len(self.__baseline['LightRaw']))]
+		self.__baseline['Light'] = np.divide(self.__baseline['LightRaw'], self.__baseline['LightRefRaw'])
 		
 		#dark baseline
 		out = self._daq.read()
@@ -53,17 +58,20 @@ class control(object):
 		self.__baseline['DarkRefRaw'] = out['Reference']['Mean']
 		self.__baseline['Dark'] = self.__baseline['DarkRaw'] / self.__baseline['DarkRefRaw']
 		
-		#pdb.set_trace()
-
 		self.__baselineTaken = True
 
 	def takeScan(self, label, wavelengths, plot = False, export = True, verbose = False):
+		# clean up wavelengths input
+		if type(wavelengths) is not list:
+			wavelengths = [wavelengths]
+		wavelengths = np.array(wavelengths)
+
 		data = {
 			'Label': label,
 			'Date': datetime.date.today().strftime('%Y/%m/%d'),
 			'Time': datetime.datetime.now().strftime('%H:%M:%S'),
 			'Wavelengths': wavelengths,
-			'Reflectance': [],
+			'Reflectance': None,
 			'DwellTime': self.dwelltime
 		}
 
@@ -90,41 +98,48 @@ class control(object):
 			plt.show()
 
 	def findArea(self, wavelength, xsize = 30, ysize = 30, xsteps = 6, ysteps = 6, plot = True, export = False):
-	# method to find sample edges
-		#wavelength must be entered as a list
-		self.connectStage() # connect stage
-		self.connect() # connect mono
-		self._stage.gotocenter()
-		self._stage.postmove()
+		### method to find sample edges. does two line scans in a cross over the sample at a single wavelength.
+		# clean up wavelengths input
+		if type(wavelengths) is not list:
+			wavelengths = [wavelengths]
+		wavelengths = np.array(wavelengths)
+
+
+		if self._stage is None:
+			self.connectStage() # connect stage
+			self._stage.gohome()
+		if self._daq is None:
+			self.connect() # connect mono and daq
+		
+		self._stage.gotocenter() #go to center position, where sample is centered on integrating sphere port. Might need to remove this line later if inconvenient
 		x0, y0 = self._stage.position
+
 		allx = np.linspace(x0 - xsize/2, x0 + xsize/2, xsteps)
 		ally = np.linspace(y0 - ysize/2, y0 + ysize/2, ysteps)
 		
+
 		self._mono.goToWavelength(wavelength[0])
 		
 		self._stage.moveto(x = allx[0], y = y0)
 		self._mono.openShutter()		
-		xdata = []
-		for x in allx:
+		xdata = np.zeros((xsteps, ))
+		for idx, x in enumerate(allx):
 			self._stage.moveto(x = x)
 			out = self._daq.read()
-			intsignal=[] # for consistency: signal must be a list for baselinecorrectionroutine and signal is a list in scanroutine
-			ref=[]
-			intsignal.append(out['IntSphere']['Mean'])
-			ref.append(out['Reference']['Mean'])
-			#pdb.set_trace()
-			#reflectance = self.baselinecorrectionroutine(wavelengths = wavelength, signal = intsignal, reference = ref)
-			#xdata.append(reflectance)
+			intsignal = out['IntSphere']['Mean']
+			ref = out['Reference']['Mean']
+			xdata[idx] = self.baselinecorrectionroutine(wavelengths = wavelength, signal = intsignal, reference = ref)
 		self._mono.closeShutter()
 
 		self._stage.moveto(x = x0, y = ally[0])
 		self._mono.openShutter()
-		ydata = []
-		for y in ally:
+		ydata = np.zeros((xsteps, ))
+		for idx, y in enumerate(ally):
 			self._stage.moveto(y = y)
 			out = self._daq.read()
-			#reflectance = self.baselinecorrectionroutine(wavelengths = wavelength, signal = out['IntSphere']['Mean'], reference = out['Reference']['Mean'])
-			#ydata.append(reflectance)
+			intsignal = out['IntSphere']['Mean']
+			ref = out['Reference']['Mean']
+			ydata[idx] = self.baselinecorrectionroutine(wavelengths = wavelength, signal = intsignal, reference = ref)
 		self._mono.closeShutter()
 		self._stage.moveto(x = x0, y = y0) #return to original position
 
@@ -144,14 +159,25 @@ class control(object):
 		
 		# HERE add code to find sample area based on the variation of reflectance
 
-	def scanArea(self, label, wavelengths, xsize, ysize, xsteps = 21, ysteps = 21, export = True, verbose = False):
-		self.connectStage() # connect stage
-		# self._stage.gohome() # home stage and update position (in stage.py)
-		# set x0 and y0 in the middle for testing purposes
-		#x0=50
-		#y0=50
-		self._stage.gotocenter()
-		x0, y0 = self._stage.position # return position
+	def scanArea(self, label, wavelengths, xsize, ysize, xsteps = 21, ysteps = 21, x0 = None, y0 = None, export = True, verbose = False):
+		# clean up wavelengths input
+		if type(wavelengths) is not list:
+			wavelengths = [wavelengths]
+		wavelengths = np.array(wavelengths)
+
+		if self._stage is None:
+			self.connectStage() # connect stage
+			self._stage.gohome()
+		if self._daq is None:
+			self.connect() # connect mono and daq
+
+		self._stage.gotocenter() #go to center position, where sample is centered on integrating sphere port. Almost definitely need to remove this line later (we want to be centered at the sample center, which may shift and should be determined by .findArea)
+		currentx, currenty = self._stage.position # return position
+		if x0 is None:
+			x0 = currentx
+		if y0 is None:
+			y0 = currenty
+
 		allx = np.linspace(x0 - xsize/2, x0 + xsize/2, xsteps)
 		ally = np.linspace(y0 - ysize/2, y0 + ysize/2, ysteps)
 
@@ -189,22 +215,22 @@ class control(object):
 			
 			# export as a hfile
 			
-			# export as a text file
-			#fpath = os.path.join(self.outputdir, label + '.json')
-			#with open(fpath, 'w') as f:
-			#	json.dump(output, f)
+			# export as a json file
+			fpath = os.path.join(self.outputdir, label + '.json')
+			with open(fpath, 'w') as f:
+				json.dump(output, f)
 
 	# internal methods
 	def baselinecorrectionroutine(self, wavelengths, signal, reference):
-		corrected = []
 		if self.__baselineTaken == False:
 			raise ValueError("Take baseline first")
 
+		corrected = np.zeros(wavelengths.shape)
 		for idx, wl in enumerate(wavelengths):
 			meas = signal[idx]/reference[idx]
 			#pdb.set_trace()
 			bl_idx = self.__baseline['Wavelengths'].index(wl)
-			corrected.append((meas-self.__baseline['Dark']) / (self.__baseline['Light'][bl_idx]-self.__baseline['Dark']))
+			corrected[idx] = (meas-self.__baseline['Dark']) / (self.__baseline['Light'][bl_idx]-self.__baseline['Dark']) 
 
 		return corrected
 
@@ -213,19 +239,20 @@ class control(object):
 		if firstscan:
 			self._mono.openShutter()
 
-		signal = []
-		ref = []
-		for wl in wavelengths:
+		signal = np.zeros(wavelengths.shape)
+		ref = np.zeros(wavelengths.shape)
+		for idx, wl in enumerate(wavelengths):
 			self._mono.goToWavelength(wl)
 			out = self._daq.read()
-			signal.append(out['IntSphere']['Mean'])
-			ref.append(out['Reference']['Mean'])
+			signal[idx] = out['IntSphere']['Mean']
+			ref[idx] = out['Reference']['Mean']
 		
 		if lastscan:
 			self._mono.closeShutter()
 
 		return signal, ref
 
+	### should remove this and make a wrapper function to execute these commands instead of building it into the class
 	def measspectra(self):
 		wave=np.linspace(1700,2000,151,dtype=int)
 		wave=wave.tolist()
