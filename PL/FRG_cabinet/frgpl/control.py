@@ -182,6 +182,7 @@ class control:
 		measdatetime = datetime.datetime.now()
 		im, _, _ = self._camera.capture(frames = self.numframes, imputeHotPixels = True)
 		v, i = self._kepco.read(counts = self.numIV)
+		irradiance = self._getOpticalPower()
 
 		if self.__laserON and lastmeasurement:
 			self._laser.off()
@@ -204,6 +205,7 @@ class control:
 			'v_meas':	v,
 			'i_meas':	i,
 			'image':	im,
+			'irradiance_ref': irradiance 
 		}
 		self.__dataBuffer.append(meas)
 
@@ -348,6 +350,9 @@ class control:
 			temp = rawdata.create_dataset('i', data = np.array(data['i_meas']))
 			temp.attrs['description'] = 'Current (not current density!) measured during measurement'
 
+			temp = rawdata.create_dataset('irr_ref', data = np.array(data['irradiance_ref']))
+			temp.attrs['description'] = 'Measured irradiance @ photodetector during measurement. Note that the photodetector is offset from the sample FOV. Assuming that the laser spot is centered on the sample, this value is lower than the true sample irradiance. This value should be used in conjunction with a .spotMap() calibration map.'			
+
 		print('Data saved to {0}'.format(fpath))
 		if reset:
 			self._sampleOneSun = None
@@ -423,14 +428,14 @@ class control:
 				else:
 					nn = n
 				self._stage.moveto(y = ypos[nn])
-				self._spotMap[nn,m] = self.getOpticalPower()
+				self._spotMap[nn,m] = self._getOpticalPower()
 		self._laser.off()
 
 		self._stage.moveto(x = self.__sampleposition[0], y = self.__sampleposition[1])	#return stage to camera FOV
 
 	### helper methods
 
-	def getOpticalPower(self):
+	def _getOpticalPower(self):
 		### reads signal from photodetector, converts to optical power using calibration vs thorlabs Si power meter (last checked 2019-08-20)
 		calibrationFit = [-0.1145, 9.1180]; #polyfit of detector reading vs (Si power meter / detector reading), 2019-08-20
 		voltage, _, _ = self._daq.acquire()
