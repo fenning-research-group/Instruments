@@ -8,16 +8,23 @@ board_num = 0
 channel_intSphere = 0
 channel_ref = 2
 ai_range = ULRange.BIP5VOLTS
-
+max_rate = 10e3
 
 class daq(object):
 
-    def __init__(self, channel_intSphere = 0, channel_ref = 2, rate = 200, dwelltime = 0.1):
+    def __init__(self, channel_intSphere = 0, channel_ref = 2, rate = 1000, dwelltime = None, counts = 100):
         self.board_num = 0
         # self.ai_range = ULRange.BIP5VOLTS
-        self.rate = rate
-        self.dwelltime = dwelltime
-        self.countsPerChannel = round(self.dwelltime * self.rate)   #counts per channel = rate (Hz) * dwelltime (s)
+        self.__rate = rate
+        self.__dwelltime = dwelltime
+
+        # prioritize dwelltime argument when setting counts/rate. if none provided, use explicitly provided counts
+        if dwelltime is not None:
+            self.__countsPerChannel = round(self.__dwelltime * self.__rate)   #counts per channel = rate (Hz) * dwelltime (s)
+        else:
+            self.__countsPerChannel = counts
+            self.__dwelltime = self.__countsPerChannel / self.__rate
+
         self.channels = {
             'Label': ['IntSphere', 'Reference'],
             'Number': [channel_intSphere, channel_ref],
@@ -32,6 +39,49 @@ class daq(object):
         except:
             print("DAQ is already connected.")
 
+    @property
+    def dwelltime(self):
+        return self.__dwelltime
+
+    @dwelltime.setter
+    def dwelltime(self, x):
+        # sets daq counts to match desired measurement time (x, in seconds)
+        self.__countsPerChannel = round(self.__dwelltime * self.__rate)
+        self.__dwelltime = x
+        print('Dwelltime: {0} s\nCounts: {1}\nRate: {2} Hz'.format(self.__dwelltime, self.__countsPerChannel, self.__rate))
+
+    @property
+    def rate(self):
+        return self.__rate
+    
+    @rate.setter
+    def rate(self, x):
+        # sets daq counting rate, adjusts countsPerChannel to preserve dwelltime
+        if x > max_rate:
+            print('Desired rate ({0} Hz) is greater than max allowed rate ({1} Hz): setting rate to {1} Hz.'.format(x, max_rate))
+            x = max_rate
+
+        self.__rate = x
+        self.__countsPerChannel = round(self.__rate * self.__dwelltime)
+        print('Dwelltime: {0} s\nCounts: {1}\nRate: {2} Hz'.format(self.__dwelltime, self.__countsPerChannel, self.__rate))
+
+    @property
+    def counts(self):
+        return self.__countsPerChannel
+    
+    @rate.setter
+    def counts(self, x):
+        # sets daq counting rate, adjusts countsPerChannel to preserve dwelltime
+        self.__countsPerChannel = x
+        newrate = round(self.__countsPerChannel * self.__dwelltime)
+
+        if newrate > max_rate:
+            print('Desired rate ({0} Hz) is greater than max allowed rate ({1} Hz): setting rate to {1} Hz.'.format(x, max_rate))
+            newrate = max_rate
+
+        self.__rate = newrate
+        print('Dwelltime: {0} s\nCounts: {1}\nRate: {2} Hz'.format(self.__dwelltime, self.__countsPerChannel, self.__rate))
+    
 # connects the daq device
     def connDaq(self):
         #connects to first MCC DAQ device detected. Assuming we only have the USB-1808
@@ -43,7 +93,7 @@ class daq(object):
         ul.release_daq_device(self.board_num)
 
     def read(self):
-        totalCount = len(self.channels['Number']) * self.countsPerChannel
+        totalCount = len(self.channels['Number']) * self.__countsPerChannel
         memhandle = ul.scaled_win_buf_alloc(totalCount)
         ctypesArray = ctypes.cast(memhandle, ctypes.POINTER(ctypes.c_double))
         
@@ -55,7 +105,7 @@ class daq(object):
             chan_type_list = self.channels['Type'],
             gain_list = self.channels['Gain'],
             chan_count = len(self.channels['Number']),
-            rate = self.rate,
+            rate = self.__rate,
             pretrig_count = 0,
             total_count = totalCount,
             memhandle = memhandle,
@@ -71,7 +121,7 @@ class daq(object):
         		}
 
         dataIndex = 0
-        for each in range(self.countsPerChannel):
+        for each in range(self.__countsPerChannel):
         	for ch in self.channels['Label']:
         		data[ch]['Raw'].append(ctypesArray[dataIndex])
         		dataIndex += 1
@@ -82,7 +132,7 @@ class daq(object):
 
         # for ch in self.channels['Label']:
         #     tempdat = {'Raw': []}
-        #     for each in range(self.countsPerChannel):
+        #     for each in range(self.__countsPerChannel):
         #         tempdat['Raw'].append(ctypesArray[dataIndex])
         #         dataIndex += 1
         #     tempdat['Mean'] = np.mean(tempdat['Raw'])

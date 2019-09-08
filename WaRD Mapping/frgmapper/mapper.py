@@ -13,11 +13,21 @@ import pdb
 class control(object):
 	def __init__(self, outputdir = None, dwelltime = 0.1):
 		self.outputdir = outputdir
-		self.dwelltime = dwelltime
+		self.__dwelltime = dwelltime
 		self.__baselineTaken = False
 		self.__baseline = {}
-		self._stage=object()
-		self._daq=object(dwelltime = dwelltime)
+		# self._stage=object()
+		# self._daq=object(dwelltime = dwelltime)
+
+	@property
+	def dwelltime(self):
+		return self.__dwelltime
+
+	@dwelltime.setter
+	def dwelltime(self, x):
+		# sets daq counts to match desired measurement time (x, in seconds)
+		self._daq.countsPerChannel = round(x*self._daq.rate)
+		self.__dwelltime = x
 
 	def connect(self):
 		#connect to spectrometer hardware
