@@ -49,7 +49,7 @@ class control(object):
 
 		#light baseline
 		self.__baseline['Wavelengths'] = wavelengths
-		self.__baseline['LightRaw'], self.__baseline['LightRefRaw'] = self.scanroutine(wavelengths)
+		self.__baseline['LightRaw'], self.__baseline['LightRefRaw'] = self._scanroutine(wavelengths)
 		self.__baseline['Light'] = np.divide(self.__baseline['LightRaw'], self.__baseline['LightRefRaw'])
 		
 		#dark baseline
@@ -75,8 +75,8 @@ class control(object):
 			'DwellTime': self.dwelltime
 		}
 
-		signal, reference = self.scanroutine(wavelengths)
-		data['Reflectance'] = self.baselinecorrectionroutine(wavelengths, signal, reference)
+		signal, reference = self._scanroutine(wavelengths)
+		data['Reflectance'] = self._baselineCorrectionRoutine(wavelengths, signal, reference)
 
 		if verbose:
 			data['Verbose'] = {
@@ -128,7 +128,7 @@ class control(object):
 			out = self._daq.read()
 			intsignal = out['IntSphere']['Mean']
 			ref = out['Reference']['Mean']
-			xdata[idx] = self.baselinecorrectionroutine(wavelengths = wavelength, signal = intsignal, reference = ref)
+			xdata[idx] = self._baselineCorrectionRoutine(wavelengths = wavelength, signal = intsignal, reference = ref)
 		self._mono.closeShutter()
 
 		self._stage.moveto(x = x0, y = ally[0])
@@ -139,7 +139,7 @@ class control(object):
 			out = self._daq.read()
 			intsignal = out['IntSphere']['Mean']
 			ref = out['Reference']['Mean']
-			ydata[idx] = self.baselinecorrectionroutine(wavelengths = wavelength, signal = intsignal, reference = ref)
+			ydata[idx] = self._baselineCorrectionRoutine(wavelengths = wavelength, signal = intsignal, reference = ref)
 		self._mono.closeShutter()
 		self._stage.moveto(x = x0, y = y0) #return to original position
 
@@ -194,12 +194,12 @@ class control(object):
 				# Condition to map in a snake pattern rather than coming back to first x point
 				if reverse > 0: #go in the forward direction
 					self._stage.moveto(x = x, y = y)
-					signal, reference = self.scanroutine(wavelengths = wavelengths, firstscan = firstscan, lastscan = lastscan)
-					data[xidx, yidx, :] = self.baselinecorrectionroutine(wavelengths, signal, reference)
+					signal, reference = self._scanroutine(wavelengths = wavelengths, firstscan = firstscan, lastscan = lastscan)
+					data[xidx, yidx, :] = self._baselineCorrectionRoutine(wavelengths, signal, reference)
 				else: # go in the reverse direction
 					self._stage.moveto(x = x, y = ally[ysteps-1-yidx])
-					signal,reference = self.scanroutine(wavelengths = wavelengths, firstscan = firstscan, lastscan = lastscan)
-					data[xidx, ysteps-1-yidx, :]=self.baselinecorrectionroutine(wavelengths, signal, reference) # baseline correction
+					signal,reference = self._scanroutine(wavelengths = wavelengths, firstscan = firstscan, lastscan = lastscan)
+					data[xidx, ysteps-1-yidx, :]=self._baselineCorrectionRoutine(wavelengths, signal, reference) # baseline correction
 				firstscan = False
 
 		if export:
@@ -221,7 +221,7 @@ class control(object):
 				json.dump(output, f)
 
 	# internal methods
-	def baselinecorrectionroutine(self, wavelengths, signal, reference):
+	def _baselineCorrectionRoutine(self, wavelengths, signal, reference):
 		if self.__baselineTaken == False:
 			raise ValueError("Take baseline first")
 
@@ -234,7 +234,7 @@ class control(object):
 
 		return corrected
 
-	def scanroutine(self, wavelengths, firstscan = True, lastscan = True):
+	def _scanroutine(self, wavelengths, firstscan = True, lastscan = True):
 		self._mono.goToWavelength(wavelengths[0])
 		if firstscan:
 			self._mono.openShutter()
