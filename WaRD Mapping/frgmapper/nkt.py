@@ -55,7 +55,7 @@ class compact(object):
 
 	def on(self):
 		if not self.emissionOn:
-			result = nktdll.registerWriteU8(self.__handle, self.__address, 0x30, 1, -1)
+			result = nktdll.registerWriteU8(self.__handle, self.__address, 0x30, 1, -1) # check whether 1 should be sent as an hexadecimal value. Might need to make a function to convert to hex values
 			if result == 0:
 				self.emissionOn = True
 				return True
@@ -78,7 +78,7 @@ class compact(object):
 		else:
 			return True
 
-	def setPower(self, powerLevel):
+	def setPower(self, powerLevel): # might actually require an hexadecimal value, in that case we'll need a function to convert to hex
 		### takes U8 integer input to set laser power.
 		# Value = powerLevel %
 		if type(powerLevel) != int:
@@ -96,8 +96,8 @@ class compact(object):
 			print('Note: only integer values 0-100 allowed as power settings: increasing {0:d} to 0.'.format(powerLevel))
 			powerLevel = 0
 
-		result = nktdll.registerWriteU8(self.__handle, self.__address, 0x3E, powerLevel, -1)
-		if result == 0:
+		result = nktdll.registerWriteU8(self.__handle, self.__address, 0x3E, powerLevel, -1) # call hex conversion function here
+		if result == 0: # 0 if successful
 			self.powerLevel = powerLevel
 			return True
 		else:
@@ -296,7 +296,7 @@ class select(object):
 				else:
 					gain[idx] = round(g * 1000	)
 		else:
-			gain = [0 for x in wavelength] #when talking to select,  (input * 0.1 = %. 1000 = 100%)
+			gain = [0 for x in wavelength] #TODO when talking to select,  (input * 0.1 = %. 1000 = 100%)
 
 		for idx in range(len(wavelength), 8):	#pad so all 8 wavelength channels are accounted for when talking to select
 			wavelength = wavelength + self.__defaultWavelengths[idx]
@@ -338,30 +338,6 @@ class select(object):
 		return success
 
 
-
-		if type(powerLevel) != int:
-			if type(powerlevel) == float:
-				print('Note: only integer values 0-100 allowed as power settings: rounding float {0:f} to nearest int {1:d}').format(powerLevel, round(powerLevel))
-				powerLevel = round(powerLevel)	#can only pass U8 int, rounding off floats here
-			else:
-				print('TypeError: only integer values 0-100 allowed as power settings.')
-				return False
-
-		if powerLevel > 100:
-			print('Note: only integer values 0-100 allowed as power settings: reducing {0:d} to 100.'.format(powerLevel))
-			powerLevel = 100
-		if powerLevel < 0:
-			print('Note: only integer values 0-100 allowed as power settings: increasing {0:d} to 0.'.format(powerLevel))
-			powerLevel = 0
-
-		result = nktdll.registerWriteU8(self.__handle, self.__address, 0x3E, powerLevel, -1)
-		if result == 0:
-			self.powerLevel = powerLevel
-			return True
-		else:
-			print('Error encountered when trying to change laser power level:', RegisterResultTypes(result))
-			return False
-
 	def setWavelengthRange(self, wmin = None, wmax = None):
 		## takes inputs in nm
 
@@ -375,14 +351,14 @@ class select(object):
 		# set wavelength range
 		success = True
 
-		result = nktdll.registerWriteU32(self.__handle, self.__address, '0x34', wmin * 1000, -1)	#multiply by 1000 because compact reads input in terms of 0.001 nm
+		result = nktdll.registerWriteU32(self.__handle, self.__address, 0x34, wmin * 1000, -1)	#multiply by 1000 because compact reads input in terms of 0.001 nm
 		if result == 0:
 			self._range[0] = wmin
 		else:
 			print('Error encountered when trying to set wavelength range lower bound to {0} nm:'.format(wmin), RegisterResultTypes(result))
 			success = False
 
-		result = nktdll.registerWriteU32(self.__handle, self.__address, '0x35', wmax * 1000, -1)	#multiply by 1000 because compact reads input in terms of 0.001 nm
+		result = nktdll.registerWriteU32(self.__handle, self.__address, 0x35, wmax * 1000, -1)	#multiply by 1000 because compact reads input in terms of 0.001 nm
 		if result == 0:
 			self._range[1] = wmax
 		else:
