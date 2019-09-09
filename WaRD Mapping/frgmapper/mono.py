@@ -70,7 +70,7 @@ class mono(object):
 
 
 		time.sleep(self.pauseTime)
-		self.handle.write('GOWAVE {0:d}'.format(targetWavelength)) #reads Ch1
+		self.handle.write('GOWAVE {0:.2f}'.format(targetWavelength)) #reads Ch1
 
 		#Wait for changes
 		waitingForMonoMove = True

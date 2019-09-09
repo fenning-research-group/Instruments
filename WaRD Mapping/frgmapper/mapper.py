@@ -4,10 +4,11 @@ import os
 import serial
 import time
 import json
-from stage import stage
-from mono import mono
-from daq import daq
+from .stage import stage
+from .mono import mono
+from .daq import daq
 import datetime
+from tqdm import tqdm
 
 class control(object):
 	def __init__(self, outputdir = None, dwelltime = 0.1):
@@ -32,7 +33,7 @@ class control(object):
 	def connect(self):
 		#connect to spectrometer hardware
 		self._mono = mono()
-		self._daq = daq(rate = 1000, counts = round(1000 * self.dwelltime))
+		self._daq = daq(dwelltime = self.dwelltime)
 		print("mono connected")
 		print("daq connected")
 
@@ -43,8 +44,6 @@ class control(object):
 
 	def takeBaseline(self, wavelengths):
 		# clean up wavelengths input
-		if type(wavelengths) is not list:
-			wavelengths = [wavelengths]
 		wavelengths = np.array(wavelengths)
 
 		#light baseline
@@ -62,27 +61,25 @@ class control(object):
 
 	def takeScan(self, label, wavelengths, plot = False, export = True, verbose = False):
 		# clean up wavelengths input
-		if type(wavelengths) is not list:
-			wavelengths = [wavelengths]
 		wavelengths = np.array(wavelengths)
+
+		signal, reference = self._scanroutine(wavelengths)
+		reflectance = self._baselineCorrectionRoutine(wavelengths, signal, reference)
 
 		data = {
 			'Label': label,
 			'Date': datetime.date.today().strftime('%Y/%m/%d'),
 			'Time': datetime.datetime.now().strftime('%H:%M:%S'),
-			'Wavelengths': wavelengths,
-			'Reflectance': None,
+			'Wavelengths': wavelengths.tolist(),
+			'Reflectance': reflectance.tolist(),
 			'DwellTime': self.dwelltime
 		}
 
-		signal, reference = self._scanroutine(wavelengths)
-		data['Reflectance'] = self._baselineCorrectionRoutine(wavelengths, signal, reference)
-
 		if verbose:
 			data['Verbose'] = {
-				'Signal': signal,
-				'Reference': reference,
-				'Baseline': self.__baseline
+				'Signal': signal.tolist(),
+				'Reference': reference.tolist(),
+				'Baseline': self.__baseline.tolist()
 			}
 
 		if export and self.outputdir is not None:
@@ -100,10 +97,7 @@ class control(object):
 	def findArea(self, wavelength, xsize = 30, ysize = 30, xsteps = 6, ysteps = 6, plot = True, export = False):
 		### method to find sample edges. does two line scans in a cross over the sample at a single wavelength.
 		# clean up wavelengths input
-		if type(wavelengths) is not list:
-			wavelengths = [wavelengths]
-		wavelengths = np.array(wavelengths)
-
+		wavelengths = np.array(wavelength)
 
 		if self._stage is None:
 			self.connectStage() # connect stage
@@ -123,7 +117,7 @@ class control(object):
 		self._stage.moveto(x = allx[0], y = y0)
 		self._mono.openShutter()		
 		xdata = np.zeros((xsteps, ))
-		for idx, x in enumerate(allx):
+		for idx, x in tqdm(enumerate(allx), desc = 'Scanning X', total = allx.shape[0], leave = False):
 			self._stage.moveto(x = x)
 			out = self._daq.read()
 			intsignal = out['IntSphere']['Mean']
@@ -134,7 +128,7 @@ class control(object):
 		self._stage.moveto(x = x0, y = ally[0])
 		self._mono.openShutter()
 		ydata = np.zeros((xsteps, ))
-		for idx, y in enumerate(ally):
+		for idx, y in tqdm(enumerate(ally), desc = 'Scanning Y', total = ally.shape[0], leave = False):
 			self._stage.moveto(y = y)
 			out = self._daq.read()
 			intsignal = out['IntSphere']['Mean']
@@ -161,8 +155,6 @@ class control(object):
 
 	def scanArea(self, label, wavelengths, xsize, ysize, xsteps = 21, ysteps = 21, x0 = None, y0 = None, export = True, verbose = False):
 		# clean up wavelengths input
-		if type(wavelengths) is not list:
-			wavelengths = [wavelengths]
 		wavelengths = np.array(wavelengths)
 
 		if self._stage is None:
@@ -186,9 +178,9 @@ class control(object):
 		firstscan = True
 		lastscan = False
 		reverse=-1 # for snaking
-		for xidx, x in enumerate(allx):
+		for xidx, x in tqdm(enumerate(allx), desc = 'Scanning X', total = allx.shape[0], leave = False):
 			reverse=reverse*(-1)
-			for yidx, y in enumerate(ally):
+			for yidx, y in tqdm(enumerate(ally), desc = 'Scanning Y', total = ally.shape[0], leave = False):
 				if xidx == xsteps-1 and yidx == ysteps-1:
 					lastScan = True
 				# Condition to map in a snake pattern rather than coming back to first x point
@@ -207,10 +199,10 @@ class control(object):
 				'Label': label,
 				'Date': datetime.date.today().strftime('%Y/%m/%d'),
 				'Time': datetime.datetime.now().strftime('%H:%M:%S'),
-				'X': allx,
-				'Y': ally,
-				'Wavelengths': wavelengths,
-				'Reflectance': data
+				'X': allx.tolist(),
+				'Y': ally.tolist(),
+				'Wavelengths': wavelengths.tolist(),
+				'Reflectance': data.tolist()
 			}
 			
 			# export as a hfile
@@ -229,7 +221,7 @@ class control(object):
 		for idx, wl in enumerate(wavelengths):
 			meas = signal[idx]/reference[idx]
 			#pdb.set_trace()
-			bl_idx = self.__baseline['Wavelengths'].index(wl)
+			bl_idx = np.where(self.__baseline['Wavelengths'] == wl)[0]
 			corrected[idx] = (meas-self.__baseline['Dark']) / (self.__baseline['Light'][bl_idx]-self.__baseline['Dark']) 
 
 		return corrected
@@ -241,7 +233,7 @@ class control(object):
 
 		signal = np.zeros(wavelengths.shape)
 		ref = np.zeros(wavelengths.shape)
-		for idx, wl in enumerate(wavelengths):
+		for idx, wl in tqdm(enumerate(wavelengths), total = wavelengths.shape[0], desc = 'Scanning {0:.1f}-{1:.1f} nm'.format(wavelengths[0], wavelengths[-1]), leave = False):
 			self._mono.goToWavelength(wl)
 			out = self._daq.read()
 			signal[idx] = out['IntSphere']['Mean']

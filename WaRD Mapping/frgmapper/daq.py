@@ -12,7 +12,7 @@ max_rate = 10e3
 
 class daq(object):
 
-    def __init__(self, channel_intSphere = 0, channel_ref = 2, rate = 1000, dwelltime = None, counts = 100):
+    def __init__(self, channel_intSphere = 0, channel_ref = 2, rate = 5000, dwelltime = None, counts = 500):
         self.board_num = 0
         # self.ai_range = ULRange.BIP5VOLTS
         self.__rate = rate
@@ -46,8 +46,8 @@ class daq(object):
     @dwelltime.setter
     def dwelltime(self, x):
         # sets daq counts to match desired measurement time (x, in seconds)
-        self.__countsPerChannel = round(self.__dwelltime * self.__rate)
         self.__dwelltime = x
+        self.__countsPerChannel = round(self.__dwelltime * self.__rate)
         print('Dwelltime: {0} s\nCounts: {1}\nRate: {2} Hz'.format(self.__dwelltime, self.__countsPerChannel, self.__rate))
 
     @property
@@ -57,6 +57,7 @@ class daq(object):
     @rate.setter
     def rate(self, x):
         # sets daq counting rate, adjusts countsPerChannel to preserve dwelltime
+        x = round(x)    #only integer values allowed
         if x > max_rate:
             print('Desired rate ({0} Hz) is greater than max allowed rate ({1} Hz): setting rate to {1} Hz.'.format(x, max_rate))
             x = max_rate
@@ -72,12 +73,13 @@ class daq(object):
     @rate.setter
     def counts(self, x):
         # sets daq counting rate, adjusts countsPerChannel to preserve dwelltime
-        self.__countsPerChannel = x
+        self.__countsPerChannel = round(x)  #only integer values allowed
         newrate = round(self.__countsPerChannel * self.__dwelltime)
 
         if newrate > max_rate:
             print('Desired rate ({0} Hz) is greater than max allowed rate ({1} Hz): setting rate to {1} Hz.'.format(x, max_rate))
             newrate = max_rate
+            self.__dwelltime = self.__countsPerChannel * newrate
 
         self.__rate = newrate
         print('Dwelltime: {0} s\nCounts: {1}\nRate: {2} Hz'.format(self.__dwelltime, self.__countsPerChannel, self.__rate))
