@@ -188,15 +188,12 @@ class select(object):
 		self._gains = [None] * 8
 		self._range = [None] * 2
 		self.__maxRange = (1100, 2000) #set the min/max wavelength range allowed by AOTF here
+
 		if self.connect():
 			self.set(wavelength = self.__defaultWavelengths, amplitude = [0] * 8)
 			self.wavelengthRange()	#set range to default range
-
-			# self.setPower(powerLevel = 50) #default starting power level, 0-100 = 0-100% power
-			# self.setPulseFrequency(pulseFrequency = 1000)	#default pulse frequency set to 1 kHz
-			# self.setTrigger(mode = 0)	#turn off external trigger mode
-
-		# self.emissionOn = False
+		self.rfOn = False
+		
 
 	def connect(self, portName = 'INSERTDEFAULTSELECTPORTHERE'):
 		result, devList = nktdll.deviceGetAllTypes(portName)
@@ -266,12 +263,12 @@ class select(object):
 		## tidy up inputs
 		if type(wavelength) is not list:
 			wavelength = [wavelength] 
-		wavelength = round(wavelength * 1000) 	#when talking to select, (0.001 * input = wavelength (nm)). 
+		wavelength = [round(x * 1000) for x in wavelength] 	#when talking to select, (0.001 * input = wavelength (nm)). 
 		
-	 	if amplitude is not None:
-			if amplitude is not list:
+		if amplitude is not None:
+			if type(amplitude) is not list:
 				amplitude = [amplitude]
-			for idx, a in amplitude:
+			for idx, a in enumerate(amplitude):
 				if a > 1:
 					amplitude[idx] = 1000
 					print('Note: amplitude values should be supplied in range 0-1. Setting {0} to 1'.format(a))
@@ -284,9 +281,9 @@ class select(object):
 			amplitude = [1000 for x in wavelength] #when talking to select,  (input * 0.1 = %. 1000 = 100%)
 
 		if gain is not None:
-			if gain is not list:
+			if type(gain) is not list:
 				gain = [gain]
-			for idx, g in gain:
+			for idx, g in enumerate(gain):
 				if g > 1:
 					gain[idx] = 1000
 					print('Note: gain values should be supplied in range 0-1. Setting {0} to 1'.format(g))
@@ -299,8 +296,10 @@ class select(object):
 			gain = [0 for x in wavelength] #TODO when talking to select,  (input * 0.1 = %. 1000 = 100%)
 
 		for idx in range(len(wavelength), 8):	#pad so all 8 wavelength channels are accounted for when talking to select
-			wavelength = wavelength + self.__defaultWavelengths[idx]
+			wavelength = wavelength + [self.__defaultWavelengths[idx] * 1000]
+		for idx in range(len(amplitude), 8):
 			amplitude = amplitude + [0]
+		for idx in range(len(gain), 8):
 			gain = gain + [0]
 
 		# set all the wavelengths, amplitudes, and gains
@@ -314,21 +313,21 @@ class select(object):
 			# 	else:
 			# 		print('TypeError: only integer values 0-100 allowed as power settings.')
 			# 		return False
-			result = nktdll.registerWriteU32(self.__handle, self.__address, hex(int('0x9{0}'.format(idx),16)), wl, -1)
+			result = nktdll.registerWriteU32(self.__handle, self.__address, int('0x9{0}'.format(idx),16), wl, -1)
 			if result == 0:
 				self._wavelengths[idx] = wl
 			else:
 				print('Error encountered when trying to change wavelength {0} to {1} nm:'.format(idx, wl/1000), RegisterResultTypes(result))
 				success = False
 
-			result = nktdll.registerWriteU16(self.__handle, self.__address, hex(int('0xB{0}'.format(idx),16)), a, -1)
+			result = nktdll.registerWriteU16(self.__handle, self.__address, int('0xB{0}'.format(idx),16), a, -1)
 			if result == 0:
 				self._amplitudes[idx] = a
 			else:
 				print('Error encountered when trying to change amplitude {0} to {1}:'.format(idx, a/1000), RegisterResultTypes(result))
 				success = False
 
-			result = nktdll.registerWriteU16(self.__handle, self.__address, hex(int('0xC{0}'.format(idx),16)), g, -1)
+			result = nktdll.registerWriteU16(self.__handle, self.__address, int('0xC{0}'.format(idx),16), g, -1)
 			if result == 0:
 				self._gains[idx] = g
 			else:
@@ -336,7 +335,6 @@ class select(object):
 				success = False
 
 		return success
-
 
 	def setWavelengthRange(self, wmin = None, wmax = None):
 		## takes inputs in nm
