@@ -19,6 +19,8 @@ class control(object):
 		self._stage = None
 		self._mono = None
 		self._daq = None
+		self.connect()
+		self.connectStage()
 
 	@property
 	def dwelltime(self):
@@ -75,12 +77,13 @@ class control(object):
 			'DwellTime': self.dwelltime
 		}
 
-		if verbose:
-			data['Verbose'] = {
-				'Signal': signal.tolist(),
-				'Reference': reference.tolist(),
-				'Baseline': self.__baseline.tolist()
-			}
+		# if verbose:
+			### TODO: All nested numpy arrays need to be converted to lists to be compatible with json dumps. Commenting this out til hdf5, wont be an issue then
+			# data['Verbose'] = {
+			# 	'Signal': signal.tolist(),
+			# 	'Reference': reference.tolist(),
+			# 	'Baseline': self.__baseline.tolist()
+			# }
 
 		if export and self.outputdir is not None:
 			fpath = os.path.join(self.outputdir, label + '.json')
@@ -97,7 +100,22 @@ class control(object):
 	def findArea(self, wavelength, xsize = 30, ysize = 30, xsteps = 6, ysteps = 6, plot = True, export = False):
 		### method to find sample edges. does two line scans in a cross over the sample at a single wavelength.
 		# clean up wavelengths input
-		wavelengths = np.array(wavelength)
+		if type(wavelength) is np.ndarray:
+			if wavelength.shape == (1,):
+				pass	#already good
+			elif wavelength.shape == ():
+				wavelength = np.array([wavelength])	#cast to (1,)
+			else:
+				print('TypeError: .findArea uses a single wavelength, cannot interpret an array of multiple values')
+		elif type(wavelength) is list:
+			if len(wavelength) == 0:
+				wavelength = np.array(wavelength)
+			else:
+				print('TypeError: .findArea uses a single wavelength, cannot interpret a list of multiple values')
+				return False
+		else:
+			wavelength = np.array([wavelength])	#assume we have a single int/float value here. if its a string we'll throw a normal error downstream
+		
 
 		if self._stage is None:
 			self.connectStage() # connect stage
@@ -105,7 +123,7 @@ class control(object):
 		if self._daq is None:
 			self.connect() # connect mono and daq
 		
-		self._stage.gotocenter() #go to center position, where sample is centered on integrating sphere port. Might need to remove this line later if inconvenient
+		# self._stage.gotocenter() #go to center position, where sample is centered on integrating sphere port. Might need to remove this line later if inconvenient
 		x0, y0 = self._stage.position
 
 		allx = np.linspace(x0 - xsize/2, x0 + xsize/2, xsteps)
@@ -116,38 +134,39 @@ class control(object):
 		
 		self._stage.moveto(x = allx[0], y = y0)
 		self._mono.openShutter()		
-		xdata = np.zeros((xsteps, ))
+		xdata = np.zeros((xsteps,))
 		for idx, x in tqdm(enumerate(allx), desc = 'Scanning X', total = allx.shape[0], leave = False):
 			self._stage.moveto(x = x)
 			out = self._daq.read()
-			intsignal = out['IntSphere']['Mean']
+			signal = out['IntSphere']['Mean']
 			ref = out['Reference']['Mean']
-			xdata[idx] = self._baselineCorrectionRoutine(wavelengths = wavelength, signal = intsignal, reference = ref)
+			xdata[idx] = self._baselineCorrectionRoutine(wavelengths = wavelength, signal = [signal], reference = [ref])
 		self._mono.closeShutter()
 
 		self._stage.moveto(x = x0, y = ally[0])
 		self._mono.openShutter()
-		ydata = np.zeros((xsteps, ))
+		ydata = np.zeros((ysteps,))
 		for idx, y in tqdm(enumerate(ally), desc = 'Scanning Y', total = ally.shape[0], leave = False):
 			self._stage.moveto(y = y)
 			out = self._daq.read()
-			intsignal = out['IntSphere']['Mean']
+			signal = out['IntSphere']['Mean']
 			ref = out['Reference']['Mean']
-			ydata[idx] = self._baselineCorrectionRoutine(wavelengths = wavelength, signal = intsignal, reference = ref)
+			ydata[idx]= self._baselineCorrectionRoutine(wavelengths = wavelength, signal = [signal], reference = [ref])
 		self._mono.closeShutter()
 		self._stage.moveto(x = x0, y = y0) #return to original position
 
 		if plot:
-			fig, ax = subplot(2,1)
+			fig, ax = plt.subplots(2,1)
 			ax[0].plot(allx, xdata)
-			ax[0].xlabel('X Position (mm)')
-			ax[0].ylabel('Reflectance at {0:d} nm'.format(wavelength))
-			ax[0].title.set_text('X Scan')
+			ax[0].set_xlabel('X Position (mm)')
+			ax[0].set_ylabel('Reflectance at {0:d} nm'.format(wavelength[0]))
+			ax[0].set_title('X Scan')
 
 			ax[1].plot(ally, ydata)
-			ax[1].xlabel('Y Position (mm)')
-			ax[1].ylabel('Reflectance at {0:d} nm'.format(wavelength))
-			ax[1].title.set_text('Y Scan')
+			ax[1].set_xlabel('Y Position (mm)')
+			ax[1].set_ylabel('Reflectance at {0:d} nm'.format(wavelength[0]))
+			ax[1].set_title('Y Scan')
+			plt.tight_layout()
 			plt.show()
 		# return the centroid, width/bounds if found
 		

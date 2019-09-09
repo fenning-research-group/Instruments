@@ -6,7 +6,7 @@ class stage(object):
 	def __init__(self, xMotorAddress = 45992790, yMotorAddress = 45951900):
 		self.x = apt.Motor(xMotorAddress)
 		self.y = apt.Motor(yMotorAddress)
-		self.position = (None, None)
+		self.position = (self.x.position, self.y.position)
 
 		self.x.enable()
 		self.y.enable()
@@ -27,6 +27,10 @@ class stage(object):
 		self.position = (self.x.position, self.y.position)
 
 	def gohome(self):
+		# self.x.set_move_home_parameters(self.x.get_move_home_parameters())
+		# self.y.set_move_home_parameters(self.y.get_move_home_parameters())
+		# self.x.set_velocity_parameters(self.x.get_velocity_parameters())
+		# self.y.set_velocity_parameters(self.y.get_velocity_parameters())
 		self.x.move_home(True)
 		self.y.move_home(True)
 		self.__homed = True

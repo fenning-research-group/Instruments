@@ -34,7 +34,7 @@ class daq(object):
 
         # Try connecting to the DAQ
         try:
-            self.connDaq()
+            self.connect()
         # If error "mcculw.ul.ULError: Error 1026: Board number already in use", pass 
         except:
             print("DAQ is already connected.")
@@ -85,14 +85,16 @@ class daq(object):
         print('Dwelltime: {0} s\nCounts: {1}\nRate: {2} Hz'.format(self.__dwelltime, self.__countsPerChannel, self.__rate))
     
 # connects the daq device
-    def connDaq(self):
+    def connect(self):
         #connects to first MCC DAQ device detected. Assuming we only have the USB-1808
         devices = ul.get_daq_device_inventory(InterfaceType.ANY)
         ul.create_daq_device(board_num, devices[0])
+        return True
 
 # disconnects the daq device
-    def discDaq(self):
+    def disconnect(self):
         ul.release_daq_device(self.board_num)
+        return True
 
     def read(self):
         totalCount = len(self.channels['Number']) * self.__countsPerChannel
