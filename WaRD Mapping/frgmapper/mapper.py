@@ -54,7 +54,11 @@ class control(object):
 		self.__baseline['Light'] = np.divide(self.__baseline['LightRaw'], self.__baseline['LightRefRaw'])
 		
 		#dark baseline
+		storeddwelltime = self.__dwelltime
+		self.dwelltime = 5	#take a long acquisition for the dark baseline, as it is a single point measurement
 		out = self._daq.read()
+		self.dwelltime = storeddwelltime
+		
 		self.__baseline['DarkRaw'] = out['IntSphere']['Mean']
 		self.__baseline['DarkRefRaw'] = out['Reference']['Mean']
 		self.__baseline['Dark'] = self.__baseline['DarkRaw'] / self.__baseline['DarkRefRaw']

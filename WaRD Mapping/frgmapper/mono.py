@@ -16,7 +16,7 @@ class mono(object):
 		self.currentFilter = int(self.handle.query('FILTER?'))
 		self.currentGrating = int(self.handle.query('GRAT?')[0])
 
-		self.wavelengthTolerance = 2 #nm
+		self.wavelengthTolerance = 0.1 #nm
 		self.shutterOpenStatus = False
 
 	def openShutter(self):
