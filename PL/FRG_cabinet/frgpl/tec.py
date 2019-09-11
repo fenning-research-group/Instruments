@@ -14,11 +14,7 @@ class tec:
 	def setpoint(self):
 		return self.__setpoint
 
-	@getter.setpoint
-	def setpoint(self):
-		return self.__setpoint
-
-	@setter.setpoint
+	@setpoint.setter
 	def setpoint(self, x):
 		if self.setSetPoint(x):
 			self.__setpoint = x
@@ -43,6 +39,7 @@ class tec:
 
 		#read current setpoint
 		self.__setpoint = self.getSetPoint()
+		# self.__setpoint = None
 
 		return True
 	
@@ -59,11 +56,11 @@ class tec:
 			content = numWords
 			)
 		self.__handle.write(payload)
-		response = self.__handle.read(response)
+		response = self.__handle.readline()
 
 		data = int(response[9:-4], 16) * 0.1	#response given in 0.1 C
 
-		return data
+		return round(data, 2)	#only give two decimals, rounding error gives ~8 decimal places of 0's sometimes
 
 	def getSetPoint(self):
 		numWords = 1
@@ -74,7 +71,7 @@ class tec:
 			content = numWords
 			)
 		self.__handle.write(payload)
-		response = self.__handle.read(response)
+		response = self.__handle.readline()
 
 		data = int(response[9:-4], 16) * 0.1	#response given in 0.1 C
 
@@ -89,9 +86,9 @@ class tec:
 			content = setpoint
 			)
 		self.__handle.write(payload)
-		response = self.__handle.read(response)
+		response = self.__handle.readline()
 
-		if response[9:-4] is 'FF00':
+		if response == payload:
 			return True
 		else:
 			return False
@@ -105,7 +102,8 @@ class tec:
 		def calculateChecksum(payload):
 			numHexValues = int(len(payload)/2)
 			hexValues = [int(payload[2*i : (2*i)+2], 16) for i in range(numHexValues)]
-			checksum = hex(256 - sum(hexValues))[-2:]	#drop the 0x convention at front, we only want the last two characters
+			checksum_int = 256 - sum(hexValues)%256 	#drop the 0x convention at front, we only want the last two characters
+			checksum = '{0:02X}'.format(checksum_int) 
 
 			return str.upper(checksum).encode()
 
