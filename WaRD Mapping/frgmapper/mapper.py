@@ -18,7 +18,7 @@ if not os.path.exists(root):
 datafolder = os.path.join(root, 'Data')
 if not os.path.exists(datafolder):
 	os.mkdir(datafolder)
-
+ 
 class control(object):
 	def __init__(self, dwelltime = 0.1):
 		todaysDate = datetime.datetime.now().strftime('%Y%m%d')
@@ -211,7 +211,7 @@ class control(object):
 		ally = np.linspace(y0 - ysize/2, y0 + ysize/2, ysteps)
 
 		data = np.zeros((ysteps, xsteps, len(wavelengths)))
-		duration = np.zeros((ysteps, xsteps))
+		delay = np.zeros((ysteps, xsteps))
 		firstscan = True
 		lastscan = False
 		reverse= -1 # for snaking
@@ -226,12 +226,12 @@ class control(object):
 					self._stage.moveto(x = x, y = y)
 					signal, reference = self._scanroutine(wavelengths = wavelengths, firstscan = firstscan, lastscan = lastscan)
 					data[yidx, xidx, :] = self._baselineCorrectionRoutine(wavelengths, signal, reference)
-					duration[yidx, xidx] = time.time() - startTime #time in seconds since scan began
+					delay[yidx, xidx] = time.time() - startTime #time in seconds since scan began
 				else: # go in the reverse direction
 					self._stage.moveto(x = x, y = ally[ysteps-1-yidx])
 					signal,reference = self._scanroutine(wavelengths = wavelengths, firstscan = firstscan, lastscan = lastscan)
 					data[ysteps-1-yidx, xidx, :]= self._baselineCorrectionRoutine(wavelengths, signal, reference) # baseline correction
-					duration[ysteps-1-yidx, xidx] = time.time() - startTime #time in seconds since scan began
+					delay[ysteps-1-yidx, xidx] = time.time() - startTime #time in seconds since scan began
 				firstscan = False
 		self._stage.moveto(x = x0, y = y0)	#go back to map center position
 
@@ -242,17 +242,48 @@ class control(object):
 			# 	'Time': datetime.datetime.now().strftime('%H:%M:%S'),
 			# 	'X': allx.tolist(),
 			# 	'Y': ally.tolist(),
-			# 	'Duration': duration.tolist()
+			# 	'delay': delay.tolist()
 			# 	'Wavelengths': wavelengths.tolist(),
 			# 	'Reflectance': data.tolist()
 			# }
 			
 			# export as a hfile
-			self.save_scanArea(label = label, x = x, y = y, duration = duration, wavelengths = wavelengths, reflectance = reflectance)
+			self.save_scanArea(label = label, x = x, y = y, delay = delay, wavelengths = wavelengths, reflectance = reflectance)
 			# export as a json file
 			# fpath = os.path.join(self.outputdir, label + '.json')
 			# with open(fpath, 'w') as f:
 			# 	json.dump(output, f)
+
+	def timeSeries(self, label, wavelengths, duration, interval):
+		### records a reflectance spectrum for a given duration (seconds) at set intervals (seconds)
+		#	TODO: I don't think this will work for single wavelength inputs
+
+		# clean up wavelengths input
+		wavelengths = np.array(wavelengths)
+
+		reflectance = []
+		delay = []
+		startTime = time.time()
+		while (time.time() - startTime) <= duration:
+			if (time.time()-startTime) >= (interval*len(delay)):	#time for the next scan
+				signal, reference, time = self._scanroutine(wavelengths)
+				delay.append(time.time() - startTime)
+				reflectance.append(self._baselineCorrectionRoutine(wavelengths, signal, reference))
+			time.sleep(interval/100)	#we can hit our interval within 1% accuracy, but give the cpu some rest
+		
+
+		reflectance = np.array(reflectance)
+		delay = np.array(delay)
+		if export and self.outputdir is not None:
+			self._save_timeSeries(label = label, wavelength = wavelengths, reflectance = reflectance, delay = delay, duration = duration, interval = interval)
+
+		# if plot:
+		# 	plt.plot(data['Wavelengths'],data['Reflectance'])
+		# 	plt.xlabel('Wavelength (nm)')
+		# 	plt.ylabel('Reflectance')
+		# 	plt.title(label)
+		# 	plt.show()
+
 
 	# internal methods
 	def _baselineCorrectionRoutine(self, wavelengths, signal, reference):
@@ -374,8 +405,12 @@ class control(object):
 
 		with h5py.File(fpath, 'w') as f:
 			
-			info, settings, baseline = self._saveGeneralInformation(f, label = label)		
+			info, settings, baseline = self._saveGeneralInformation(f, label = label)	
 
+			## add scan type to info
+			temp = info.create_dataset('type', data = 'scanPoint'.encode('utf-8'))
+			temp.attrs['description'] = 'Type of measurement held in this file.'	
+			
 			# raw data
 			rawdata = f.create_group('/data')
 			rawdata.attrs['description'] = 'Data acquired during point scan.'
@@ -390,15 +425,17 @@ class control(object):
 
 	# def _save_findArea(self, label, wavelength, reflectance):
 
-
-
-	def _save_scanArea(self, label, x, y, duration, wavelengths, reflectance):
+	def _save_scanArea(self, label, x, y, delay, wavelengths, reflectance):
 		
 		fpath = self._getSavePath(label = label)	#generate filepath for saving data
 
 		with h5py.File(fpath, 'w') as f:
 			
-			info, settings, baseline = self._saveGeneralInformation(f, label = label)		
+			info, settings, baseline = self._saveGeneralInformation(f, label = label)
+
+			## add scan type to info
+			temp = info.create_dataset('type', data = 'scanArea'.encode('utf-8'))
+			temp.attrs['description'] = 'Type of measurement held in this file.'		
 
 			## add scan parameters to settings
 			temp = settings.create_dataset('numx', data = np.array(len(x)))
@@ -451,10 +488,41 @@ class control(object):
 			temp = rawdata.create_dataset('reflectance', data = np.array(reflectance))
 			temp.attrs['description'] = 'Baseline-corrected reflectance measured. Stored as [y, x, wl]. Stored as fraction (0-1), not percent!'
 
-			temp = rawdata.create_dataset('duration', data = np.array(duration))
-			temp.attrs['description'] = 'Time (seconds) that each point was acquired at. Measured as seconds since first scan point.'			
+			temp = rawdata.create_dataset('delay', data = np.array(delay))
+			temp.attrs['description'] = 'Time (seconds) that each scan was acquired at. Measured as seconds since first scan point.'			
 
 		print('Data saved to {0}'.format(fpath))		
+
+	def _save_timeSeries(self, label, wavelength, reflectance, delay, duration, interval):
+
+		fpath = self._getSavePath(label = label)	#generate filepath for saving data
+
+		with h5py.File(fpath, 'w') as f:
+			
+			info, settings, baseline = self._saveGeneralInformation(f, label = label)		
+
+			## add scan type to info
+			temp = info.create_dataset('type', data = 'timeSeries'.encode('utf-8'))
+			temp.attrs['description'] = 'Type of measurement held in this file.'
+
+			## add scan parameters to settings
+			temp = settings.create_dataset('duration', data = np.array(duration))
+			temp.attrs['description'] = 'Total time (s) desired for time series.'			
+
+			temp = settings.create_dataset('interval', data = np.array(interval))
+			temp.attrs['description'] = 'Time (s) desired between subsequent scans.'
+
+			## measured data 
+			temp = rawdata.create_dataset('wavelengths', data = np.array(wavelengths))
+			temp.attrs['description'] = 'Wavelengths (nm) scanned per point.'
+
+			temp = rawdata.create_dataset('reflectance', data = np.array(reflectance))
+			temp.attrs['description'] = 'Baseline-corrected reflectance measured. Stored as [y, x, wl]. Stored as fraction (0-1), not percent!'
+
+			temp = rawdata.create_dataset('delay', data = np.array(delay))
+			temp.attrs['description'] = 'Time (seconds) that each scan was acquired at. Measured as seconds since first scan point.'			
+
+		print('Data saved to {0}'.format(fpath))
 
 	### Test Methods: should remove these and make a wrapper function to execute these commands instead of building it into the class
 	#
