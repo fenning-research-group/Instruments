@@ -38,7 +38,7 @@ class control:
 		self.saturationtime = 0.5	#delay between applying voltage/illumination and beginning measurement
 		self.numIV = 10		#number of IV measurements to average
 		self.numframes = 50	#number of image frames to average
-		self.temperature = 23	#TEC stage temperature setpoint (C) during measurement
+		self.__temperature = 23	#TEC stage temperature setpoint (C) during measurement
 		self.temperatureTolerance = 0.2	#how close to the setpoint we need to be to take a measurement (C)
 		self.maxSoakTime = 60	# max soak time, in seconds, to wait for temperature to reach set point. If we reach this point, just go ahead with the measurement
 		self.note = ''
@@ -59,6 +59,16 @@ class control:
 		self.__sampleposition = (34915, 69000)	#position where TEC stage is centered in camera FOV, um
 		self.__detectorposition = (49333, 125500)	#delta position between detector and sampleposition, um.
 		self.__fov = (38000, 34000)	#dimensions of FOV, um
+
+	@property
+	def temperature(self):
+		return self.__temperature
+
+	@temperature.setter
+	def temperature(self, t):
+		if self._tec.setSetPoint(t):
+			self.__temperature = t
+		
 
 	def connect(self):
 		self._camera = camera()		# connect to FLIR camera
