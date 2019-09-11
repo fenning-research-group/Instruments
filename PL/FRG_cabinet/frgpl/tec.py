@@ -90,6 +90,7 @@ class omega:
 
 		if response == payload:
 			return True
+			self.__setpoint = setpoint
 		else:
 			return False
 

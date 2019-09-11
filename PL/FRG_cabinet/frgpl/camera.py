@@ -33,9 +33,9 @@ class camera:
 
 			### set buffer handling mode to provide most recent images first, prevents the camera buffer from falling behind
 			# options are NewestFirst, NewestOnly, OldestFirst, OldestFirstOverwrite
-			handling_mode = PySpin.CEnumerationPtr(s_node_map.GetNode('StreamBufferHandlingMode'))
-			handling_mode_entry = handling_mode.GetEntryByName('NewestOnly')
-			handling_mode.SetIntValue(handling_mode_entry.GetValue())
+			# handling_mode = PySpin.CEnumerationPtr(nodemap.GetNode('StreamBufferHandlingMode'))
+			# handling_mode_entry = handling_mode.GetEntryByName('NewestOnly')
+			# handling_mode.SetIntValue(handling_mode_entry.GetValue())
 
 			return True
 

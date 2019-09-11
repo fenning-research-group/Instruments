@@ -15,7 +15,10 @@ class laser:
 		#self._d = None
 
 	def connect(self, port = 'COM1'):
-		self.__handle = serial.Serial(port)
+		self.__handle = serial.Serial()
+		self.__handle.port = port
+		self.__handle.timeout = 2
+		self.__handle.open()
 		return True
 
 	def disconnect(self):

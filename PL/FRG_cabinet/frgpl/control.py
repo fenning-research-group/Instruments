@@ -14,6 +14,7 @@ from laser import laser
 from tec import omega
 import datetime
 import time
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 root = 'C:\\Users\\Operator\\Desktop\\frgPL'
 if not os.path.exists(root):
@@ -47,7 +48,7 @@ class control:
 		self._sampleOneSunJsc = None # target Jsc, matching of which is used for one-sun injection level is approximated
 		self._sampleOneSunSweep = None # fractional laser power vs photocurrent (Isc), fit to provide one-sun estimate
 		self.__previewFigure = None	#handle for matplotlib figure, used for previewing most recent image results
-		self.__previewAxes = None	# handle for matplotib axes, used to hold the image and colorbar
+		self.__previewAxes = [None, None]	# handle for matplotib axes, used to hold the image and colorbar
 
 		# data saving settings
 		todaysDate = datetime.datetime.now().strftime('%Y%m%d')
@@ -56,9 +57,9 @@ class control:
 		self.__dataBuffer = [] # buffer to hold data files during sequential measurements of single sample. Held until a batch export
 
 		# stage/positioning constants
-		self.__sampleposition = (34915, 69000)	#position where TEC stage is centered in camera FOV, um
-		self.__detectorposition = (49333, 125500)	#delta position between detector and sampleposition, um.
-		self.__fov = (38000, 34000)	#dimensions of FOV, um
+		self.__sampleposition = (52361, 41000)	#position where TEC stage is centered in camera FOV, um
+		self.__detectorposition = (67450, 102000)	#delta position between detector and sampleposition, um.
+		self.__fov = (77000, 56000)	#dimensions of FOV, um
 
 	@property
 	def temperature(self):
@@ -100,6 +101,10 @@ class control:
 			self._stage.disconnect()
 		except:
 			print('Could not disconnect stage')
+		try:
+			self._tec.disconnect()
+		except:
+			print('Could not disconnect TEC controller')
 
 
 	### basic use functions
@@ -159,6 +164,7 @@ class control:
 		#	measurement.
 
 		if len(self.__dataBuffer) == 0: # sample is being measured for the first time, take a baseline image
+			print('New sample: taking a 0 bias, 0 illumination baseline image.')
 			# store scheduled measurement parameters
 			savedlaserpower = self.laserpower
 			savedbias = self.bias
@@ -251,19 +257,22 @@ class control:
 	def displayPreview(self, img, v, i):
 		def handle_close(evt, self):
 			self.__previewFigure = None
-			self.__previewAxes = None
+			self.__previewAxes = [None, None]
 		
 		if self.__previewFigure is None:	#preview window is not created yet, lets make it
-			self.__previewFigure, self.__previewAxes = plt.subplots()
-			divider = make_axes_locatable(self.__previewAxes)
-			self.__previewFigure.__previewAxes.append(divider.append_axes('right', size='5%', pad=0.05))
-			fig.canvas.mpl_connect('close_event', lambda x: handle_close(x, self))	# if preview figure is closed, lets clear the figure/axes handles so the next preview properly recreates the handles
-		else:
-			for ax in self.__previewAxes:	#clear the axes
-				ax.clear()
-			img_handle = self.__previewAxes[0].imshow(img)
-			self.__previewFigure.colorbar(img_handle, cax = self.__previewAxes[1])
-			self.__previewFigure.title('{0} V, {1} A, {2} Laser'.format(v, i, self.laserpower))
+			plt.ioff()
+			self.__previewFigure, self.__previewAxes[0] = plt.subplots()
+			divider = make_axes_locatable(self.__previewAxes[0])
+			self.__previewAxes[1] = divider.append_axes('right', size='5%', pad=0.05)
+			self.__previewFigure.canvas.mpl_connect('close_event', lambda x: handle_close(x, self))	# if preview figure is closed, lets clear the figure/axes handles so the next preview properly recreates the handles
+			plt.ion()
+			plt.show()
+
+		for ax in self.__previewAxes:	#clear the axes
+			ax.clear()
+		img_handle = self.__previewAxes[0].imshow(img)
+		self.__previewFigure.colorbar(img_handle, cax = self.__previewAxes[1])
+		self.__previewAxes[0].set_title('{0} V, {1} A, {2} Laser'.format(v, i, self.laserpower))
 
 	def save(self, samplename = None, note = None, outputdirectory = None, reset = True):
 		if len(self.__dataBuffer) == 0:
@@ -425,7 +434,7 @@ class control:
 
 			print('Note: sample name and one sun calibration results have been reset to None')
 		
-		self.__dataBuffer = 0
+		self.__dataBuffer = []
 
 	### calibration methods
 
@@ -448,7 +457,7 @@ class control:
 		self._laser.on()
 		for idx, power in enumerate(laserpowers):
 			self._laser.set(power = power)
-			time.sleep(self._saturationtime)
+			time.sleep(self.saturationtime)
 			_,laserjsc[idx] = self._kepco.read(counts = 25)  
 		self._laser.off()
 
