@@ -107,10 +107,12 @@ class camera:
 				image_result = self._cam.GetNextImage()
 				if not image_result.IsIncomplete():
 					acquired = True
-
 				img = image_result.Convert(PySpin.PixelFormat_Mono8, PySpin.HQ_LINEAR).GetNDArray()
-				raw = img[1:self._resolution[0]+1, :self._resolution[1]]	#throw away pixels outside of desired resolution (specifically one column is inactive in InGaAs camera)
 				image_result.Release()
+				raw = img[1:self._resolution[0]+1, :self._resolution[1]]		#throw away pixels outside of desired resolution (specifically one column is inactive in InGaAs camera)
+				# mask = raw > (raw.mean() + 3*raw.std())	#flag values 3 std devs over the mean
+				# medvals = medfilt(raw, 3)	#3x3 median filter
+				# raw[mask] = medvals[mask]	#throw away pixels outside of desired resolution (specifically one column is inactive in InGaAs camera)
 			return raw
 
 		def animate(i):
