@@ -5,6 +5,7 @@ import serial
 import time
 import h5py
 import sys
+import matplotlib.pyplot as plt
 from camera import camera
 from stage import stage
 from kepco import kepco
@@ -40,7 +41,9 @@ class control:
 		self._sampleOneSun = None # fractional laser power with which to approximate one-sun injection levels
 		self._sampleOneSunJsc = None # target Jsc, matching of which is used for one-sun injection level is approximated
 		self._sampleOneSunSweep = None # fractional laser power vs photocurrent (Isc), fit to provide one-sun estimate
-		
+		self.__previewFigure = None	#handle for matplotlib figure, used for previewing most recent image results
+		self.__previewAxes = None	# handle for matplotib axes, used to hold the image and colorbar
+
 		# data saving settings
 		todaysDate = datetime.datetime.now().strftime('%Y%m%d')
 		self.outputDirectory = os.path.join(root, 'Data', todaysDate)	#default save locations is desktop/frgPL/Data/(todaysDate)
@@ -128,7 +131,7 @@ class control:
 		self.numframes = numframes
 		self.note = note
 
-	def takeMeas(self, lastmeasurement = True):
+	def takeMeas(self, lastmeasurement = True, preview = True, imputeHotPixels = True):
 		### takes a measurement with settings stored in method (can be set with .setMeas()).
 		#	measurement settings + results are appended to .__dataBuffer
 		#
@@ -145,7 +148,7 @@ class control:
 			# take a 0 bias, 0 laserpower measurement, append to .__dataBuffer
 			self.setMeas(bias = 0, laserpower = 0, note = 'automatic baseline image')
 			measdatetime = datetime.datetime.now()
-			im, _, _ = self._camera.capture(frames = self.numframes, imputeHotPixels = True)
+			im, _, _ = self._camera.capture(frames = self.numframes, imputeHotPixels = imputeHotPixels)
 			v, i = self._kepco.read(counts = self.numIV)
 			meas = {
 				'sample': 	self.sampleName,
@@ -209,7 +212,27 @@ class control:
 		}
 		self.__dataBuffer.append(meas)
 
+		if preview:
+			self.displayPreview(im, v, i)
+
 		return im, v, i
+
+	def displayPreview(self, img, v, i):
+		def handle_close(evt, self):
+			self.__previewFigure = None
+			self.__previewAxes = None
+		
+		if self.__previewFigure is None:	#preview window is not created yet, lets make it
+			self.__previewFigure, self.__previewAxes = plt.subplots()
+			divider = make_axes_locatable(self.__previewAxes)
+			self.__previewFigure.__previewAxes.append(divider.append_axes('right', size='5%', pad=0.05))
+			fig.canvas.mpl_connect('close_event', lambda x: handle_close(x, self))	# if preview figure is closed, lets clear the figure/axes handles so the next preview properly recreates the handles
+		else:
+			for ax in self.__previewAxes:	#clear the axes
+				ax.clear()
+			img_handle = self.__previewAxes[0].imshow(img)
+			self.__previewFigure.colorbar(img_handle, cax = self.__previewAxes[1])
+			self.__previewFigure.title('{0} V, {1} A, {2} Laser'.format(v, i, self.laserpower))
 
 	def save(self, samplename = None, note = None, outputdirectory = None, reset = True):
 		if len(self.__dataBuffer) == 0:

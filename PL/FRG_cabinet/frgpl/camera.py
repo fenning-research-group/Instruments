@@ -30,6 +30,13 @@ class camera:
 			acquisition_mode_continuous = node_acquisition_mode_continuous.GetValue()
 			# Set integer value from entry node as new value of enumeration node
 			node_acquisition_mode.SetIntValue(acquisition_mode_continuous)
+
+			### set buffer handling mode to provide most recent images first, prevents the camera buffer from falling behind
+			# options are NewestFirst, NewestOnly, OldestFirst, OldestFirstOverwrite
+			handling_mode = PySpin.CEnumerationPtr(s_node_map.GetNode('StreamBufferHandlingMode'))
+			handling_mode_entry = handling_mode.GetEntryByName('NewestOnly')
+			handling_mode.SetIntValue(handling_mode_entry.GetValue())
+
 			return True
 
 		def getResolution(cam):
@@ -101,7 +108,7 @@ class camera:
 				if not image_result.IsIncomplete():
 					acquired = True
 
-				img = image_result.Convert(PySpin.PixelFormat_Mono16, PySpin.HQ_LINEAR).GetNDArray()
+				img = image_result.Convert(PySpin.PixelFormat_Mono8, PySpin.HQ_LINEAR).GetNDArray()
 				raw = img[1:self._resolution[0]+1, :self._resolution[1]]	#throw away pixels outside of desired resolution (specifically one column is inactive in InGaAs camera)
 				image_result.Release()
 			return raw
