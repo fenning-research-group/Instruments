@@ -10,9 +10,9 @@ from .mono import mono
 from .daq import daq
 import datetime
 from tqdm import tqdm
+import h5py
 
-
-root = 'C:\\Users\\Operator\\Desktop\\frgmapper'
+root = 'C:\\Users\\PVGroup\\Desktop\\frgmapper'
 if not os.path.exists(root):
 	os.mkdir(root)
 datafolder = os.path.join(root, 'Data')
@@ -81,7 +81,7 @@ class control(object):
 		# clean up wavelengths input
 		wavelengths = np.array(wavelengths)
 
-		signal, reference, time = self._scanroutine(wavelengths)
+		signal, reference = self._scanroutine(wavelengths)
 		reflectance = self._baselineCorrectionRoutine(wavelengths, signal, reference)
 
 		data = {
@@ -103,7 +103,7 @@ class control(object):
 			# fpath = os.path.join(self.outputdir, label + '.json')
 			# with open(fpath, 'w') as f:
 			# 	json.dump(data, f)
-			self._save_scanPoint(label = label, wavelength = wavelengths, reflectance = reflectance)
+			self._save_scanPoint(label = label, wavelengths = wavelengths, reflectance = reflectance)
 
 		if plot:
 			plt.plot(data['Wavelengths'],data['Reflectance'])
@@ -171,7 +171,7 @@ class control(object):
 		self._mono.closeShutter()
 		self._stage.moveto(x = x0, y = y0) #return to original position
 
-		if export:
+		# if export:
 			# self._save_findArea(x = allx, y = ally, wavelength = wavelength, reflectance_x = xdata, reflectance_y = ydata)
 
 		if plot:
@@ -255,7 +255,7 @@ class control(object):
 			# with open(fpath, 'w') as f:
 			# 	json.dump(output, f)
 
-	def timeSeries(self, label, wavelengths, duration, interval):
+	def timeSeries(self, label, wavelengths, duration, interval, export = True):
 		### records a reflectance spectrum for a given duration (seconds) at set intervals (seconds)
 		#	TODO: I don't think this will work for single wavelength inputs
 
@@ -265,18 +265,36 @@ class control(object):
 		reflectance = []
 		delay = []
 		startTime = time.time()
-		while (time.time() - startTime) <= duration:
-			if (time.time()-startTime) >= (interval*len(delay)):	#time for the next scan
-				signal, reference, time = self._scanroutine(wavelengths)
-				delay.append(time.time() - startTime)
-				reflectance.append(self._baselineCorrectionRoutine(wavelengths, signal, reference))
-			time.sleep(interval/100)	#we can hit our interval within 1% accuracy, but give the cpu some rest
+		pbarPercent = 0
+		with tqdm(total = 100, desc = 'Scanning every {0} s for {1} s'.format(interval, duration), leave = False) as pbar:
+			while (time.time() - startTime) <= duration:
+				if (time.time()-startTime) >= (interval*len(delay)):	#time for the next scan
+					delay.append(time.time() - startTime)
+					signal, reference = self._scanroutine(wavelengths, lastscan = False)
+					reflectance.append(self._baselineCorrectionRoutine(wavelengths, signal, reference))
+				else:	#if we have some time to wait between scans, close the shutter and go to the starting wavelength
+					if self._mono.shutterOpenStatus:
+						self._mono.closeShutter()
+					if np.abs(self._mono.currentWavelength - wavelengths[0]) > self._mono.wavelengthTolerance:
+						self._mono.goToWavelength(wavelength = wavelengths[0])
+				
+				currentPercent = round(100*(time.time()-startTime)/duration)
+				if currentPercent > 100:
+						currentPercent = 100
+
+				if currentPercent > pbarPercent:
+					pbar.update(currentPercent - pbarPercent)
+					pbarPercent = currentPercent
+
+				time.sleep(interval/100)	#we can hit our interval within 1% accuracy, but give the cpu some rest
 		
+		if self._mono.shutterOpenStatus:	#close the shutter
+			self._mono.closeShutter()
 
 		reflectance = np.array(reflectance)
 		delay = np.array(delay)
-		if export and self.outputdir is not None:
-			self._save_timeSeries(label = label, wavelength = wavelengths, reflectance = reflectance, delay = delay, duration = duration, interval = interval)
+		if export:
+			self._save_timeSeries(label = label, wavelengths = wavelengths, reflectance = reflectance, delay = delay, duration = duration, interval = interval)
 
 		# if plot:
 		# 	plt.plot(data['Wavelengths'],data['Reflectance'])
@@ -301,6 +319,12 @@ class control(object):
 		return corrected
 
 	def _scanroutine(self, wavelengths, firstscan = True, lastscan = True):
+		if np.abs(self._mono.currentWavelength - wavelengths[-1]) < np.abs(self._mono.currentWavelength - wavelengths[0]):	#if our mono is currently closer to the final wavelength than starting
+			flip = True
+			wavelengths = wavelengths.flip(axis = 0)
+		else:
+			flip = False
+
 		self._mono.goToWavelength(wavelengths[0])
 		if firstscan:
 			self._mono.openShutter()
@@ -313,6 +337,10 @@ class control(object):
 			signal[idx] = out['IntSphere']['Mean']
 			ref[idx] = out['Reference']['Mean']
 		
+		if flip:	#if we flipped the wavelength direction, lets flip the measurements to line up with the original wavelength order
+			signal = signal.reverse()
+			ref = ref.reverse()
+
 		if lastscan:
 			self._mono.closeShutter()
 
@@ -494,7 +522,7 @@ class control(object):
 
 		print('Data saved to {0}'.format(fpath))		
 
-	def _save_timeSeries(self, label, wavelength, reflectance, delay, duration, interval):
+	def _save_timeSeries(self, label, wavelengths, reflectance, delay, duration, interval):
 
 		fpath = self._getSavePath(label = label)	#generate filepath for saving data
 
@@ -514,6 +542,9 @@ class control(object):
 			temp.attrs['description'] = 'Time (s) desired between subsequent scans.'
 
 			## measured data 
+			rawdata = f.create_group('/data')
+			rawdata.attrs['description'] = 'Data acquired during area scan.'
+
 			temp = rawdata.create_dataset('wavelengths', data = np.array(wavelengths))
 			temp.attrs['description'] = 'Wavelengths (nm) scanned per point.'
 
