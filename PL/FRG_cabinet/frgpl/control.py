@@ -147,6 +147,7 @@ class control:
 			measdatetime = datetime.datetime.now()
 			im, _, _ = self._camera.capture(frames = self.numframes, imputeHotPixels = True)
 			v, i = self._kepco.read(counts = self.numIV)
+			irradiance = self._getOpticalPower()
 			meas = {
 				'sample': 	self.sampleName,
 				'note':		self.note,
@@ -161,6 +162,7 @@ class control:
 				'v_meas':	v,
 				'i_meas':	i,
 				'image':	im,
+				'irradiance_ref': irradiance 
 			}
 			self.__dataBuffer.append(meas)	
 
@@ -180,7 +182,7 @@ class control:
 
 		#take image, take IV meas during image
 		measdatetime = datetime.datetime.now()
-		im, _, _ = self._camera.capture(frames = self.numframes, imputeHotPixels = True)
+		im, _, _ = self._camera.capture(frames = self.numframes, imputeHotPixels = False)
 		v, i = self._kepco.read(counts = self.numIV)
 		irradiance = self._getOpticalPower()
 
@@ -361,7 +363,9 @@ class control:
 			self.samplename = None
 
 			print('Note: sample name and one sun calibration results have been reset to None')
-			
+		
+		self.__dataBuffer = 0
+
 	### calibration methods
 
 	def findOneSun(self, jsc, area):
