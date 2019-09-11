@@ -4,15 +4,26 @@ import os
 import serial
 import time
 import json
+import datetime
 from .stage import stage
 from .mono import mono
 from .daq import daq
 import datetime
 from tqdm import tqdm
 
+
+root = 'C:\\Users\\Operator\\Desktop\\frgmapper'
+if not os.path.exists(root):
+	os.mkdir(root)
+datafolder = os.path.join(root, 'Data')
+if not os.path.exists(datafolder):
+	os.mkdir(datafolder)
+ 
 class control(object):
-	def __init__(self, outputdir = None, dwelltime = 0.1):
-		self.outputdir = outputdir
+	def __init__(self, dwelltime = 0.1):
+		todaysDate = datetime.datetime.now().strftime('%Y%m%d')
+		self.outputdir = os.path.join(root, datafolder, todaysDate)
+		self.__hardwareSetup = 'mono'		#distinguish whether saved data comes from the mono or nkt setup
 		self.__dwelltime = dwelltime
 		self.__baselineTaken = False
 		self.__baseline = {}
@@ -21,6 +32,7 @@ class control(object):
 		self._daq = None
 		self.connect()
 		self.connectStage()
+		plt.ion()	#make plots of results non-blocking
 
 	@property
 	def dwelltime(self):
@@ -65,20 +77,17 @@ class control(object):
 		
 		self.__baselineTaken = True
 
-	def takeScan(self, label, wavelengths, plot = False, export = True, verbose = False):
+	def scanPoint(self, label, wavelengths, plot = True, export = True):
 		# clean up wavelengths input
 		wavelengths = np.array(wavelengths)
 
-		signal, reference = self._scanroutine(wavelengths)
+		signal, reference, time = self._scanroutine(wavelengths)
 		reflectance = self._baselineCorrectionRoutine(wavelengths, signal, reference)
 
 		data = {
 			'Label': label,
-			'Date': datetime.date.today().strftime('%Y/%m/%d'),
-			'Time': datetime.datetime.now().strftime('%H:%M:%S'),
 			'Wavelengths': wavelengths.tolist(),
 			'Reflectance': reflectance.tolist(),
-			'DwellTime': self.dwelltime
 		}
 
 		# if verbose:
@@ -90,9 +99,11 @@ class control(object):
 			# }
 
 		if export and self.outputdir is not None:
-			fpath = os.path.join(self.outputdir, label + '.json')
-			with open(fpath, 'w') as f:
-				json.dump(data, f)
+			# self._saveTakeScan(label = label, wavelengths = wavelengths, reflectance = reflectance)
+			# fpath = os.path.join(self.outputdir, label + '.json')
+			# with open(fpath, 'w') as f:
+			# 	json.dump(data, f)
+			self._save_scanPoint(label = label, wavelength = wavelengths, reflectance = reflectance)
 
 		if plot:
 			plt.plot(data['Wavelengths'],data['Reflectance'])
@@ -160,6 +171,9 @@ class control(object):
 		self._mono.closeShutter()
 		self._stage.moveto(x = x0, y = y0) #return to original position
 
+		if export:
+			# self._save_findArea(x = allx, y = ally, wavelength = wavelength, reflectance_x = xdata, reflectance_y = ydata)
+
 		if plot:
 			fig, ax = plt.subplots(2,1)
 			ax[0].plot(allx, xdata)
@@ -188,7 +202,6 @@ class control(object):
 		if self._daq is None:
 			self.connect() # connect mono and daq
 
-		# self._stage.gotocenter() #go to center position, where sample is centered on integrating sphere port. Almost definitely need to remove this line later (we want to be centered at the sample center, which may shift and should be determined by .findArea)
 		currentx, currenty = self._stage.position # return position
 		if x0 is None:
 			x0 = currentx
@@ -198,11 +211,12 @@ class control(object):
 		allx = np.linspace(x0 - xsize/2, x0 + xsize/2, xsteps)
 		ally = np.linspace(y0 - ysize/2, y0 + ysize/2, ysteps)
 
-		data = np.zeros((xsteps, ysteps, len(wavelengths)))
-
+		data = np.zeros((ysteps, xsteps, len(wavelengths)))
+		delay = np.zeros((ysteps, xsteps))
 		firstscan = True
 		lastscan = False
-		reverse=-1 # for snaking
+		reverse= -1 # for snaking
+		startTime = time.time()
 		for xidx, x in tqdm(enumerate(allx), desc = 'Scanning X', total = allx.shape[0], leave = False):
 			reverse=reverse*(-1)
 			for yidx, y in tqdm(enumerate(ally), desc = 'Scanning Y', total = ally.shape[0], leave = False):
@@ -212,30 +226,65 @@ class control(object):
 				if reverse > 0: #go in the forward direction
 					self._stage.moveto(x = x, y = y)
 					signal, reference = self._scanroutine(wavelengths = wavelengths, firstscan = firstscan, lastscan = lastscan)
-					data[xidx, yidx, :] = self._baselineCorrectionRoutine(wavelengths, signal, reference)
+					data[yidx, xidx, :] = self._baselineCorrectionRoutine(wavelengths, signal, reference)
+					delay[yidx, xidx] = time.time() - startTime #time in seconds since scan began
 				else: # go in the reverse direction
 					self._stage.moveto(x = x, y = ally[ysteps-1-yidx])
 					signal,reference = self._scanroutine(wavelengths = wavelengths, firstscan = firstscan, lastscan = lastscan)
-					data[xidx, ysteps-1-yidx, :]=self._baselineCorrectionRoutine(wavelengths, signal, reference) # baseline correction
+					data[ysteps-1-yidx, xidx, :]= self._baselineCorrectionRoutine(wavelengths, signal, reference) # baseline correction
+					delay[ysteps-1-yidx, xidx] = time.time() - startTime #time in seconds since scan began
 				firstscan = False
+		self._stage.moveto(x = x0, y = y0)	#go back to map center position
 
 		if export:
-			output = {
-				'Label': label,
-				'Date': datetime.date.today().strftime('%Y/%m/%d'),
-				'Time': datetime.datetime.now().strftime('%H:%M:%S'),
-				'X': allx.tolist(),
-				'Y': ally.tolist(),
-				'Wavelengths': wavelengths.tolist(),
-				'Reflectance': data.tolist()
-			}
+			# output = {
+			# 	'Label': label,
+			# 	'Date': datetime.date.today().strftime('%Y/%m/%d'),
+			# 	'Time': datetime.datetime.now().strftime('%H:%M:%S'),
+			# 	'X': allx.tolist(),
+			# 	'Y': ally.tolist(),
+			# 	'delay': delay.tolist()
+			# 	'Wavelengths': wavelengths.tolist(),
+			# 	'Reflectance': data.tolist()
+			# }
 			
 			# export as a hfile
-			
+			self.save_scanArea(label = label, x = x, y = y, delay = delay, wavelengths = wavelengths, reflectance = reflectance)
 			# export as a json file
-			fpath = os.path.join(self.outputdir, label + '.json')
-			with open(fpath, 'w') as f:
-				json.dump(output, f)
+			# fpath = os.path.join(self.outputdir, label + '.json')
+			# with open(fpath, 'w') as f:
+			# 	json.dump(output, f)
+
+	def timeSeries(self, label, wavelengths, duration, interval):
+		### records a reflectance spectrum for a given duration (seconds) at set intervals (seconds)
+		#	TODO: I don't think this will work for single wavelength inputs
+
+		# clean up wavelengths input
+		wavelengths = np.array(wavelengths)
+
+		reflectance = []
+		delay = []
+		startTime = time.time()
+		while (time.time() - startTime) <= duration:
+			if (time.time()-startTime) >= (interval*len(delay)):	#time for the next scan
+				signal, reference, time = self._scanroutine(wavelengths)
+				delay.append(time.time() - startTime)
+				reflectance.append(self._baselineCorrectionRoutine(wavelengths, signal, reference))
+			time.sleep(interval/100)	#we can hit our interval within 1% accuracy, but give the cpu some rest
+		
+
+		reflectance = np.array(reflectance)
+		delay = np.array(delay)
+		if export and self.outputdir is not None:
+			self._save_timeSeries(label = label, wavelength = wavelengths, reflectance = reflectance, delay = delay, duration = duration, interval = interval)
+
+		# if plot:
+		# 	plt.plot(data['Wavelengths'],data['Reflectance'])
+		# 	plt.xlabel('Wavelength (nm)')
+		# 	plt.ylabel('Reflectance')
+		# 	plt.title(label)
+		# 	plt.show()
+
 
 	# internal methods
 	def _baselineCorrectionRoutine(self, wavelengths, signal, reference):
@@ -269,151 +318,212 @@ class control(object):
 
 		return signal, ref
 
-	### Save method to dump measurement to hdf5 file. Currently copied from PL code, need to fit this to the mapping data.
-	# def _save(self, samplename = None, note = None, outputdirectory = None):
-	# 	## figure out the sample directory, name, total filepath
-	# 	if samplename is not None:
-	# 		self.sampleName = samplename
+	### Save methods to dump measurements to hdf5 file. Currently copied from PL code, need to fit this to the mapping data.
+	def _getSavePath(self, label):
+		### figure out the sample directory, name, total filepath
+		if not os.path.exists(self.outputdir):
+			os.mkdir(self.outputdir)
+		fids = os.listdir(self.outputdir)
 
-	# 	if outputdirectory is not None:
-	# 		self.outputDirectory = outputdirectory
-	# 	if not os.path.exists(self.outputDirectory):
-	# 		os.mkdir(self.outputDirectory)
+		fileNumber = 1
+		for fid in fids:
+			if 'frgmapper' in fid:
+				fileNumber = fileNumber + 1
 
-	# 	fids = os.listdir(self.outputDirectory)
-	# 	sampleNumber = 1
-	# 	for fid in fids:
-	# 		if 'frgPL' in fid:
-	# 			sampleNumber = sampleNumber + 1
+		if label is not None:
+			fname = 'frgmapper_{0:04d}_{1}.h5'.format(fileNumber, label)
+		else:
+			fname = 'frgmapper_{0:04d}.h5'.format(fileNumber)
+		fpath = os.path.join(self.outputdir, fname)
 
-	# 	if self.sampleName is not None:
-	# 		fname = 'frgPL_{0:04d}_{1}.h5'.format(sampleNumber, self.sampleName)
-	# 	else:
-	# 		fname = 'frgPL_{0:04d}.h5'.format(sampleNumber)
-	# 		self.sampleName = ''
+		return fpath
 
-	# 	fpath = os.path.join(self.outputDirectory, fname)
+	def _saveGeneralInformation(self, f, label):
+		### General information that will be saved regardless of which method (point scan, area scan, etc.) was used. Should be called
+		# at the beginning of any method-specific save method.
 
-	# 	## build each category in h5 file
-
-	# 	### example dataset saved to _dataBuffer by .takeMeas
-	# 	# meas = {
-	# 	# 	'sample': 	self.sampleName,
-	# 	# 	'date': 	measdatetime.strftime('%Y-%m-%d'),
-	# 	# 	'time':		measdatetime.strftime('%H:%M:%S'),
-	# 	# 	'cameraFOV':self.__fov,
-	# 	# 	'bias':		self.bias,
-	# 	# 	'laserpower': self.laserpower,
-	# 	# 	'saturationtime': self.saturationtime,
-	# 	# 	'numIV':	self.numIV,
-	# 	# 	'numframes':self.numframes,
-	# 	# 	'v_meas':	v,
-	# 	# 	'i_meas':	i,
-	# 	# 	'image':	im,
-	# 	# }
-
-	# 	numData = len(self.__dataBuffer)
-
-	# 	data = {}
-	# 	for field in self.__dataBuffer[0].keys():
-	# 		data[field] = []
-	# 	### field to store normalized PL images
-	# 	# if self._spotmap is not None:
-	# 	# 	data['image_norm'] = []
-
-	# 	for meas in self.__dataBuffer:
-	# 		for field, measdata in meas.items():
-	# 			data[field].append(measdata)
-	# 			### normalize PL images here
-	# 			# if field is 'image' and self._spotmap is not None:
-	# 			# 	data['image_norm']
-
-
-	# 	## write h5 file
-
-	# 	with h5py.File(fpath, 'w') as f:
-	# 		# sample info
-	# 		info = f.create_group('/info')
-	# 		info.attrs['description'] = 'Metadata describing sample, datetime, etc.'
+			# sample info
+			info = f.create_group('/info')
+			info.attrs['description'] = 'Metadata describing sample, datetime, etc.'
 			
-	# 		temp = info.create_dataset('name', data = self.sampleName.encode('utf-8'))
-	# 		temp.attrs['description'] = 'Sample name.'
+			temp = info.create_dataset('name', data = label.encode('utf-8'))
+			temp.attrs['description'] = 'Sample name.'
 
-	# 		date = info.create_dataset('date', data = np.array([x.encode('utf-8') for x in data['date']]))
-	# 		temp.attrs['description'] = 'Measurement date.'
-
+			date = info.create_dataset('date', data = datetime.datetime.now().strftime('%Y-%m-%d').encode('utf-8'))
+			temp.attrs['description'] = 'Measurement date.'
 			
-	# 		temp = info.create_dataset('time', data =  np.array([x.encode('utf-8') for x in data['time']]))
-	# 		temp.attrs['description'] = 'Measurement time of day.'
+			temp = info.create_dataset('time', data =  datetime.datetime.now().strftime('%H:%M:%S').encode('utf-8'))
+			temp.attrs['description'] = 'Measurement time of day.'
 
+			# measurement settings
+			settings = f.create_group('/settings')
+			settings.attrs['description'] = 'Settings used for measurements.'
 
-	# 		# measurement settings
-	# 		settings = f.create_group('/settings')
-	# 		settings.attrs['description'] = 'Settings used for measurements.'
+			temp = settings.create_dataset('hardware', data = self.__hardwareSetup.encode('utf-8'))
+			temp.attrs['description'] = 'Light source/ardware used for this scan - either the newport lamp + monochromator, or nkt compact + select'
 
-	# 		temp = settings.create_dataset('vbias', data = np.array(data['bias']))
-	# 		temp.attrs['description'] = 'Nominal voltage bias set by Kepco during measurement.'
+			temp = settings.create_dataset('dwelltime', data = self.__dwelltime)
+			temp.attrs['description'] = 'Time spent collecting signal at each wavelength.'
 
-	# 		temp = settings.create_dataset('laserpower', data = np.array(data['laserpower']))
-	# 		temp.attrs['description'] = 'Fractional laser power during measurement. Calculated as normalized laser current (max current = 55 A). Laser is operated at steady state.'
+			temp = settings.create_dataset('count_rate', data = self._daq.rate)
+			temp.attrs['description'] = 'Acquisition rate (Hz) of data acquisition unit when reading detector voltages.'
 
-	# 		temp = settings.create_dataset('sattime', data = np.array(data['saturationtime']))
-	# 		temp.attrs['description'] = 'Saturation time for laser/bias conditioning prior to sample measurement. Delay between applying condition and measuring, in seconds.'
+			temp = settings.create_dataset('num_counts', data = self._daq.counts)
+			temp.attrs['description'] = 'Voltage counts per detector used to quantify reflectance values.'
 
-	# 		temp = settings.create_dataset('numIV', data = np.array(data['numIV']))
-	# 		temp.attrs['description'] = 'Number of current/voltage measurements averaged by Kepco when reading IV.'
+			temp = settings.create_dataset('position', data = np.array(self._stage.position))
+			temp.attrs['description'] = 'Stage position (x,y) during scan.'
 
-	# 		temp = settings.create_dataset('numframes', data = np.array(data['numframes']))
-	# 		temp.attrs['description'] = 'Number of camera frames averaged when taking image.'
+			# baseline measurement
+			baseline = f.create_group('/settings/baseline')
 
-	# 		if self._sampleOneSun is not None:
-	# 			suns = [x/self._sampleOneSun for x in data['laserpower']]
-	# 			temp = settings.create_dataset('suns', data = np.array(suns))
-	# 			temp.attrs['description'] = 'PL injection level in terms of suns. Only present if sample was calibrated with .findOneSun to match measured Isc to provided expected value, presumably from solar simulator JV curve.'
+			temp = baseline.create_dataset('wavelengths', data = np.array(self.__baseline['Wavelengths']))
+			temp.attrs['description'] = 'Wavelengths (nm) scanned for baseline measurement'
 
-	# 		# calibrations
-	# 		calibrations = f.create_group('/calibrations')
-	# 		calibrations.attrs['description'] = 'Instrument calibrations to be used for data analysis.'
+			temp = baseline.create_dataset('sphere_ill', data = np.array(self.__baseline['LightRaw']))
+			temp.attrs['description'] = 'Raw counts for integrating sphere detector during illuminated baseline measurement'
 
-	# 		temp = calibrations.create_dataset('fov', data = np.array(data['cameraFOV']))
-	# 		temp.attrs['description'] = 'Camera field of view dimensions, in microns.'
+			temp = baseline.create_dataset('ref_ill', data = np.array(self.__baseline['LightRefRaw']))
+			temp.attrs['description'] = 'Raw counts for reference detector during illuminated baseline measurement'
 
-	# 		if self._spotMap is not None:
-	# 			temp = calibrations.create_dataset('spot', data = np.array(self._spotMap))
-	# 			temp.attrs['description'] = 'Map of incident optical power across camera FOV, can be used to normalize PL images.'
+			temp = baseline.create_dataset('ratio_ill', data = np.array(self.__baseline['Light']))
+			temp.attrs['description'] = 'Ratio of sphere/reference counts during illuminated baseline measurement. This number is considered 100\% reflectance'
 
-	# 		if self._sampleOneSunSweep is not None:
-	# 			temp = calibrations.create_dataset('onesunsweep', data = np.array(self._sampleOneSunSweep))
-	# 			temp.attrs['description'] = 'Laser current vs photocurrent, measured for this sample. Column 1: fractional laser current. Column 2: total photocurrent (Isc), NOT current density (Jsc). Only present if sample was calibrated with .findOneSun to match measured Isc to provided expected value, presumably from solar simulator JV curve.'
+			temp = baseline.create_dataset('sphere_dark', data = np.array(self.__baseline['DarkRaw']))
+			temp.attrs['description'] = 'Raw counts for integrating sphere detector during dark baseline measurement. Single point, independent of wavelength.'
 
-	# 			temp = calibrations.create_dataset('onesun', data = np.array(self._sampleOneSun))
-	# 			temp.attrs['description'] = 'Fractional laser current used to approximate a one-sun injection level. Only present if sample was calibrated with .findOneSun to match measured Isc to provided expected value, presumably from solar simulator JV curve.'
+			temp = baseline.create_dataset('ref_dark', data = np.array(self.__baseline['DarkRefRaw']))
+			temp.attrs['description'] = 'Raw counts for reference detector during dark baseline measurement. Single point, independent of wavelength.'
 
-	# 			temp = calibrations.create_dataset('onesunjsc', data = np.array(self._sampleOneSunJsc))
-	# 			temp.attrs['description'] = 'Target Jsc (NOT Isc) used to approximate a one-sun injection level. Only present if sample was calibrated with .findOneSun to match measured Isc to provided expected value, presumably from solar simulator JV curve.'
+			temp = baseline.create_dataset('ratio_dark', data = np.array(self.__baseline['Dark']))
+			temp.attrs['description'] = 'Ratio of sphere/reference counts during illuminated baseline measurement. This number is considered 0\% reflectance. Single point, independent of wavelength.'
 
-	# 		# raw data
-	# 		rawdata = f.create_group('/data')
-	# 		rawdata.attrs['description'] = 'Raw measurements taken during imaging'
+			return info, settings, baseline
 
-	# 		temp = rawdata.create_dataset('image', data = np.array(data['image']), chunks = True, compression = 'gzip')
-	# 		temp.attrs['description'] = 'Raw images acquired for each measurement.'
+	def _save_scanPoint(self, label, wavelengths, reflectance):
+		
+		fpath = self._getSavePath(label = label)	#generate filepath for saving data
 
-	# 		temp = rawdata.create_dataset('v', data = np.array(data['v_meas']))
-	# 		temp.attrs['description'] = 'Voltage measured during measurement'
-
-	# 		temp = rawdata.create_dataset('i', data = np.array(data['i_meas']))
-	# 		temp.attrs['description'] = 'Current (not current density!) measured during measurement'
-
-	# 		temp = rawdata.create_dataset('irr_ref', data = np.array(data['irradiance_ref']))
-	# 		temp.attrs['description'] = 'Measured irradiance @ photodetector during measurement. Note that the photodetector is offset from the sample FOV. Assuming that the laser spot is centered on the sample, this value is lower than the true sample irradiance. This value should be used in conjunction with a .spotMap() calibration map.'			
-
-	# 	print('Data saved to {0}'.format(fpath))
-	# 	if reset:
-	# 		self.samplename = None
-
-	# 		print('Note: sample name has been reset to None')
+		with h5py.File(fpath, 'w') as f:
 			
+			info, settings, baseline = self._saveGeneralInformation(f, label = label)	
+
+			## add scan type to info
+			temp = info.create_dataset('type', data = 'scanPoint'.encode('utf-8'))
+			temp.attrs['description'] = 'Type of measurement held in this file.'	
+			
+			# raw data
+			rawdata = f.create_group('/data')
+			rawdata.attrs['description'] = 'Data acquired during point scan.'
+
+			temp = rawdata.create_dataset('wavelengths', data = np.array(wavelengths))
+			temp.attrs['description'] = 'Wavelengths (nm) scanned.'
+
+			temp = rawdata.create_dataset('reflectance', data = np.array(reflectance))
+			temp.attrs['description'] = 'Baseline-corrected reflectance measured. Stored as fraction (0-1), not percent!'
+
+		print('Data saved to {0}'.format(fpath))	
+
+	# def _save_findArea(self, label, wavelength, reflectance):
+
+	def _save_scanArea(self, label, x, y, delay, wavelengths, reflectance):
+		
+		fpath = self._getSavePath(label = label)	#generate filepath for saving data
+
+		with h5py.File(fpath, 'w') as f:
+			
+			info, settings, baseline = self._saveGeneralInformation(f, label = label)
+
+			## add scan type to info
+			temp = info.create_dataset('type', data = 'scanArea'.encode('utf-8'))
+			temp.attrs['description'] = 'Type of measurement held in this file.'		
+
+			## add scan parameters to settings
+			temp = settings.create_dataset('numx', data = np.array(len(x)))
+			temp.attrs['description'] = 'Number of points scanned in x'			
+
+			temp = settings.create_dataset('numy', data = np.array(len(y)))
+			temp.attrs['description'] = 'Number of points scanned in y'
+
+			temp = settings.create_dataset('rangex', data = np.array(np.abs(x[-1] - x[0])))
+			temp.attrs['description'] = 'Range scanned in x (mm)'
+
+			temp = settings.create_dataset('rangex', data = np.array(np.abs(y[-1] - y[0])))
+			temp.attrs['description'] = 'Range scanned in y (mm)'
+
+			# calculate step size. Calculates the average step size in x and y. If either axis has length 1 (ie line scan), only consider step size
+			# in the other axis. If both axes have length 0 (point scan, although not a realistic outcome for .scanArea()), leave stepsize as 0
+			countedaxes = 0
+			stepsize = 0
+			if x.shape[0] > 1:
+				stepsize = stepsize + np.abs(x[1] - x[0])
+				countedaxes = countedaxes + 1
+			if y.shape[0] > 1:
+				stepsize = stepsize + np.abs(y[1] - y[0])
+				countedaxes = countedaxes + 1
+			if countedaxes:
+				stepsize = stepsize / countedaxes
+
+			temp = settings.create_dataset('stepsize', data = np.array(stepsize))
+			temp.attrs['description'] = 'Average step size (mm) in x and y. If either axis has length 1 (ie line scan), only consider step size in the other axis. If both axes have length 0 (point scan, although not a realistic outcome for .scanArea()), leave stepsize as 0 '			
+
+			## measured data 
+			rawdata = f.create_group('/data')
+			rawdata.attrs['description'] = 'Data acquired during area scan.'
+
+			temp = rawdata.create_dataset('x', data = np.array(x))
+			temp.attrs['description'] = 'Absolute X coordinate (mm) per point'
+
+			temp = rawdata.create_dataset('y', data = np.array(y))
+			temp.attrs['description'] = 'Absolute Y coordinate (mm) per point'
+
+			temp = rawdata.create_dataset('relx', data = np.array(x - np.min(x)))
+			temp.attrs['description'] = 'Relative X coordinate (mm) per point'
+
+			temp = rawdata.create_dataset('rely', data = np.array(y - np.min(y)))
+			temp.attrs['description'] = 'Relative Y coordinate (mm) per point'						
+
+			temp = rawdata.create_dataset('wavelengths', data = np.array(wavelengths))
+			temp.attrs['description'] = 'Wavelengths (nm) scanned per point.'
+
+			temp = rawdata.create_dataset('reflectance', data = np.array(reflectance))
+			temp.attrs['description'] = 'Baseline-corrected reflectance measured. Stored as [y, x, wl]. Stored as fraction (0-1), not percent!'
+
+			temp = rawdata.create_dataset('delay', data = np.array(delay))
+			temp.attrs['description'] = 'Time (seconds) that each scan was acquired at. Measured as seconds since first scan point.'			
+
+		print('Data saved to {0}'.format(fpath))		
+
+	def _save_timeSeries(self, label, wavelength, reflectance, delay, duration, interval):
+
+		fpath = self._getSavePath(label = label)	#generate filepath for saving data
+
+		with h5py.File(fpath, 'w') as f:
+			
+			info, settings, baseline = self._saveGeneralInformation(f, label = label)		
+
+			## add scan type to info
+			temp = info.create_dataset('type', data = 'timeSeries'.encode('utf-8'))
+			temp.attrs['description'] = 'Type of measurement held in this file.'
+
+			## add scan parameters to settings
+			temp = settings.create_dataset('duration', data = np.array(duration))
+			temp.attrs['description'] = 'Total time (s) desired for time series.'			
+
+			temp = settings.create_dataset('interval', data = np.array(interval))
+			temp.attrs['description'] = 'Time (s) desired between subsequent scans.'
+
+			## measured data 
+			temp = rawdata.create_dataset('wavelengths', data = np.array(wavelengths))
+			temp.attrs['description'] = 'Wavelengths (nm) scanned per point.'
+
+			temp = rawdata.create_dataset('reflectance', data = np.array(reflectance))
+			temp.attrs['description'] = 'Baseline-corrected reflectance measured. Stored as [y, x, wl]. Stored as fraction (0-1), not percent!'
+
+			temp = rawdata.create_dataset('delay', data = np.array(delay))
+			temp.attrs['description'] = 'Time (seconds) that each scan was acquired at. Measured as seconds since first scan point.'			
+
+		print('Data saved to {0}'.format(fpath))
 
 	### Test Methods: should remove these and make a wrapper function to execute these commands instead of building it into the class
 	#
