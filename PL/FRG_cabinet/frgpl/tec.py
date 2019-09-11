@@ -4,7 +4,7 @@ import serial
 import numpy as np
 import codecs
 
-class tec:
+class omega:
 
 
 	def __init__(self, port = 'COM12', address = 1):

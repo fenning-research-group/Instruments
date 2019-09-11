@@ -11,7 +11,9 @@ from stage import stage
 from kepco import kepco
 from daq import daq
 from laser import laser
+from tec import omega
 import datetime
+import time
 
 root = 'C:\\Users\\Operator\\Desktop\\frgPL'
 if not os.path.exists(root):
@@ -36,6 +38,9 @@ class control:
 		self.saturationtime = 0.5	#delay between applying voltage/illumination and beginning measurement
 		self.numIV = 10		#number of IV measurements to average
 		self.numframes = 50	#number of image frames to average
+		self.temperature = 23	#TEC stage temperature setpoint (C) during measurement
+		self.temperatureTolerance = 0.2	#how close to the setpoint we need to be to take a measurement (C)
+		self.maxSoakTime = 60	# max soak time, in seconds, to wait for temperature to reach set point. If we reach this point, just go ahead with the measurement
 		self.note = ''
 		self._spotMap = None	# optical power map of laser spot, used for PL normalization
 		self._sampleOneSun = None # fractional laser power with which to approximate one-sun injection levels
@@ -61,6 +66,7 @@ class control:
 		self._laser = laser()		# Connect to OSTECH Laser
 		self._daq = daq()			# connect to NI-USB6000 DAQ
 		self._stage = stage()		# connect to FRG stage
+		self._tec = omega()			# connect to omega PID controller, which is driving the TEC stage.
 		
 	def disconnect(self):
 		try:
@@ -88,7 +94,7 @@ class control:
 
 	### basic use functions
 
-	def setMeas(self, bias = None, laserpower = None, suns = None, saturationtime = None, numIV = None, numframes = None, note = ''):
+	def setMeas(self, bias = None, laserpower = None, suns = None, saturationtime = None, temperature = None, numIV = None, numframes = None, note = ''):
 
 		if bias is None:
 			bias = self.bias
@@ -107,10 +113,13 @@ class control:
 						return False
 		if saturationtime is None:
 			saturationtime = self.saturationtime
+		if temperature is None:
+			temperature = self.temperature
 		if numIV is None:
 			numIV = self.numIV
 		if numframes is None:
 			numframes = self.numframes
+
 
 		result = self._kepco.set(voltage = bias)
 		if result:
@@ -147,10 +156,13 @@ class control:
 
 			# take a 0 bias, 0 laserpower measurement, append to .__dataBuffer
 			self.setMeas(bias = 0, laserpower = 0, note = 'automatic baseline image')
+			self._waitForTemperature()
 			measdatetime = datetime.datetime.now()
+			temperature = self._tec.getTemperature()
 			im, _, _ = self._camera.capture(frames = self.numframes, imputeHotPixels = imputeHotPixels)
 			v, i = self._kepco.read(counts = self.numIV)
 			irradiance = self._getOpticalPower()
+			temperature = (temperature + self._tec.getTemperature()) / 2	#average the temperature from just before and after the measurement. Typically averaging >1 second of time here.
 			meas = {
 				'sample': 	self.sampleName,
 				'note':		self.note,
@@ -165,7 +177,9 @@ class control:
 				'v_meas':	v,
 				'i_meas':	i,
 				'image':	im,
-				'irradiance_ref': irradiance 
+				'irradiance_ref': irradiance, 
+				'temperature':	temperature,
+				'temperature_setpoint': self.temperature
 			}
 			self.__dataBuffer.append(meas)	
 
@@ -184,10 +198,13 @@ class control:
 		time.sleep(self.saturationtime)
 
 		#take image, take IV meas during image
+		self._waitForTemperature()
 		measdatetime = datetime.datetime.now()
+		temperature = self._tec.getTemperature()
 		im, _, _ = self._camera.capture(frames = self.numframes, imputeHotPixels = False)
 		v, i = self._kepco.read(counts = self.numIV)
 		irradiance = self._getOpticalPower()
+		temperature = (temperature + self._tec.getTemperature()) / 2	#average the temperature from just before and after the measurement. Typically averaging >1 second of time here.
 
 		if self.__laserON and lastmeasurement:
 			self._laser.off()
@@ -210,7 +227,9 @@ class control:
 			'v_meas':	v,
 			'i_meas':	i,
 			'image':	im,
-			'irradiance_ref': irradiance 
+			'irradiance_ref': irradiance,
+			'temperature': temperature,
+			'temperature_setpoint': self.temperature
 		}
 		self.__dataBuffer.append(meas)
 
@@ -308,10 +327,12 @@ class control:
 			
 			temp = info.create_dataset('name', data = self.sampleName.encode('utf-8'))
 			temp.attrs['description'] = 'Sample name.'
+			
+			temp = info.create_dataset('notes', data = np.array([x.encode('utf-8') for x in data['note']]))
+			temp.attrs['description'] = 'Any notes describing each measurement.'
 
 			date = info.create_dataset('date', data = np.array([x.encode('utf-8') for x in data['date']]))
 			temp.attrs['description'] = 'Measurement date.'
-
 			
 			temp = info.create_dataset('time', data =  np.array([x.encode('utf-8') for x in data['time']]))
 			temp.attrs['description'] = 'Measurement time of day.'
@@ -335,6 +356,10 @@ class control:
 
 			temp = settings.create_dataset('numframes', data = np.array(data['numframes']))
 			temp.attrs['description'] = 'Number of camera frames averaged when taking image.'
+
+			temp = settings.create_dataset('tempsp', data = np.array(data['temperature_setpoint']))
+			temp.attrs['description'] = 'TEC stage temperature setpoint for each measurement.'
+
 
 			if self._sampleOneSun is not None:
 				suns = [x/self._sampleOneSun for x in data['laserpower']]
@@ -377,6 +402,9 @@ class control:
 
 			temp = rawdata.create_dataset('irr_ref', data = np.array(data['irradiance_ref']))
 			temp.attrs['description'] = 'Measured irradiance @ photodetector during measurement. Note that the photodetector is offset from the sample FOV. Assuming that the laser spot is centered on the sample, this value is lower than the true sample irradiance. This value should be used in conjunction with a .spotMap() calibration map.'			
+
+			temp = rawdata.create_dataset('temp', data = np.array(data['temperature']))
+			temp.attrs['description'] = 'Measured TEC stage temperature during measurement. This value is the average of two temperature measurements, just before and after the image/kepco readings/photodetector readings are made. These two values typically span >1 second'
 
 		print('Data saved to {0}'.format(fpath))
 		if reset:
@@ -461,6 +489,23 @@ class control:
 		self._stage.moveto(x = self.__sampleposition[0], y = self.__sampleposition[1])	#return stage to camera FOV
 
 	### helper methods
+	def _waitForTemperature(self):
+		refreshDelay = 0.5	#how long to wait between temperautre checks, in seconds
+		reachedTemp = False
+
+		startTime = time.time()
+		while (not reachedTemp) and (time.time() - startTime <= self.maxSoakTime):
+			currentTemp = self._tec.getTemperature()
+			if np.abs(currentTemp - self.temperature) <= self.temperatureTolerance:
+				reachedTemp = True
+			else:
+				time.sleep(refreshDelay)
+
+		if not reachedTemp:
+			print('Did not reach {0} C within {1} seconds: starting measurement anyways.'.format(self.temperature, self.maxSoakTime))
+
+		return True
+
 
 	def _getOpticalPower(self):
 		### reads signal from photodetector, converts to optical power using calibration vs thorlabs Si power meter (last checked 2019-08-20)
