@@ -38,20 +38,20 @@ class stage(object):
 		self.postmove()
 		return True
 
-	def gotocenter(self):
+	def movetocenter(self):
 		if not self.premove():
 			return False
 		
-		self.moveto(x = 50, y = 100) 	#position where sample is roughly centered on int sphere port 2019-08-13
+		self.moveto(x = 60, y = 105) 	#position where sample is roughly centered on int sphere port 2019-09-19
 
 		self.postmove()
 		return True
 
-	def gotosampleloading(self):
+	def movetosampleloading(self):
 		if not self.premove():
 			return False
 		
-		self.moveto(x = 149, y = 1) 	#position where sample can be easily loaded 2019-08-13
+		self.moveto(x = 150, y = 0) 	#position where sample can be easily loaded 2019-08-13
 		
 		self.postmove()
 		return True

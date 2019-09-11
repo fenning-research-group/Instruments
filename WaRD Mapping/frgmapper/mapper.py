@@ -124,6 +124,7 @@ class control(object):
 		if self._stage is None:
 			self.connectStage() # connect stage
 			self._stage.gohome()
+			self._stage.movetocenter()
 		if self._daq is None:
 			self.connect() # connect mono and daq
 		
@@ -142,9 +143,9 @@ class control(object):
 		for idx, x in tqdm(enumerate(allx), desc = 'Scanning X', total = allx.shape[0], leave = False):
 			self._stage.moveto(x = x)
 			out = self._daq.read()
-			signal = out['IntSphere']['Mean']
-			ref = out['Reference']['Mean']
-			xdata[idx] = self._baselineCorrectionRoutine(wavelengths = wavelength, signal = [signal], reference = [ref])
+			signal = [out['IntSphere']['Mean']]
+			ref = [out['Reference']['Mean']]
+			xdata[idx] = self._baselineCorrectionRoutine(wavelengths = wavelength, signal = signal, reference = ref)
 		self._mono.closeShutter()
 
 		self._stage.moveto(x = x0, y = ally[0])
@@ -153,9 +154,9 @@ class control(object):
 		for idx, y in tqdm(enumerate(ally), desc = 'Scanning Y', total = ally.shape[0], leave = False):
 			self._stage.moveto(y = y)
 			out = self._daq.read()
-			signal = out['IntSphere']['Mean']
-			ref = out['Reference']['Mean']
-			ydata[idx]= self._baselineCorrectionRoutine(wavelengths = wavelength, signal = [signal], reference = [ref])
+			signal = [out['IntSphere']['Mean']]
+			ref = [out['Reference']['Mean']]
+			ydata[idx]= self._baselineCorrectionRoutine(wavelengths = wavelength, signal = signal, reference = ref)
 		self._mono.closeShutter()
 		self._stage.moveto(x = x0, y = y0) #return to original position
 
@@ -183,10 +184,11 @@ class control(object):
 		if self._stage is None:
 			self.connectStage() # connect stage
 			self._stage.gohome()
+			self._stage.gotocenter()
 		if self._daq is None:
 			self.connect() # connect mono and daq
 
-		self._stage.gotocenter() #go to center position, where sample is centered on integrating sphere port. Almost definitely need to remove this line later (we want to be centered at the sample center, which may shift and should be determined by .findArea)
+		# self._stage.gotocenter() #go to center position, where sample is centered on integrating sphere port. Almost definitely need to remove this line later (we want to be centered at the sample center, which may shift and should be determined by .findArea)
 		currentx, currenty = self._stage.position # return position
 		if x0 is None:
 			x0 = currentx

@@ -4,10 +4,10 @@ import time
 class mono(object):
 
 	def __init__(self, monoAddress = 'GPIB0::4::INSTR'):
-		self.pauseTime = 0.1
+		self.pauseTime = 0.01	#time to pause between subsequent communication to mono, in seconds. set to 10 ms on 2019-09-10
 		#self.handle = pyvisa.ResourceManager().open_resource(monoAddress)
 		self.handle = pyvisa.ResourceManager().open_resource(monoAddress)
-		self.handle.timeout=10000 # set timeout to 10 s
+		self.handle.timeout=10000 # set timeout to 10 s (input value in ms)
 		time.sleep(self.pauseTime)
 		self.handle.read_termination = '\r\n'
 		self.handle.write_termination = '\r\n'
