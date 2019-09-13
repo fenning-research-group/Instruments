@@ -15,6 +15,7 @@ from tec import omega
 import datetime
 import time
 from mpl_toolkits.axes_grid1 import make_axes_locatable
+import tqdm
 
 root = 'C:\\Users\\Operator\\Desktop\\frgPL'
 if not os.path.exists(root):
@@ -294,10 +295,12 @@ class control:
 			if 'frgPL' in fid:
 				sampleNumber = sampleNumber + 1
 
+		todaysDate = datetime.datetime.now().strftime('%Y%m%d')
+
 		if self.sampleName is not None:
-			fname = 'frgPL_{0:04d}_{1}.h5'.format(sampleNumber, self.sampleName)
+			fname = 'frgPL_{0:04d}_{1}_{2}.h5'.format(sampleNumber, todaysDate, self.sampleName)
 		else:
-			fname = 'frgPL_{0:04d}.h5'.format(sampleNumber)
+			fname = 'frgPL_{0:04d}_{1}.h5'.format(sampleNumber, todaysDate)
 			self.sampleName = ''
 
 		fpath = os.path.join(self.outputDirectory, fname)
@@ -507,6 +510,75 @@ class control:
 
 		self._stage.moveto(x = self.__sampleposition[0], y = self.__sampleposition[1])	#return stage to camera FOV
 
+	### group measurement methods
+
+	def takeRseMeas(self, vmpp, voc, vstep = 0.005):
+		# generate list of biases spanning from vmpp to at least voc, with intervals of vstep
+		biases = [vmpp]
+		while biases[-1] < voc:
+			biases.append(biases[-1] + vstep)
+
+		for bias in tqdm(biases[:-1], desc = 'Rse EL', total = len(biases), leave = False):	#measure all but last with lastmeasurement = True (doesnt turn kepco off between measurements). Last measurement is normal
+			self.setMeas(bias = bias, laserpower = 0, note = 'part of Rse measurement series')
+			self.takeMeas(lastmeasurement = False)
+
+		self.setMeas(bias = biases[-1], laserpower = 0, note = 'part of Rse measurement series')
+		self.takeMeas(lastmeasurement = True)		
+
+	def takePLIVMeas(self, vmpp, voc, jsc, area):
+		### Takes images at varied bias and illumination for PLIV fitting of cell parameters
+		### based on https://doi.org/10.1016/j.solmat.2012.10.010
+
+		self.findOneSun(jsc = jsc, area = area)		# calibrate laser power to one-sun injection by matching jsc from solar simulator measurement
+
+		# full factorial imaging across voltage (vmpp - voc) and illumination (0.2 - 1.0 suns). 25 images
+		allbiases = np.linspace(vmpp, voc, 5)		#range of voltages used for image generation
+		allsuns = np.linspace(0.2, 1, 5)			#range of suns (pl injection) used for image generation
+
+		self.setMeas(bias = 0, suns = 1, temperature = 23, note = 'PLIV - open circuit PL image')
+		self.takeMeas()
+
+		with tqdm(allbiases.shape[0] * allsuns.shape[0], desc = 'PLIV', leave = False) as pb:
+			for suns in allsuns:
+				for bias in allbiases:
+					self.setMeas(bias = bias, suns = suns, temperature = 23, lastmeasurement = False, note = 'PLIV')
+					self.takeMeas()
+					pb.update(1)
+
+
+		self._laser.off()	#turn off the laser and kepco
+		self._kepco.off()
+
+	def takePVRD2Meas(self, samplename, note, vmpp, voc, jsc, area = 25.08, vstep = 0.005):
+		self.takeRseMeas(
+			vmpp = vmpp,
+			voc = voc,
+			vstep = vstep
+			)
+
+		self.takePLIVMeas(
+			vmpp = vmpp,
+			voc = voc,
+			jsc = jsc,
+			area = area
+			)
+
+		self.setMeas(bias = -12, laserpower = 0, note = 'Reverse Bias EL')
+		self.takeMeas()
+
+		storedOutputDir = self.outputDirectory
+		self.outputDirectory = os.path.join(root, 'PVRD2 Degradation Study')
+		if not os.path.exists(self.outputDirectory):
+			os.mkdir(self.outputDirectory)
+		todaysDate = datetime.datetime.now().strftime('%Y%m%d')
+		self.outputDirectory = os.path.join(root, 'PVRD2 Degradation Study', todaysDate)
+		if not os.path.exists(self.outputDirectory):
+			os.mkdir(self.outputDirectory)
+
+		self.save(samplename = samplename, note = note, reset = True)
+
+		self.outputDirectory = storedOutputDir		
+
 	### helper methods
 	def _waitForTemperature(self):
 		refreshDelay = 0.5	#how long to wait between temperautre checks, in seconds
@@ -534,18 +606,7 @@ class control:
 
 		return power
 
-	#def progressbar(self, it, prefix="", size=60, file=sys.stdout):
-		# count = len(it)
-		# def show(j):
-		# 	x = int(size*j/count)
-		# 	file.write("%s[%s%s] %i/%i\r" % (prefix, "#"*x, "."*(size-x), j, count))
-		# 	file.flush()        
-		# show(0)
-		# for i, item in enumerate(it):
-		# 	yield item
-		# 	show(i+1)
-		# file.write("\n")
-		# file.flush()
+
 	#def normalizePL(self):
 	### used laser spot power map to normalize PL counts to incident optical power
 
