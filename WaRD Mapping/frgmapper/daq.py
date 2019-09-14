@@ -6,6 +6,7 @@ from mcculw.enums import ScanOptions, FunctionType, Status, ChannelType, ULRange
 from mcculw.ul import ULError
 import numpy as np
 import time
+import os 
 
 from _ctypes import POINTER, addressof, sizeof
 from ctypes import c_double, cast
@@ -18,6 +19,7 @@ from mcculw.enums import ScanOptions, FunctionType, Status
 from examples.console import util
 from examples.props.ai import AnalogInputProps
 from mcculw.ul import ULError
+import threading
 
 board_num = 0
 channel_intSphere = 0
@@ -32,6 +34,7 @@ class daq(object):
 		# self.ai_range = ULRange.BIP5VOLTS
 		self.__rate = rate
 		self.__dwelltime = dwelltime
+		self.acquiringBG = False
 
 		# prioritize dwelltime argument when setting counts/rate. if none provided, use explicitly provided counts
 		if dwelltime is not None:
@@ -162,8 +165,27 @@ class daq(object):
 
 		return data
 
-	def readBG(self):
-		file_name = 'C:\\Users\\PVGroup\\Desktop\\frgmapper\\Data\\20190913\\test.data'
+	def startBG(self, filepath = "tempfile.dat"):
+		#starts background DAQ acquisition. Data is written to file designated by filepath
+		self.acquiringBG = True
+		self.filepathBG = filepath
+		self.threadBG = threading.Thread(target = self._readBG, args = (filepath,))
+		self.threadBG.start()
+
+	def stopBG(self, removefile = True):
+		#stops background DAQ acquisition, returns timestamps + data stored in file
+		self.acquiringBG = False
+		self.threadBG.join()
+		data = np.genfromtxt(self.filepathBG, delimiter = ',')
+		numpts = data.shape[0]
+		time = np.linspace(0,numpts,numpts+1)[1:] / self.__rate
+		if removefile:
+			os.remove(self.filepathBG)
+		return time, data
+
+
+	def _readBG(self, file_name):
+		# file_name = 'C:\\Users\\PVGroup\\Desktop\\frgmapper\\Data\\20190913\\test.data'
 		# totalCount = len(self.channels['Number']) * self.__countsPerChannel
 		# memhandle = ul.win_buf_alloc_64(totalCount)
 		# ctypesArray = ctypes.cast(memhandle, ctypes.POINTER(ctypes.c_ulonglong))
@@ -200,7 +222,7 @@ class daq(object):
 		points_to_write = ul_buffer_count * num_buffers_to_write
 
 		# When handling the buffer, we will read 1/10 of the buffer at a time
-		write_chunk_size = int(ul_buffer_count / 10)
+		write_chunk_size = int(ul_buffer_count / 100)
 
 		scan_options = (ScanOptions.BACKGROUND | ScanOptions.CONTINUOUS |
 						ScanOptions.SCALEDATA)
@@ -238,18 +260,19 @@ class daq(object):
 
 			# Create a file for storing the data
 			with open(file_name, 'w') as f:
-				print('Writing data to ' + file_name, end='')
+				# print('Writing data to ' + file_name, end='')
 
 				# Write a header to the file
-				for chan_num in range(low_chan, high_chan + 1):
-					f.write('Channel ' + str(chan_num) + ',')
-				f.write(u'\n')
+				# for chan_num in range(low_chan, high_chan + 1):
+				# 	f.write('Channel ' + str(chan_num) + ',')
+				# f.write(u'\n')
 
 				# Start the write loop
 				prev_count = 0
 				prev_index = 0
 				write_ch_num = low_chan
-				while status != Status.IDLE:
+				keepReading = True
+				while status != Status.IDLE and keepReading:
 					# Get the latest counts
 					status, curr_count, _ = ul.get_status(
 						board_num, FunctionType.DAQIFUNCTION)
@@ -315,11 +338,13 @@ class daq(object):
 							break
 
 						for i in range(write_chunk_size):
-							f.write(str(write_chunk_array[i]) + ',')
+							f.write(str(write_chunk_array[i]))
 							write_ch_num += 1
 							if write_ch_num == high_chan + 1:
 								write_ch_num = low_chan
 								f.write(u'\n')
+							else:
+								f.write(',')
 					else:
 						wrote_chunk = False
 
@@ -330,21 +355,22 @@ class daq(object):
 						prev_index += write_chunk_size
 						# Wrap prev_index to the size of the UL buffer
 						prev_index %= ul_buffer_count
-
-						if prev_count >= points_to_write:
-							break
-						f.write('-----\n')
-						print('.', end='')
+						if not self.acquiringBG:	#make sure to wait until after writing to check if we should stop to avoid truncation
+							keepReading = False
+						# if prev_count >= points_to_write:
+						# 	break
+						# f.write('-----\n')
+						# print('.', end='')
 					else:
 						# Wait a short amount of time for more data to be
 						# acquired.
-						time.sleep(0.1)
+						time.sleep(0.01)
 
 			ul.stop_background(board_num, FunctionType.DAQIFUNCTION)
 		except ULError as e:
 			util.print_ul_error(e)
 		finally:
-			print('Done')
+			# print('Done')
 
 			# Free the buffer in a finally block to prevent errors from causing
 			# a memory leak.
