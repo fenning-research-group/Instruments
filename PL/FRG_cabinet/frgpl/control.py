@@ -23,6 +23,10 @@ if not os.path.exists(root):
 datafolder = os.path.join(root, 'Data')
 if not os.path.exists(datafolder):
 	os.mkdir(datafolder)
+calibrationfolder = os.path.join(root, 'Calibration')
+if not os.path.exists(calibrationfolder):
+	os.mkdir(calibrationfolder)
+
 
 class control:
 
@@ -383,6 +387,14 @@ class control:
 			temp.attrs['description'] = 'TEC stage temperature setpoint for each measurement.'
 
 
+			if self._stage.position[0] is None:
+				stagepos = self.__sampleposition
+			else:
+				stagepos = self._stage.position
+
+			temp = settings.create_dataset('position', data = np.array(stagepos))
+			temp.attrs['description'] = 'Stage position during measurement.'
+
 			if self._sampleOneSun is not None:
 				suns = [x/self._sampleOneSun for x in data['laserpower']]
 				temp = settings.create_dataset('suns', data = np.array(suns))
@@ -395,9 +407,25 @@ class control:
 			temp = calibrations.create_dataset('fov', data = np.array(data['cameraFOV']))
 			temp.attrs['description'] = 'Camera field of view dimensions, in microns.'
 
+
+			temp = settings.create_dataset('samplepos', data = np.array(self.__sampleposition))
+			temp.attrs['description'] = 'Stage position (um)[x,y] where sample is centered in camera field of view'
+
+			temp = settings.create_dataset('detectorpos', data = np.array(self.__detectorposition))
+			temp.attrs['description'] = 'Stage position (um) [x,y] where photodetector is centered in camera field of view'
+
+			temp = settings.create_dataset('camerafov', data = np.array(self.__fov))
+			temp.attrs['description'] = 'Camera field of view (um) [x,y]'
+
 			if self._spotMap is not None:
 				temp = calibrations.create_dataset('spot', data = np.array(self._spotMap))
-				temp.attrs['description'] = 'Map of incident optical power across camera FOV, can be used to normalize PL images.'
+				temp.attrs['description'] = 'Map [y, x] of incident optical power across camera FOV, can be used to normalize PL images.'
+
+				temp = calibrations.create_dataset('spotx', data = np.array(self._spotMapX))
+				temp.attrs['description'] = 'X positions (um) for map of incident optical power across camera FOV, can be used to normalize PL images.'
+
+				temp = calibrations.create_dataset('spoty', data = np.array(self._spotMap))
+				temp.attrs['description'] = 'Y positions (um) for map of incident optical power across camera FOV, can be used to normalize PL images.'
 
 			if self._sampleOneSunSweep is not None:
 				temp = calibrations.create_dataset('onesunsweep', data = np.array(self._sampleOneSunSweep))
@@ -488,6 +516,8 @@ class control:
 
 		self._laser.set(power = laserpower)
 		self._spotMap = np.zeros((numx, numy))
+		self._spotMapX = xpos
+		self._spotMapY = ypos
 		
 		print('Moving to start position ({0}, {1})'.format(xpos[0], ypos[0]))
 		if not self._stage.moveto(x = xpos[0], y = ypos[0]):
