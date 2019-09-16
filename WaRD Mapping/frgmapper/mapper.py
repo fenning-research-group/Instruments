@@ -18,8 +18,8 @@ if not os.path.exists(root):
 datafolder = os.path.join(root, 'Data')
 if not os.path.exists(datafolder):
 	os.mkdir(datafolder)
- 
-class control(object):
+
+class controlGeneric(object):
 	def __init__(self, dwelltime = 0.1):
 		todaysDate = datetime.datetime.now().strftime('%Y%m%d')
 		self.outputdir = os.path.join(root, datafolder, todaysDate)
@@ -27,11 +27,6 @@ class control(object):
 		self.__dwelltime = dwelltime
 		self.__baselineTaken = False
 		self.__baseline = {}
-		self._stage = None
-		self._mono = None
-		self._daq = None
-		self.connect()
-		self.connectStage()
 		plt.ion()	#make plots of results non-blocking
 
 	@property
@@ -41,20 +36,8 @@ class control(object):
 	@dwelltime.setter
 	def dwelltime(self, x):
 		# sets daq counts to match desired measurement time (x, in seconds)
-		self._daq.dwelltime = x
+		self.daq.dwelltime = x
 		self.__dwelltime = x
-
-	def connect(self):
-		#connect to spectrometer hardware
-		self._mono = mono()
-		self._daq = daq(dwelltime = self.dwelltime)
-		print("mono connected")
-		print("daq connected")
-
-	def connectStage(self):
-		#connect to stage hardware
-		self._stage = stage()
-		print("stage connected")
 
 	def takeBaseline(self, wavelengths):
 		# clean up wavelengths input
@@ -68,7 +51,7 @@ class control(object):
 		#dark baseline
 		storeddwelltime = self.__dwelltime
 		self.dwelltime = 5	#take a long acquisition for the dark baseline, as it is a single point measurement
-		out = self._daq.read()
+		out = self.daq.read()
 		self.dwelltime = storeddwelltime
 		
 		self.__baseline['DarkRaw'] = out['IntSphere']['Mean']
@@ -131,45 +114,38 @@ class control(object):
 		else:
 			wavelength = np.array([wavelength])	#assume we have a single int/float value here. if its a string we'll throw a normal error downstream
 		
-
-		if self._stage is None:
-			self.connectStage() # connect stage
-			self._stage.gohome()
-			self._stage.movetocenter()
-		if self._daq is None:
-			self.connect() # connect mono and daq
 		
-		# self._stage.gotocenter() #go to center position, where sample is centered on integrating sphere port. Might need to remove this line later if inconvenient
-		x0, y0 = self._stage.position
+		# self.stage.gotocenter() #go to center position, where sample is centered on integrating sphere port. Might need to remove this line later if inconvenient
+		x0, y0 = self.stage.position
 
 		allx = np.linspace(x0 - xsize/2, x0 + xsize/2, xsteps)
 		ally = np.linspace(y0 - ysize/2, y0 + ysize/2, ysteps)
 		
 
-		self._mono.goToWavelength(wavelength[0])
+		self._goToWavelength(wavelength[0])
 		
-		self._stage.moveto(x = allx[0], y = y0)
-		self._mono.openShutter()		
+		self.stage.moveto(x = allx[0], y = y0)
+		self._lightOn()		
 		xdata = np.zeros((xsteps,))
 		for idx, x in tqdm(enumerate(allx), desc = 'Scanning X', total = allx.shape[0], leave = False):
-			self._stage.moveto(x = x)
-			out = self._daq.read()
+			self.stage.moveto(x = x)
+			out = self.daq.read()
 			signal = [out['IntSphere']['Mean']]
 			ref = [out['Reference']['Mean']]
 			xdata[idx] = self._baselineCorrectionRoutine(wavelengths = wavelength, signal = signal, reference = ref)
-		self._mono.closeShutter()
+		self._lightOff()
 
-		self._stage.moveto(x = x0, y = ally[0])
-		self._mono.openShutter()
+		self.stage.moveto(x = x0, y = ally[0])
+		self._lightOn()
 		ydata = np.zeros((ysteps,))
 		for idx, y in tqdm(enumerate(ally), desc = 'Scanning Y', total = ally.shape[0], leave = False):
-			self._stage.moveto(y = y)
-			out = self._daq.read()
+			self.stage.moveto(y = y)
+			out = self.daq.read()
 			signal = [out['IntSphere']['Mean']]
 			ref = [out['Reference']['Mean']]
 			ydata[idx]= self._baselineCorrectionRoutine(wavelengths = wavelength, signal = signal, reference = ref)
-		self._mono.closeShutter()
-		self._stage.moveto(x = x0, y = y0) #return to original position
+		self._lightOff()
+		self.stage.moveto(x = x0, y = y0) #return to original position
 
 		# if export:
 			# self._save_findArea(x = allx, y = ally, wavelength = wavelength, reflectance_x = xdata, reflectance_y = ydata)
@@ -195,14 +171,14 @@ class control(object):
 		# clean up wavelengths input
 		wavelengths = np.array(wavelengths)
 
-		if self._stage is None:
+		if self.stage is None:
 			self.connectStage() # connect stage
-			self._stage.gohome()
-			self._stage.gotocenter()
-		if self._daq is None:
+			self.stage.gohome()
+			self.stage.gotocenter()
+		if self.daq is None:
 			self.connect() # connect mono and daq
 
-		currentx, currenty = self._stage.position # return position
+		currentx, currenty = self.stage.position # return position
 		if x0 is None:
 			x0 = currentx
 		if y0 is None:
@@ -224,17 +200,17 @@ class control(object):
 					lastScan = True
 				# Condition to map in a snake pattern rather than coming back to first x point
 				if reverse > 0: #go in the forward direction
-					self._stage.moveto(x = x, y = y)
+					self.stage.moveto(x = x, y = y)
 					signal, reference = self._scanroutine(wavelengths = wavelengths, firstscan = firstscan, lastscan = lastscan)
 					data[yidx, xidx, :] = self._baselineCorrectionRoutine(wavelengths, signal, reference)
 					delay[yidx, xidx] = time.time() - startTime #time in seconds since scan began
 				else: # go in the reverse direction
-					self._stage.moveto(x = x, y = ally[ysteps-1-yidx])
+					self.stage.moveto(x = x, y = ally[ysteps-1-yidx])
 					signal,reference = self._scanroutine(wavelengths = wavelengths, firstscan = firstscan, lastscan = lastscan)
 					data[ysteps-1-yidx, xidx, :]= self._baselineCorrectionRoutine(wavelengths, signal, reference) # baseline correction
 					delay[ysteps-1-yidx, xidx] = time.time() - startTime #time in seconds since scan began
 				firstscan = False
-		self._stage.moveto(x = x0, y = y0)	#go back to map center position
+		self.stage.moveto(x = x0, y = y0)	#go back to map center position
 
 		if export:
 			# output = {
@@ -273,10 +249,8 @@ class control(object):
 					signal, reference = self._scanroutine(wavelengths, lastscan = False)
 					reflectance.append(self._baselineCorrectionRoutine(wavelengths, signal, reference))
 				else:	#if we have some time to wait between scans, close the shutter and go to the starting wavelength
-					if self._mono.shutterOpenStatus:
-						self._mono.closeShutter()
-					if np.abs(self._mono.currentWavelength - wavelengths[0]) > self._mono.wavelengthTolerance:
-						self._mono.goToWavelength(wavelength = wavelengths[0])
+					self._lightOff()
+					self._goToWavelength(wavelength = wavelengths[0])
 				
 				currentPercent = round(100*(time.time()-startTime)/duration)
 				if currentPercent > 100:
@@ -288,8 +262,7 @@ class control(object):
 
 				time.sleep(interval/100)	#we can hit our interval within 1% accuracy, but give the cpu some rest
 		
-		if self._mono.shutterOpenStatus:	#close the shutter
-			self._mono.closeShutter()
+		self._lightOff()
 
 		reflectance = np.array(reflectance)
 		delay = np.array(delay)
@@ -305,6 +278,29 @@ class control(object):
 
 
 	# internal methods
+	def _scanroutine(self, wavelengths, firstscan = True, lastscan = True):
+		self._goToWavelength(wavelengths[0])
+		if firstscan:
+			self._lightOn()
+
+		signal = np.zeros(wavelengths.shape)
+		ref = np.zeros(wavelengths.shape)
+		for idx, wl in tqdm(enumerate(wavelengths), total = wavelengths.shape[0], desc = 'Scanning {0:.1f}-{1:.1f} nm'.format(wavelengths[0], wavelengths[-1]), leave = False):
+			self._goToWavelength(wl)
+			out = self.daq.read()
+			signal[idx] = out['IntSphere']['Mean']
+			ref[idx] = out['Reference']['Mean']
+		
+		if flip:	#if we flipped the wavelength direction, lets flip the measurements to line up with the original wavelength order
+			signal = signal.reverse()
+			ref = ref.reverse()
+
+		if lastscan:
+			self._lightOff()
+
+		return signal, ref
+
+
 	def _baselineCorrectionRoutine(self, wavelengths, signal, reference):
 		if self.__baselineTaken == False:
 			raise ValueError("Take baseline first")
@@ -318,33 +314,6 @@ class control(object):
 
 		return corrected
 
-	def _scanroutine(self, wavelengths, firstscan = True, lastscan = True):
-		if np.abs(self._mono.currentWavelength - wavelengths[-1]) < np.abs(self._mono.currentWavelength - wavelengths[0]):	#if our mono is currently closer to the final wavelength than starting
-			flip = True
-			wavelengths = wavelengths.flip(axis = 0)
-		else:
-			flip = False
-
-		self._mono.goToWavelength(wavelengths[0])
-		if firstscan:
-			self._mono.openShutter()
-
-		signal = np.zeros(wavelengths.shape)
-		ref = np.zeros(wavelengths.shape)
-		for idx, wl in tqdm(enumerate(wavelengths), total = wavelengths.shape[0], desc = 'Scanning {0:.1f}-{1:.1f} nm'.format(wavelengths[0], wavelengths[-1]), leave = False):
-			self._mono.goToWavelength(wl)
-			out = self._daq.read()
-			signal[idx] = out['IntSphere']['Mean']
-			ref[idx] = out['Reference']['Mean']
-		
-		if flip:	#if we flipped the wavelength direction, lets flip the measurements to line up with the original wavelength order
-			signal = signal.reverse()
-			ref = ref.reverse()
-
-		if lastscan:
-			self._mono.closeShutter()
-
-		return signal, ref
 
 	### Save methods to dump measurements to hdf5 file. Currently copied from PL code, need to fit this to the mapping data.
 	def _getSavePath(self, label):
@@ -393,13 +362,13 @@ class control(object):
 			temp = settings.create_dataset('dwelltime', data = self.__dwelltime)
 			temp.attrs['description'] = 'Time spent collecting signal at each wavelength.'
 
-			temp = settings.create_dataset('count_rate', data = self._daq.rate)
+			temp = settings.create_dataset('count_rate', data = self.daq.rate)
 			temp.attrs['description'] = 'Acquisition rate (Hz) of data acquisition unit when reading detector voltages.'
 
-			temp = settings.create_dataset('num_counts', data = self._daq.counts)
+			temp = settings.create_dataset('num_counts', data = self.daq.counts)
 			temp.attrs['description'] = 'Voltage counts per detector used to quantify reflectance values.'
 
-			temp = settings.create_dataset('position', data = np.array(self._stage.position))
+			temp = settings.create_dataset('position', data = np.array(self.stage.position))
 			temp.attrs['description'] = 'Stage position (x,y) during scan.'
 
 			# baseline measurement
@@ -567,9 +536,91 @@ class control(object):
 		wave=np.linspace(1700,2000,151,dtype=int)
 		wave=wave.tolist()
 		self.connect()
-		self.connectStage()
 		self.takeBaseline(wave)
 		input('Place stage on integrating sphere: press enter to scan')
 		self.takeScan("test",wave,True,False,False) # green stage
 		input('Place mini module on sphere: press enter to scan')
 		self.takeScan("test",wave,True,False,False) # minimodule
+
+class controlMono(controlGeneric):
+
+	def __init__(self, dwelltime = 0.1):
+		super().__init__(dwelltime = dwelltime)
+		self.__hardwareSetup = 'mono'		#distinguish whether saved data comes from the mono or nkt setup
+		self.stage = None
+		self.mono = None
+		self.daq = None
+		self.connect()
+		plt.ion()	#make plots of results non-blocking
+
+	def connect(self):
+		#connect to mono, stage, detector+daq hardware
+		self.mono = mono()
+		print("mono connected")
+
+		self.daq = daq(dwelltime = self.dwelltime)
+		print("daq connected")
+
+		self.stage = stage()
+		print("stage connected")
+
+	### internal methods specific to mono hardware setup
+
+	def _goToWavelength(self, wavelength):
+		self.mono.goToWavelength(wavelength)
+
+	def _lightOn(self):
+		if not self.mono.shutterOpenStatus:
+			self.mono.openShutter()
+		return True
+
+	def _lightOff(self):
+		if self.mono.shutterOpenStatus:
+			self.mono.closeShutter()
+		return True
+
+
+class controlNKT(controlGeneric):
+
+	def __init__(self, dwelltime = 0.1):
+		super().__init__(dwelltime = dwelltime)
+		self.__hardwareSetup = 'nkt'		#distinguish whether saved data comes from the mono or nkt setup
+		self.stage = None
+		self.select = None
+		self.compact = None
+		self.daq = None
+		self.connect()
+		plt.ion()	#make plots of results non-blocking
+
+	def connect(self):
+		#connect to mono, stage, detector+daq hardware
+		self.compact = compact()
+		print("compact connected")
+
+		self.select = select()
+		print("select+rf driver connected")
+
+		self.daq = daq(dwelltime = self.dwelltime)
+		print("daq connected")
+
+		self.stage = stage()
+		print("stage connected")
+
+	### internal methods specific to nkt hardware setup
+
+	def _goToWavelength(self, wavelength):
+		if not self.select.rfOn:	#make sure the rf driver is on
+			self.select.on()
+		self.select.setAOTF(wavelength)
+		return True
+
+	def _lightOn(self):
+		if not self.compact.emissionOn:
+			self.compact.on()
+		return True
+
+	def _lightOff(self):
+		if self.compact.emissionOn:
+			self.compact.off()
+		return True
+
