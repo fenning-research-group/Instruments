@@ -55,3 +55,27 @@ c.takePLIVMeas(vmpp = 0.4, voc = 0.65, jsc = 40, area = 9)	#vmpp, voc, jsc shoul
 ```
 c.save(samplename = 'Example Sample', note = 'Data taken on example sample')	# saves to the default directory. Sample name and note are just for users own purposes.
 ```
+
+At this point, the data buffer and findOneSun calibrations (assumed to be specific to each sample) are reset. The calibrateSpot laser spot map is preserved, since that shouldn't change from sample to sample.
+
+## PVRD2 specific example
+
+1. Initialize the control object
+```
+import frgpl
+c = frgpl.control.control()
+```
+2. Calibrate your incident PL illumination spot
+```
+c.calibrateSpot()	# stage maps the laser power across the camera field of view
+```
+3. Load the sample onto the stage, run PVRD2 measurement. Optional arguments area and vstep, but these default to the standard 2"x2" area and vstep we want for all our measurements. This command automatically does the following:
+- a one sun calibration
+- one sun PL image
+- -12V reverse bias EL
+- Vmpp-Voc EL sweep for Rse fitting
+- 0.2-1 sun, Vmpp-Voc biased PL images for PLIV fitting
+- saves data to default directory
+```
+c.takePVRD2Meas(samplename = 'GG10', note = '8585 week 2', vmpp = 0.4, voc = 0.65, jsc = 40) #vmpp, voc, jsc come from solar simulator JV measurement.
+```
