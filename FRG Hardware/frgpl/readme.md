@@ -39,7 +39,7 @@ c.takeMeas(note = 'EL')
 import numpy as np
 biases = np.linspace(0.4, 0.65, 26)
 for b in biases:
-	setMeas(voltage = b, laserpower = 0)
+	c.setMeas(voltage = b, laserpower = 0)
 	c.takeMeas(note = 'EL for Rse fitting')
 ```
 Alternatively, use the built in function which is essentially recreating the above lines of code:
