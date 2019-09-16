@@ -81,7 +81,7 @@ class control:
 		self.kepco = kepco()		# connect to Kepco
 		self.laser = laser()		# Connect to OSTECH Laser
 		self.daq = daq()			# connect to NI-USB6000 DAQ
-		self.stage = stage()		# connect to FRG stage
+		self.stage = stage(sampleposition = self.__sampleposition)		# connect to FRG stage
 		self.tec = omega()			# connect to omega PID controller, which is driving the TEC stage.
 		
 	def disconnect(self):
@@ -419,7 +419,7 @@ class control:
 
 			if self._spotMap is not None:
 				temp = calibrations.create_dataset('spot', data = np.array(self._spotMap))
-				temp.attrs['description'] = 'Map [y, x] of incident optical power across camera FOV, can be used to normalize PL images.'
+				temp.attrs['description'] = 'Map [y, x] of incident optical power across camera FOV, can be used to normalize PL images. Laser power set to 0.5 during spot mapping.'
 
 				temp = calibrations.create_dataset('spotx', data = np.array(self._spotMapX))
 				temp.attrs['description'] = 'X positions (um) for map of incident optical power across camera FOV, can be used to normalize PL images.'
@@ -503,7 +503,8 @@ class control:
 
 	def calibrateSpot(self, numx = 21, numy = 21, rngx = None, rngy = None, laserpower = 0.5):
 		### maps an area around the sample FOV, finds the optical power at each point
-
+		if not self.stage._homed:
+			self._stage.gohome()
 		#default calibration area range = camera FOV
 		if rngx is None:
 			rngx = self.__fov[0]
@@ -559,7 +560,8 @@ class control:
 		### Takes images at varied bias and illumination for PLIV fitting of cell parameters
 		### based on https://doi.org/10.1016/j.solmat.2012.10.010
 
-		self.findOneSun(jsc = jsc, area = area)		# calibrate laser power to one-sun injection by matching jsc from solar simulator measurement
+		if self._sampleOneSun is None:
+			self.findOneSun(jsc = jsc, area = area)		# calibrate laser power to one-sun injection by matching jsc from solar simulator measurement
 
 		# full factorial imaging across voltage (vmpp - voc) and illumination (0.2 - 1.0 suns). 25 images
 		allbiases = np.linspace(vmpp, voc, 5)		#range of voltages used for image generation
@@ -627,7 +629,6 @@ class control:
 
 		return True
 
-
 	def _getOpticalPower(self):
 		### reads signal from photodetector, converts to optical power using calibration vs thorlabs Si power meter (last checked 2019-08-20)
 		calibrationFit = [-0.1145, 9.1180]; #polyfit of detector reading vs (Si power meter / detector reading), 2019-08-20
@@ -639,4 +640,3 @@ class control:
 
 	#def normalizePL(self):
 	### used laser spot power map to normalize PL counts to incident optical power
-

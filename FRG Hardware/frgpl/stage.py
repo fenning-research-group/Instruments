@@ -4,12 +4,13 @@ import serial
 import time
 
 class stage:
-	def __init__(self, port = 'COM8'):
+	def __init__(self, sampleposition = (52361, 41000), port = 'COM8'):
 		self.__xlim = (500, 205500)
 		self.__ylim = (500, 194500)
 		self.position = (None, None)
 		self.connect(port = port)	
-		self.__homed = False
+		self._homed = False
+		self.samplePosition = sampleposition
 
 	def connect(self, port = 'COM8'):
 		self.__handle = serial.Serial(port)
@@ -20,7 +21,7 @@ class stage:
 		return True
 
 	def premove(self, x, y):
-		if self.__homed == False:
+		if self._homed == False:
 			print('Please home the stage first with .gohome()')
 			return False
 	
@@ -41,21 +42,21 @@ class stage:
 		self.__handle.write('1/2/'.encode()) #go home in y
 		self.waitforstage()
 
-		self.__homed = True
+		self._homed = True
 		self.postmove(0, 0)
 
 		return True
 
-	# def gotosample(self):
-	# 	x = self.samplePosition[0]
-	# 	y = self.samplePosition[1]
+	def movetosample(self):
+		x = self.samplePosition[0]
+		y = self.samplePosition[1]
 
-	# 	if not self.premove(x = x, y = y):
-	# 		return False
+		if not self.premove(x = x, y = y):
+			return False
 		
-	# 	self.moveto(x = x, y = y) 	#position where sample is roughly centered on int sphere port 2019-08-13
+		self.moveto(x = x, y = y) 	#position where sample is roughly centered on int sphere port 2019-08-13
 
-	# 	return True
+		return True
 
 	# def gotodetector(self):
 	# 	x = self.samplePosition[0]+self.__detectorOffset[0]
