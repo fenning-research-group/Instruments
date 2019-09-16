@@ -17,15 +17,15 @@ import time
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import tqdm
 
-root = 'C:\\Users\\Operator\\Desktop\\frgPL'
+root = 'C:\\Users\\Operator\\Desktop\\frgPL'		#default folder to save data
 if not os.path.exists(root):
 	os.mkdir(root)
 datafolder = os.path.join(root, 'Data')
 if not os.path.exists(datafolder):
 	os.mkdir(datafolder)
-calibrationfolder = os.path.join(root, 'Calibration')
-if not os.path.exists(calibrationfolder):
-	os.mkdir(calibrationfolder)
+# calibrationfolder = os.path.join(root, 'Calibration')
+# if not os.path.exists(calibrationfolder):
+# 	os.mkdir(calibrationfolder)
 
 
 class control:
@@ -72,42 +72,42 @@ class control:
 
 	@temperature.setter
 	def temperature(self, t):
-		if self._tec.setSetPoint(t):
+		if self.tec.setSetPoint(t):
 			self.__temperature = t
 		
 
 	def connect(self):
-		self._camera = camera()		# connect to FLIR camera
-		self._kepco = kepco()		# connect to Kepco
-		self._laser = laser()		# Connect to OSTECH Laser
-		self._daq = daq()			# connect to NI-USB6000 DAQ
-		self._stage = stage()		# connect to FRG stage
-		self._tec = omega()			# connect to omega PID controller, which is driving the TEC stage.
+		self.camera = camera()		# connect to FLIR camera
+		self.kepco = kepco()		# connect to Kepco
+		self.laser = laser()		# Connect to OSTECH Laser
+		self.daq = daq()			# connect to NI-USB6000 DAQ
+		self.stage = stage()		# connect to FRG stage
+		self.tec = omega()			# connect to omega PID controller, which is driving the TEC stage.
 		
 	def disconnect(self):
 		try:
-			self._camera.disconnect()
+			self.camera.disconnect()
 		except:
 			print('Could not disconnect camera')
 
 		try:
-			self._kepco.disconnect()
+			self.kepco.disconnect()
 		except:
 			print('Could not disconnect Kepco')
 		try:
-			self._laser.disconnect()
+			self.laser.disconnect()
 		except:
 			print('Could not disconnect OSTech Laser')
 		try:
-			self._daq.disconnect()
+			self.daq.disconnect()
 		except:
 			print('Could not disconnect DAQ')
 		try:
-			self._stage.disconnect()
+			self.stage.disconnect()
 		except:
 			print('Could not disconnect stage')
 		try:
-			self._tec.disconnect()
+			self.tec.disconnect()
 		except:
 			print('Could not disconnect TEC controller')
 
@@ -141,14 +141,14 @@ class control:
 			numframes = self.numframes
 
 
-		result = self._kepco.set(voltage = bias)
+		result = self.kepco.set(voltage = bias)
 		if result:
 			self.bias = bias
 		else:
 			print('Error setting kepco')
 			# return False
 
-		result = self._laser.set(power = laserpower)
+		result = self.laser.set(power = laserpower)
 
 		if result:
 			self.laserpower = laserpower
@@ -179,11 +179,11 @@ class control:
 			self.setMeas(bias = 0, laserpower = 0, note = 'automatic baseline image')
 			self._waitForTemperature()
 			measdatetime = datetime.datetime.now()
-			temperature = self._tec.getTemperature()
-			im, _, _ = self._camera.capture(frames = self.numframes, imputeHotPixels = imputeHotPixels)
-			v, i = self._kepco.read(counts = self.numIV)
+			temperature = self.tec.getTemperature()
+			im, _, _ = self.camera.capture(frames = self.numframes, imputeHotPixels = imputeHotPixels)
+			v, i = self.kepco.read(counts = self.numIV)
 			irradiance = self._getOpticalPower()
-			temperature = (temperature + self._tec.getTemperature()) / 2	#average the temperature from just before and after the measurement. Typically averaging >1 second of time here.
+			temperature = (temperature + self.tec.getTemperature()) / 2	#average the temperature from just before and after the measurement. Typically averaging >1 second of time here.
 			meas = {
 				'sample': 	self.sampleName,
 				'note':		self.note,
@@ -210,10 +210,10 @@ class control:
 			self.note = savednote
 
 		if not self.__laserON and self.laserpower > 0:
-			self._laser.on()
+			self.laser.on()
 			self.__laserON = True
 		if not self.__kepcoON and self.bias is not 0:
-			self._kepco.on()	#turn on the kepco source
+			self.kepco.on()	#turn on the kepco source
 			self.__kepcoON = True
 
 		time.sleep(self.saturationtime)
@@ -221,17 +221,17 @@ class control:
 		#take image, take IV meas during image
 		self._waitForTemperature()
 		measdatetime = datetime.datetime.now()
-		temperature = self._tec.getTemperature()
-		im, _, _ = self._camera.capture(frames = self.numframes, imputeHotPixels = False)
-		v, i = self._kepco.read(counts = self.numIV)
+		temperature = self.tec.getTemperature()
+		im, _, _ = self.camera.capture(frames = self.numframes, imputeHotPixels = False)
+		v, i = self.kepco.read(counts = self.numIV)
 		irradiance = self._getOpticalPower()
-		temperature = (temperature + self._tec.getTemperature()) / 2	#average the temperature from just before and after the measurement. Typically averaging >1 second of time here.
+		temperature = (temperature + self.tec.getTemperature()) / 2	#average the temperature from just before and after the measurement. Typically averaging >1 second of time here.
 
 		if self.__laserON and lastmeasurement:
-			self._laser.off()
+			self.laser.off()
 			self.__laserON = False
 		if self.__kepcoON and lastmeasurement:
-			self._kepco.off()
+			self.kepco.off()
 			self.__kepcoON = False
 
 		meas = {
@@ -387,10 +387,10 @@ class control:
 			temp.attrs['description'] = 'TEC stage temperature setpoint for each measurement.'
 
 
-			if self._stage.position[0] is None:
+			if self.stage.position[0] is None:
 				stagepos = self.__sampleposition
 			else:
-				stagepos = self._stage.position
+				stagepos = self.stage.position
 
 			temp = settings.create_dataset('position', data = np.array(stagepos))
 			temp.attrs['description'] = 'Stage position during measurement.'
@@ -480,17 +480,17 @@ class control:
 		isc = -jsc * area 	#negative total current, since kepco will be measuring total photocurrent
 
 		laserpowers = np.linspace(0,0.8, 7)[1:]	#skip 0, lean on lower end to reduce incident power
-		self._kepco.set(voltage = 0)
+		self.kepco.set(voltage = 0)
 
 		laserjsc = np.zeros(len(laserpowers))
 
-		self._laser.set(power = laserpowers[0])		#set to first power before turning on laser
-		self._laser.on()
+		self.laser.set(power = laserpowers[0])		#set to first power before turning on laser
+		self.laser.on()
 		for idx, power in enumerate(laserpowers):
-			self._laser.set(power = power)
+			self.laser.set(power = power)
 			time.sleep(self.saturationtime)
-			_,laserjsc[idx] = self._kepco.read(counts = 25)  
-		self._laser.off()
+			_,laserjsc[idx] = self.kepco.read(counts = 25)  
+		self.laser.off()
 
 		pfit = np.polyfit(laserjsc, laserpowers, 2)
 		p = np.poly1d(pfit)	#polynomial fit object where x = measured jsc, y = laser power applied
@@ -514,31 +514,31 @@ class control:
 		ypos = np.linspace(self.__detectorposition[1] - (rngy/2), self.__detectorposition[1] + (rngy/2), numy).astype(int)
 		
 
-		self._laser.set(power = laserpower)
+		self.laser.set(power = laserpower)
 		self._spotMap = np.zeros((numx, numy))
 		self._spotMapX = xpos
 		self._spotMapY = ypos
 		
 		print('Moving to start position ({0}, {1})'.format(xpos[0], ypos[0]))
-		if not self._stage.moveto(x = xpos[0], y = ypos[0]):
+		if not self.stage.moveto(x = xpos[0], y = ypos[0]):
 			print('Error moving stage to starting position ({0}, {1}) - stage is probably not homed. run method ._stage.gohome()'.format(xpos[0], ypos[0]))		
 			return False
 
-		self._laser.on()
+		self.laser.on()
 		flip = 1
 		for m, x in enumerate(xpos):
 			flip = flip * -1
-			self._stage.moveto(x = x)
+			self.stage.moveto(x = x)
 			for n in range(len(ypos)):
 				if flip > 0:		#use nn instead of n, accounts for snaking between lines
 					nn = len(ypos) - n - 1
 				else:
 					nn = n
-				self._stage.moveto(y = ypos[nn])
+				self.stage.moveto(y = ypos[nn])
 				self._spotMap[nn,m] = self._getOpticalPower()
-		self._laser.off()
+		self.laser.off()
 
-		self._stage.moveto(x = self.__sampleposition[0], y = self.__sampleposition[1])	#return stage to camera FOV
+		self.stage.moveto(x = self.__sampleposition[0], y = self.__sampleposition[1])	#return stage to camera FOV
 
 	### group measurement methods
 
@@ -576,8 +576,8 @@ class control:
 					pb.update(1)
 
 
-		self._laser.off()	#turn off the laser and kepco
-		self._kepco.off()
+		self.laser.off()	#turn off the laser and kepco
+		self.kepco.off()
 
 	def takePVRD2Meas(self, samplename, note, vmpp, voc, jsc, area = 25.08, vstep = 0.005):
 		self.takeRseMeas(
@@ -616,7 +616,7 @@ class control:
 
 		startTime = time.time()
 		while (not reachedTemp) and (time.time() - startTime <= self.maxSoakTime):
-			currentTemp = self._tec.getTemperature()
+			currentTemp = self.tec.getTemperature()
 			if np.abs(currentTemp - self.temperature) <= self.temperatureTolerance:
 				reachedTemp = True
 			else:
@@ -631,7 +631,7 @@ class control:
 	def _getOpticalPower(self):
 		### reads signal from photodetector, converts to optical power using calibration vs thorlabs Si power meter (last checked 2019-08-20)
 		calibrationFit = [-0.1145, 9.1180]; #polyfit of detector reading vs (Si power meter / detector reading), 2019-08-20
-		voltage, _, _ = self._daq.acquire()
+		voltage, _, _ = self.daq.acquire()
 		power = voltage * (calibrationFit[0]*voltage + calibrationFit[1])	#measured optical power, units of mW/cm^2
 
 		return power
