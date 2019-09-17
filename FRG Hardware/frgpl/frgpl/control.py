@@ -312,9 +312,9 @@ class control:
 		todaysDate = datetime.datetime.now().strftime('%Y%m%d')
 
 		if self.sampleName is not None:
-			fname = 'frgPL_{0:04d}_{1}_{2}.h5'.format(sampleNumber, todaysDate, self.sampleName)
+			fname = 'frgPL_{0}_{1:04d}_{2}.h5'.format(todaysDate, sampleNumber, self.sampleName)
 		else:
-			fname = 'frgPL_{0:04d}_{1}.h5'.format(sampleNumber, todaysDate)
+			fname = 'frgPL_{0}_{1:04d}.h5'.format(todaysDate, sampleNumber)
 			self.sampleName = ''
 
 		fpath = os.path.join(self.outputDirectory, fname)
