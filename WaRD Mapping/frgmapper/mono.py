@@ -30,6 +30,10 @@ class mono(object):
 		self.shutterOpenStatus = False
 		
 	def goToWavelength(self, targetWavelength):
+		#check to see if we even need to change wavelengths - if we are already at target, don't waste time on further communication with mono
+		self.currentWavelength = float(self.handle.query('WAVE?'))
+		if (abs(self.currentWavelength-targetWavelength)<self.wavelengthTolerance):
+			return True
 
 		if targetWavelength < 350: # No filter
 			time.sleep(self.pauseTime)

@@ -16,8 +16,8 @@ from builtins import *  # @UnusedWildImport
 
 from mcculw import ul
 from mcculw.enums import ScanOptions, FunctionType, Status
-from examples.console import util
-from examples.props.ai import AnalogInputProps
+# from examples.console import util
+# from examples.props.ai import AnalogInputProps
 from mcculw.ul import ULError
 import threading
 
@@ -368,7 +368,7 @@ class daq(object):
 
 			ul.stop_background(board_num, FunctionType.DAQIFUNCTION)
 		except ULError as e:
-			util.print_ul_error(e)
+			pass
 		finally:
 			# print('Done')
 

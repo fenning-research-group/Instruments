@@ -11,6 +11,7 @@ from .daq import daq
 import datetime
 from tqdm import tqdm
 import h5py
+import threading
 
 root = 'C:\\Users\\PVGroup\\Desktop\\frgmapper'
 if not os.path.exists(root):
@@ -38,6 +39,10 @@ class controlGeneric(object):
 		# sets daq counts to match desired measurement time (x, in seconds)
 		self.daq.dwelltime = x
 		self.__dwelltime = x
+
+	def generateWavelengths(self, wmin = 1700, wmax = 2000, wsteps = 151):
+		wavelengths = np.linspace(wmin, wmax, wsteps)
+		return wavelengths
 
 	def takeBaseline(self, wavelengths):
 		# clean up wavelengths input
@@ -199,13 +204,24 @@ class controlGeneric(object):
 				if xidx == xsteps-1 and yidx == ysteps-1:
 					lastScan = True
 				# Condition to map in a snake pattern rather than coming back to first x point
+				wlThread = threading.Thread(target = self._goToWavelength, args = (wavelengths[0],))
+				wlThread.start()
+
 				if reverse > 0: #go in the forward direction
-					self.stage.moveto(x = x, y = y)
+					moveThread = threading.Thread(target = self.stage.moveto, args = (x, y))
+					moveThread.start()
+					wlThread.join()
+					moveThread.join()
+
 					signal, reference = self._scanroutine(wavelengths = wavelengths, firstscan = firstscan, lastscan = lastscan)
 					data[yidx, xidx, :] = self._baselineCorrectionRoutine(wavelengths, signal, reference)
 					delay[yidx, xidx] = time.time() - startTime #time in seconds since scan began
 				else: # go in the reverse direction
-					self.stage.moveto(x = x, y = ally[ysteps-1-yidx])
+					moveThread = threading.Thread(target = self.stage.moveto, args = (x, ally[ysteps-1-yidx]))
+					moveThread.start()
+					wlThread.join()
+					moveThread.join()
+
 					signal,reference = self._scanroutine(wavelengths = wavelengths, firstscan = firstscan, lastscan = lastscan)
 					data[ysteps-1-yidx, xidx, :]= self._baselineCorrectionRoutine(wavelengths, signal, reference) # baseline correction
 					delay[ysteps-1-yidx, xidx] = time.time() - startTime #time in seconds since scan began
@@ -225,7 +241,7 @@ class controlGeneric(object):
 			# }
 			
 			# export as a hfile
-			self.save_scanArea(label = label, x = x, y = y, delay = delay, wavelengths = wavelengths, reflectance = reflectance)
+			self._save_scanArea(label = label, x = allx, y = ally, delay = delay, wavelengths = wavelengths, reflectance = data)
 			# export as a json file
 			# fpath = os.path.join(self.outputdir, label + '.json')
 			# with open(fpath, 'w') as f:
@@ -276,7 +292,6 @@ class controlGeneric(object):
 		# 	plt.title(label)
 		# 	plt.show()
 
-
 	# internal methods
 	def _scanroutine(self, wavelengths, firstscan = True, lastscan = True):
 		self._goToWavelength(wavelengths[0])
@@ -291,15 +306,10 @@ class controlGeneric(object):
 			signal[idx] = out['IntSphere']['Mean']
 			ref[idx] = out['Reference']['Mean']
 		
-		if flip:	#if we flipped the wavelength direction, lets flip the measurements to line up with the original wavelength order
-			signal = signal.reverse()
-			ref = ref.reverse()
-
 		if lastscan:
 			self._lightOff()
 
 		return signal, ref
-
 
 	def _baselineCorrectionRoutine(self, wavelengths, signal, reference):
 		if self.__baselineTaken == False:
@@ -308,7 +318,6 @@ class controlGeneric(object):
 		corrected = np.zeros(wavelengths.shape)
 		for idx, wl in enumerate(wavelengths):
 			meas = signal[idx]/reference[idx]
-			#pdb.set_trace()
 			bl_idx = np.where(self.__baseline['Wavelengths'] == wl)[0]
 			corrected[idx] = (meas-self.__baseline['Dark']) / (self.__baseline['Light'][bl_idx]-self.__baseline['Dark']) 
 
@@ -436,16 +445,16 @@ class controlGeneric(object):
 			temp.attrs['description'] = 'Type of measurement held in this file.'		
 
 			## add scan parameters to settings
-			temp = settings.create_dataset('numx', data = np.array(len(x)))
+			temp = settings.create_dataset('numx', data = np.array(x.shape[0]))
 			temp.attrs['description'] = 'Number of points scanned in x'			
 
-			temp = settings.create_dataset('numy', data = np.array(len(y)))
+			temp = settings.create_dataset('numy', data = np.array(y.shape[0]))
 			temp.attrs['description'] = 'Number of points scanned in y'
 
 			temp = settings.create_dataset('rangex', data = np.array(np.abs(x[-1] - x[0])))
 			temp.attrs['description'] = 'Range scanned in x (mm)'
 
-			temp = settings.create_dataset('rangex', data = np.array(np.abs(y[-1] - y[0])))
+			temp = settings.create_dataset('rangey', data = np.array(np.abs(y[-1] - y[0])))
 			temp.attrs['description'] = 'Range scanned in y (mm)'
 
 			# calculate step size. Calculates the average step size in x and y. If either axis has length 1 (ie line scan), only consider step size
@@ -578,7 +587,6 @@ class controlMono(controlGeneric):
 		if self.mono.shutterOpenStatus:
 			self.mono.closeShutter()
 		return True
-
 
 class controlNKT(controlGeneric):
 
