@@ -73,7 +73,9 @@ class kepco:
 			raw = self.__handle.readline()
 			current[idx] = clean(raw)
 
-		return np.mean(voltage), np.mean(current)
+			vmeas = round(np.mean(voltage), 5)
+			imeas = round(np.mean(current), 5)
+		return vmeas, imeas
 
 
 

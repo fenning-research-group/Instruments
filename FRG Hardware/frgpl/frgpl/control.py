@@ -6,16 +6,16 @@ import time
 import h5py
 import sys
 import matplotlib.pyplot as plt
-from camera import camera
-from stage import stage
-from kepco import kepco
-from daq import daq
-from laser import laser
-from tec import omega
+from frgpl.camera import camera
+from frgpl.stage import stage
+from frgpl.kepco import kepco
+from frgpl.daq import daq
+from frgpl.laser import laser
+from frgpl.tec import omega
 import datetime
 import time
 from mpl_toolkits.axes_grid1 import make_axes_locatable
-import tqdm
+from tqdm import tqdm
 
 root = 'C:\\Users\\Operator\\Desktop\\frgPL'		#default folder to save data
 if not os.path.exists(root):
@@ -42,8 +42,8 @@ class control:
 		self.bias = 0			#bias applied to sample
 		self.laserpower = 0	#current supplied to laser ###may replace this with n_suns, if calibration is enabled
 		self.saturationtime = 0.5	#delay between applying voltage/illumination and beginning measurement
-		self.numIV = 10		#number of IV measurements to average
-		self.numframes = 50	#number of image frames to average
+		self.numIV = 20		#number of IV measurements to average
+		self.numframes = 100	#number of image frames to average
 		self.__temperature = 23	#TEC stage temperature setpoint (C) during measurement
 		self.temperatureTolerance = 0.2	#how close to the setpoint we need to be to take a measurement (C)
 		self.maxSoakTime = 60	# max soak time, in seconds, to wait for temperature to reach set point. If we reach this point, just go ahead with the measurement
@@ -54,6 +54,7 @@ class control:
 		self._sampleOneSunSweep = None # fractional laser power vs photocurrent (Isc), fit to provide one-sun estimate
 		self.__previewFigure = None	#handle for matplotlib figure, used for previewing most recent image results
 		self.__previewAxes = [None, None]	# handle for matplotib axes, used to hold the image and colorbar
+		self.__backgroundImage = None
 
 		# data saving settings
 		todaysDate = datetime.datetime.now().strftime('%Y%m%d')
@@ -130,7 +131,13 @@ class control:
 					if (laserpower > 1) or (laserpower < 0):
 						maxsuns = 1/self._sampleOneSun
 						print('Error: {0} suns is out of range! Based on laser power and current sample, allowed suns range = 0 - {1}.'.format(suns, maxsuns))
-						return False
+						if laserpower > 1:
+							print('Setting to max laser power ({0} suns)'.format(maxsuns))
+							laserpower = 1
+						else:
+							print('Setting laser off')
+							laserpower = 0
+						# return False
 		if saturationtime is None:
 			saturationtime = self.saturationtime
 		if temperature is None:
@@ -160,7 +167,7 @@ class control:
 		self.numframes = numframes
 		self.note = note
 
-	def takeMeas(self, lastmeasurement = True, preview = True, imputeHotPixels = True):
+	def takeMeas(self, lastmeasurement = True, preview = True, imputeHotPixels = False):
 		### takes a measurement with settings stored in method (can be set with .setMeas()).
 		#	measurement settings + results are appended to .__dataBuffer
 		#
@@ -198,16 +205,16 @@ class control:
 				'v_meas':	v,
 				'i_meas':	i,
 				'image':	im,
+				'image_bgcorrected': im-im,
 				'irradiance_ref': irradiance, 
 				'temperature':	temperature,
 				'temperature_setpoint': self.temperature
 			}
 			self.__dataBuffer.append(meas)	
+			self.__backgroundImage = im  	#store background image for displaying preview
 
 			# restore scheduled measurement parameters + continue 	
-			self.laserpower = savedlaserpower
-			self.bias = savedbias
-			self.note = savednote
+			self.setMeas(bias = savedbias, laserpower = savedlaserpower, note = savednote)
 
 		if not self.__laserON and self.laserpower > 0:
 			self.laser.on()
@@ -222,7 +229,7 @@ class control:
 		self._waitForTemperature()
 		measdatetime = datetime.datetime.now()
 		temperature = self.tec.getTemperature()
-		im, _, _ = self.camera.capture(frames = self.numframes, imputeHotPixels = False)
+		im, _, _ = self.camera.capture(frames = self.numframes, imputeHotPixels = imputeHotPixels)
 		v, i = self.kepco.read(counts = self.numIV)
 		irradiance = self._getOpticalPower()
 		temperature = (temperature + self.tec.getTemperature()) / 2	#average the temperature from just before and after the measurement. Typically averaging >1 second of time here.
@@ -248,6 +255,7 @@ class control:
 			'v_meas':	v,
 			'i_meas':	i,
 			'image':	im,
+			'image_bgcorrected': im - self.__backgroundImage,
 			'irradiance_ref': irradiance,
 			'temperature': temperature,
 			'temperature_setpoint': self.temperature
@@ -255,7 +263,7 @@ class control:
 		self.__dataBuffer.append(meas)
 
 		if preview:
-			self.displayPreview(im, v, i)
+			self.displayPreview(im-self.__backgroundImage, v, i)
 
 		return im, v, i
 
@@ -278,7 +286,9 @@ class control:
 		img_handle = self.__previewAxes[0].imshow(img)
 		self.__previewFigure.colorbar(img_handle, cax = self.__previewAxes[1])
 		self.__previewAxes[0].set_title('{0} V, {1} A, {2} Laser'.format(v, i, self.laserpower))
-
+		self.__previewFigure.canvas.draw()
+		self.__previewFigure.canvas.flush_events()
+		time.sleep(1e-4)		#pause allows plot to update during series of measurements
 	def save(self, samplename = None, note = None, outputdirectory = None, reset = True):
 		if len(self.__dataBuffer) == 0:
 			print('Data buffer is empty - no data to save!')
@@ -444,6 +454,9 @@ class control:
 			temp = rawdata.create_dataset('image', data = np.array(data['image']), chunks = True, compression = 'gzip')
 			temp.attrs['description'] = 'Raw images acquired for each measurement.'
 
+			temp = rawdata.create_dataset('image_nobg', data = np.array(data['image_bgcorrected']), chunks = True, compression = 'gzip')
+			temp.attrs['description'] = 'Background-subtracted images acquired for each measurement.'
+
 			temp = rawdata.create_dataset('v', data = np.array(data['v_meas']))
 			temp.attrs['description'] = 'Voltage measured during measurement'
 
@@ -462,6 +475,7 @@ class control:
 			self._sampleOneSunSweep = None
 			self._sampleOneSunJsc = None
 			self.samplename = None
+			self.__backgroundImage = None
 
 			print('Note: sample name and one sun calibration results have been reset to None')
 		
@@ -477,7 +491,7 @@ class control:
 			print('Please provide jsc in units of mA/cm^2, and area in units of cm^2')
 			return False
 
-		isc = -jsc * area 	#negative total current, since kepco will be measuring total photocurrent
+		isc = -jsc * area / 1000 	#negative total current in amps, since kepco will be measuring total photocurrent as amps
 
 		laserpowers = np.linspace(0,0.8, 7)[1:]	#skip 0, lean on lower end to reduce incident power
 		self.kepco.set(voltage = 0)
@@ -496,7 +510,7 @@ class control:
 		p = np.poly1d(pfit)	#polynomial fit object where x = measured jsc, y = laser power applied
 		
 		self._sampleOneSun = p(isc)
-		self._sampleOneSunSweep = [laserpowers, laser]
+		self._sampleOneSunSweep = [laserpowers, laserjsc]
 		self._sampleOneSunJsc = jsc
 
 		return p(isc), laserpowers, laserjsc	#return laser power to match target jsc
@@ -549,12 +563,15 @@ class control:
 		while biases[-1] < voc:
 			biases.append(biases[-1] + vstep)
 
-		for bias in tqdm(biases[:-1], desc = 'Rse EL', total = len(biases), leave = False):	#measure all but last with lastmeasurement = True (doesnt turn kepco off between measurements). Last measurement is normal
-			self.setMeas(bias = bias, laserpower = 0, note = 'part of Rse measurement series')
-			self.takeMeas(lastmeasurement = False)
+		with tqdm(total = len(biases), desc = 'Rse EL', leave = False) as pb:
+			for bias in biases[0:-1]:	#measure all but last with lastmeasurement = True (doesnt turn kepco off between measurements). Last measurement is normal
+				self.setMeas(bias = bias, laserpower = 0, note = 'part of Rse measurement series')
+				self.takeMeas(lastmeasurement = False)
+				pb.update(1)
 
-		self.setMeas(bias = biases[-1], laserpower = 0, note = 'part of Rse measurement series')
-		self.takeMeas(lastmeasurement = True)		
+			self.setMeas(bias = biases[-1], laserpower = 0, note = 'part of Rse measurement series')
+			self.takeMeas(lastmeasurement = True)		
+			pb.update(1)
 
 	def takePLIVMeas(self, vmpp, voc, jsc, area):
 		### Takes images at varied bias and illumination for PLIV fitting of cell parameters
@@ -570,11 +587,11 @@ class control:
 		self.setMeas(bias = 0, suns = 1, temperature = 23, note = 'PLIV - open circuit PL image')
 		self.takeMeas()
 
-		with tqdm(allbiases.shape[0] * allsuns.shape[0], desc = 'PLIV', leave = False) as pb:
+		with tqdm(total = allbiases.shape[0] * allsuns.shape[0], desc = 'PLIV', leave = False) as pb:
 			for suns in allsuns:
 				for bias in allbiases:
-					self.setMeas(bias = bias, suns = suns, temperature = 23, lastmeasurement = False, note = 'PLIV')
-					self.takeMeas()
+					self.setMeas(bias = bias, suns = suns, temperature = 23, note = 'PLIV')
+					self.takeMeas(lastmeasurement = False)
 					pb.update(1)
 
 
