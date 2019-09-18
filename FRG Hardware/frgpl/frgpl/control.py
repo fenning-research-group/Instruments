@@ -44,7 +44,7 @@ class control:
 		self.saturationtime = 0.5	#delay between applying voltage/illumination and beginning measurement
 		self.numIV = 20		#number of IV measurements to average
 		self.numframes = 100	#number of image frames to average
-		self.__temperature = 23	#TEC stage temperature setpoint (C) during measurement
+		self.__temperature = 25	#TEC stage temperature setpoint (C) during measurement
 		self.temperatureTolerance = 0.2	#how close to the setpoint we need to be to take a measurement (C)
 		self.maxSoakTime = 60	# max soak time, in seconds, to wait for temperature to reach set point. If we reach this point, just go ahead with the measurement
 		self.note = ''
@@ -288,7 +288,8 @@ class control:
 		self.__previewAxes[0].set_title('{0} V, {1} A, {2} Laser'.format(v, i, self.laserpower))
 		self.__previewFigure.canvas.draw()
 		self.__previewFigure.canvas.flush_events()
-		time.sleep(1e-4)		#pause allows plot to update during series of measurements
+		time.sleep(1e-4)		#pause allows plot to update during series of measurements 
+
 	def save(self, samplename = None, note = None, outputdirectory = None, reset = True):
 		if len(self.__dataBuffer) == 0:
 			print('Data buffer is empty - no data to save!')
@@ -590,7 +591,7 @@ class control:
 		with tqdm(total = allbiases.shape[0] * allsuns.shape[0], desc = 'PLIV', leave = False) as pb:
 			for suns in allsuns:
 				for bias in allbiases:
-					self.setMeas(bias = bias, suns = suns, temperature = 23, note = 'PLIV')
+					self.setMeas(bias = bias, suns = suns, temperature = 25, note = 'PLIV')
 					self.takeMeas(lastmeasurement = False)
 					pb.update(1)
 
