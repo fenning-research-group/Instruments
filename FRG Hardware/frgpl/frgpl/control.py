@@ -16,6 +16,7 @@ import datetime
 import time
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from tqdm import tqdm
+import threading
 
 root = 'C:\\Users\\Operator\\Desktop\\frgPL'		#default folder to save data
 if not os.path.exists(root):
@@ -23,9 +24,9 @@ if not os.path.exists(root):
 datafolder = os.path.join(root, 'Data')
 if not os.path.exists(datafolder):
 	os.mkdir(datafolder)
-# calibrationfolder = os.path.join(root, 'Calibration')
-# if not os.path.exists(calibrationfolder):
-# 	os.mkdir(calibrationfolder)
+calibrationfolder = os.path.join(root, 'Calibration')
+if not os.path.exists(calibrationfolder):
+	os.mkdir(calibrationfolder)
 
 
 class control:
@@ -516,7 +517,7 @@ class control:
 
 		return p(isc), laserpowers, laserjsc	#return laser power to match target jsc
 
-	def calibrateSpot(self, numx = 21, numy = 21, rngx = None, rngy = None, laserpower = 0.5):
+	def calibrateSpot(self, numx = 21, numy = 21, rngx = None, rngy = None, laserpower = 0.5, export = True):
 		### maps an area around the sample FOV, finds the optical power at each point
 		if not self.stage._homed:
 			self._stage.gohome()
@@ -555,6 +556,91 @@ class control:
 		self.laser.off()
 
 		self.stage.moveto(x = self.__sampleposition[0], y = self.__sampleposition[1])	#return stage to camera FOV
+
+		if export:
+			self.saveSpotCalibration(note = 'Autosaved by calibrateSpot')
+
+	def saveSpotCalibration(self, note = ''):
+		fids = os.listdir(calibrationfolder)
+		sampleNumber = 1
+		for fid in fids:
+			if 'frgPL_spotCalibration' in fid:
+				sampleNumber = sampleNumber + 1
+
+		todaysDate = datetime.datetime.now().strftime('%Y%m%d')
+		todaysTime = datetime.datetime.now().strftime('%H:%M:%S')
+		fname = 'frgPL_spotCalibration_{0}_{1:04d}.h5'.format(todaysDate, sampleNumber)
+		fpath = os.path.join(calibrationfolder, fname)
+
+		## write h5 file
+
+		with h5py.File(fpath, 'w') as f:
+			# sample info
+			info = f.create_group('/info')
+			info.attrs['description'] = 'Metadata describing sample, datetime, etc.'
+			
+			# temp = info.create_dataset('name', data = self.sampleName.encode('utf-8'))
+			# temp.attrs['description'] = 'Sample name.'
+			
+			temp = info.create_dataset('notes', data = np.array(note))
+			temp.attrs['description'] = 'Any notes describing each measurement.'
+
+			temp = info.create_dataset('date', data = np.array(todaysDate))
+			temp.attrs['description'] = 'Measurement date.'
+			
+			temp = info.create_dataset('time', data =  np.array(todaysTime))
+			temp.attrs['description'] = 'Measurement time of day.'
+
+
+			# calibrations
+			calibrations = f.create_group('/calibrations')
+			calibrations.attrs['description'] = 'Instrument calibrations to be used for data analysis.'
+
+			temp = calibrations.create_dataset('samplepos', data = np.array(self.__sampleposition))
+			temp.attrs['description'] = 'Stage position (um)[x,y] where sample is centered in camera field of view'
+
+			temp = calibrations.create_dataset('detectorpos', data = np.array(self.__detectorposition))
+			temp.attrs['description'] = 'Stage position (um) [x,y] where photodetector is centered in camera field of view'
+
+			temp = calibrations.create_dataset('camerafov', data = np.array(self.__fov))
+			temp.attrs['description'] = 'Camera field of view (um) [x,y]'
+
+			temp = calibrations.create_dataset('spot', data = np.array(self._spotMap))
+			temp.attrs['description'] = 'Map [y, x] of incident optical power across camera FOV, can be used to normalize PL images. Laser power set to 0.5 during spot mapping.'
+
+			temp = calibrations.create_dataset('spotx', data = np.array(self._spotMapX))
+			temp.attrs['description'] = 'X positions (um) for map of incident optical power across camera FOV, can be used to normalize PL images.'
+
+			temp = calibrations.create_dataset('spoty', data = np.array(self._spotMap))
+			temp.attrs['description'] = 'Y positions (um) for map of incident optical power across camera FOV, can be used to normalize PL images.'
+
+		print('Data saved to {0}'.format(fpath))	
+
+	def loadSpotCalibration(self, calibrationnumber = None):
+		fids = os.listdir(calibrationfolder)
+		calnum = []
+		for fid in fids:
+			if 'frgPL_spotCalibration' in fid:
+				calnum.append(int(fid.split('_')[2]))
+			else:
+				calnum.append(0)
+
+		calfile = fids[calnum.index(max(calnum))]	#default to most recent calibration
+		
+		if calibrationnumber is not None:
+			try:
+				calfile = fids[calnum.index(max(calibrationnumber))]
+			except:
+				print('Could not find calibration {0}: defaulting to most recent calibration {1}'.format(calibrationnumber, max(calnum)))
+
+		## write h5 file
+
+		with h5py.File(fpath, 'r') as f:
+			self._spotMap = f['calibrations']['spot'][:]
+			self._spotMapX = f['calibrations']['spotx'][:]
+			self._spotMapT = f['calibrations']['spoty'][:]
+
+		return True
 
 	### group measurement methods
 
