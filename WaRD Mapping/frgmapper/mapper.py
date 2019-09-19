@@ -152,25 +152,27 @@ class controlGeneric(object):
 		self._lightOff()
 		self.stage.moveto(x = x0, y = y0) #return to original position
 
-		# if export:
-			# self._save_findArea(x = allx, y = ally, wavelength = wavelength, reflectance_x = xdata, reflectance_y = ydata)
-
+		center = [None, None]
+		size = [None, None]
 		if plot:
 			fig, ax = plt.subplots(2,1)
-			ax[0].plot(allx, xdata)
+			# ax[0].plot(allx, xdata)
+			center[0], size[0] = self._findEdges(allx, xdata, ax = ax[0])
 			ax[0].set_xlabel('X Position (mm)')
 			ax[0].set_ylabel('Reflectance at {0:d} nm'.format(wavelength[0]))
 			ax[0].set_title('X Scan')
 
-			ax[1].plot(ally, ydata)
+			# ax[1].plot(ally, ydata)
+			center[1], size[1] = self._findEdges(ally, ydata, ax = ax[1])
 			ax[1].set_xlabel('Y Position (mm)')
 			ax[1].set_ylabel('Reflectance at {0:d} nm'.format(wavelength[0]))
 			ax[1].set_title('Y Scan')
 			plt.tight_layout()
 			plt.show()
-		# return the centroid, width/bounds if found
-		
-		# HERE add code to find sample area based on the variation of reflectance
+		# print + return the centroid, width/bounds if found (currently no sanity checking to see if bounds are realistic, rely on user to judge the plots for themselves)
+		print('Suggested scanArea parameters:\n\tx0 = {0}\n\ty0 = {1}\n\txsize = {2}\n\tysize = {3}\n'.format(center[0], center[1], size[0], size[1]))
+
+		return center, size
 
 	def scanArea(self, label, wavelengths, xsize, ysize, xsteps = 21, ysteps = 21, x0 = None, y0 = None, export = True):
 		# clean up wavelengths input
@@ -323,7 +325,38 @@ class controlGeneric(object):
 
 		return corrected
 
-
+	def _findEdges(x,r, ax = None):
+		### Given stage positions x and reflectance values r from a line scan at a single wavelength, compute the edges and center of 
+		# the sample area using the first derivative. If given an axis handle, plots the line scan + suggested positions to this axis.
+		r1 = np.gradient(r)
+		# r2 = np.gradient(r1)
+		
+		x1 = x[np.where(r1==r1.max())]
+		x2 = x[np.where(r1==r1.min())]  
+		if x1 > x2:   #force x2 > x1 - initial order depends on whether reflectance is higher or lower on target area vs background
+			x1 = temp
+			x1 = x2
+			x2 = temp    
+		center = np.mean([x1,x2])
+		rng = x2[0]-x1[0]
+		
+		if ax is not None:
+			ax.plot(x,r)
+			ylim0 = [x for x in plt.ylim()]
+			ax.plot([x1,x1], ylim0, color = 'r', linestyle = '--')
+			ax.plot([x2,x2], ylim0, color = 'r', linestyle = '--')
+			ax.plot([center, center], ylim0, color = 'r', linestyle = ':')
+			ylim0[1] += 0.15 * (ylim0[1]-ylim0[0])
+			plt.ylim(ylim0)
+			ax.text(0.5, 0.98,
+					'Center: {0:.3f}, Range: {1:.3f}'.format(center, rng),
+					verticalalignment = 'top', 
+					horizontalalignment = 'center',
+					transform = ax.transAxes,
+					fontsize = 16,
+		#             color = 'g'
+				   )
+		return center, rng
 	### Save methods to dump measurements to hdf5 file. Currently copied from PL code, need to fit this to the mapping data.
 	def _getSavePath(self, label):
 		### figure out the sample directory, name, total filepath
