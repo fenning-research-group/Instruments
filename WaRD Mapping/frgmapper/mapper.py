@@ -100,7 +100,7 @@ class controlGeneric(object):
 			plt.title(label)
 			plt.show()
 
-	def findArea(self, wavelength, xsize = 30, ysize = 30, xsteps = 6, ysteps = 6, plot = True, export = False):
+	def findArea(self, wavelength, xsize = 30, ysize = 30, xsteps = 40, ysteps = 40, plot = True, export = False):
 		### method to find sample edges. does two line scans in a cross over the sample at a single wavelength.
 		# clean up wavelengths input
 		if type(wavelength) is np.ndarray:
@@ -172,7 +172,7 @@ class controlGeneric(object):
 		
 		# HERE add code to find sample area based on the variation of reflectance
 
-	def scanArea(self, label, wavelengths, xsize, ysize, xsteps = 21, ysteps = 21, x0 = None, y0 = None, export = True, verbose = False):
+	def scanArea(self, label, wavelengths, xsize, ysize, xsteps = 21, ysteps = 21, x0 = None, y0 = None, export = True):
 		# clean up wavelengths input
 		wavelengths = np.array(wavelengths)
 
