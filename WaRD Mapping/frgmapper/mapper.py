@@ -166,13 +166,6 @@ class controlGeneric(object):
 		# clean up wavelengths input
 		wavelengths = self._cleanWavelengthInput(wavelengths)
 
-		if self.stage is None:
-			self.connectStage() # connect stage
-			self.stage.gohome()
-			self.stage.gotocenter()
-		if self.daq is None:
-			self.connect() # connect mono and daq
-
 		currentx, currenty = self.stage.position # return position
 		if x0 is None:
 			x0 = currentx
@@ -224,14 +217,7 @@ class controlGeneric(object):
 
 	def flyscanArea(self, label, wavelengths, xsize, ysize, xsteps = 21, ysteps = 21, x0 = None, y0 = None, export = True):
 		# clean up wavelengths input
-		wavelengths = np.array(wavelengths)
-
-		if self.stage is None:
-			self.connectStage() # connect stage
-			self.stage.gohome()
-			self.stage.gotocenter()
-		if self.daq is None:
-			self.connect() # connect mono and daq
+		wavelengths = self._cleanWavelengthInput(wavelengths)
 
 		currentx, currenty = self.stage.position # return position
 		if x0 is None:
@@ -610,7 +596,6 @@ class controlGeneric(object):
 			temp.attrs['description'] = 'Time (seconds) that each scan was acquired at. Measured as seconds since first scan point.'			
 
 		print('Data saved to {0}'.format(fpath))		
-
 
 	def _save_flyscanArea(self, label, x, y, delay, wavelengths, reflectance):
 		
