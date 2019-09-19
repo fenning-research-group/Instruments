@@ -1,0 +1,5 @@
+https://github.com/mccdaq/mcculw/blob/master/mcculw/ul.py
+
+	# disconnects the daq device
+	def discDaq(self):
+		ul.release_daq_device(self.board_num)
