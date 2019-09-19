@@ -16,6 +16,7 @@ import datetime
 import time
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from tqdm import tqdm
+import threading
 
 root = 'C:\\Users\\Operator\\Desktop\\frgPL'		#default folder to save data
 if not os.path.exists(root):
@@ -23,9 +24,9 @@ if not os.path.exists(root):
 datafolder = os.path.join(root, 'Data')
 if not os.path.exists(datafolder):
 	os.mkdir(datafolder)
-# calibrationfolder = os.path.join(root, 'Calibration')
-# if not os.path.exists(calibrationfolder):
-# 	os.mkdir(calibrationfolder)
+calibrationfolder = os.path.join(root, 'Calibration')
+if not os.path.exists(calibrationfolder):
+	os.mkdir(calibrationfolder)
 
 
 class control:
@@ -67,6 +68,7 @@ class control:
 		self.__detectorposition = (67450, 102000)	#delta position between detector and sampleposition, um.
 		self.__fov = (77000, 56000)	#dimensions of FOV, um
 
+		self.connect()
 	@property
 	def temperature(self):
 		return self.__temperature
@@ -141,7 +143,7 @@ class control:
 		if saturationtime is None:
 			saturationtime = self.saturationtime
 		if temperature is None:
-			temperature = self.temperature
+			temperature = self.__temperature
 		if numIV is None:
 			numIV = self.numIV
 		if numframes is None:
@@ -162,6 +164,15 @@ class control:
 		else:
 			print('Error setting laser')
 			# return False
+
+
+		result = self.tec.setSetPoint(temperature)
+		if result:
+			self.__temperature = temperature
+		else:
+			print('Error setting TEC temperature')
+			# return False
+
 
 		self.numIV = numIV
 		self.numframes = numframes
@@ -255,7 +266,7 @@ class control:
 			'v_meas':	v,
 			'i_meas':	i,
 			'image':	im,
-			'image_bgcorrected': im - self.__backgroundImage,
+			'image_bgcorrected': self._backgroundCorrection(im),
 			'irradiance_ref': irradiance,
 			'temperature': temperature,
 			'temperature_setpoint': self.temperature
@@ -263,7 +274,7 @@ class control:
 		self.__dataBuffer.append(meas)
 
 		if preview:
-			self.displayPreview(im-self.__backgroundImage, v, i)
+			self.displayPreview(self._backgroundCorrection(im), v, i)
 
 		return im, v, i
 
@@ -290,7 +301,7 @@ class control:
 		self.__previewFigure.canvas.flush_events()
 		time.sleep(1e-4)		#pause allows plot to update during series of measurements 
 
-	def save(self, samplename = None, note = None, outputdirectory = None, reset = True):
+	def save(self, samplename = None, note = '', outputdirectory = None, reset = True):
 		if len(self.__dataBuffer) == 0:
 			print('Data buffer is empty - no data to save!')
 			return False
@@ -365,7 +376,7 @@ class control:
 			temp = info.create_dataset('name', data = self.sampleName.encode('utf-8'))
 			temp.attrs['description'] = 'Sample name.'
 			
-			temp = info.create_dataset('notes', data = np.array([x.encode('utf-8') for x in data['note']]))
+			temp = info.create_dataset('notes', data = np.array(note.encode('utf-8')))
 			temp.attrs['description'] = 'Any notes describing each measurement.'
 
 			date = info.create_dataset('date', data = np.array([x.encode('utf-8') for x in data['date']]))
@@ -381,6 +392,9 @@ class control:
 
 			temp = settings.create_dataset('vbias', data = np.array(data['bias']))
 			temp.attrs['description'] = 'Nominal voltage bias set by Kepco during measurement.'
+
+			temp = settings.create_dataset('notes', data = np.array([x.encode('utf-8') for x in data['note']]))
+			temp.attrs['description'] = 'Any notes describing each measurement.'
 
 			temp = settings.create_dataset('laserpower', data = np.array(data['laserpower']))
 			temp.attrs['description'] = 'Fractional laser power during measurement. Calculated as normalized laser current (max current = 55 A). Laser is operated at steady state.'
@@ -414,10 +428,6 @@ class control:
 			# calibrations
 			calibrations = f.create_group('/calibrations')
 			calibrations.attrs['description'] = 'Instrument calibrations to be used for data analysis.'
-
-			temp = calibrations.create_dataset('fov', data = np.array(data['cameraFOV']))
-			temp.attrs['description'] = 'Camera field of view dimensions, in microns.'
-
 
 			temp = settings.create_dataset('samplepos', data = np.array(self.__sampleposition))
 			temp.attrs['description'] = 'Stage position (um)[x,y] where sample is centered in camera field of view'
@@ -455,7 +465,7 @@ class control:
 			temp = rawdata.create_dataset('image', data = np.array(data['image']), chunks = True, compression = 'gzip')
 			temp.attrs['description'] = 'Raw images acquired for each measurement.'
 
-			temp = rawdata.create_dataset('image_nobg', data = np.array(data['image_bgcorrected']), chunks = True, compression = 'gzip')
+			temp = rawdata.create_dataset('image_bgc', data = np.array(data['image_bgcorrected']), chunks = True, compression = 'gzip')
 			temp.attrs['description'] = 'Background-subtracted images acquired for each measurement.'
 
 			temp = rawdata.create_dataset('v', data = np.array(data['v_meas']))
@@ -516,10 +526,10 @@ class control:
 
 		return p(isc), laserpowers, laserjsc	#return laser power to match target jsc
 
-	def calibrateSpot(self, numx = 21, numy = 21, rngx = None, rngy = None, laserpower = 0.5):
+	def calibrateSpot(self, numx = 21, numy = 21, rngx = None, rngy = None, laserpower = 0.5, export = True):
 		### maps an area around the sample FOV, finds the optical power at each point
 		if not self.stage._homed:
-			self._stage.gohome()
+			self.stage.gohome()
 		#default calibration area range = camera FOV
 		if rngx is None:
 			rngx = self.__fov[0]
@@ -531,7 +541,7 @@ class control:
 		
 
 		self.laser.set(power = laserpower)
-		self._spotMap = np.zeros((numx, numy))
+		self._spotMap = np.zeros((numy, numx))
 		self._spotMapX = xpos
 		self._spotMapY = ypos
 		
@@ -555,6 +565,92 @@ class control:
 		self.laser.off()
 
 		self.stage.moveto(x = self.__sampleposition[0], y = self.__sampleposition[1])	#return stage to camera FOV
+
+		if export:
+			self.saveSpotCalibration(note = 'Autosaved by calibrateSpot')
+
+	def saveSpotCalibration(self, note = ''):
+		fids = os.listdir(calibrationfolder)
+		sampleNumber = 1
+		for fid in fids:
+			if 'frgPL_spotCalibration' in fid:
+				sampleNumber = sampleNumber + 1
+
+		todaysDate = datetime.datetime.now().strftime('%Y%m%d')
+		todaysTime = datetime.datetime.now().strftime('%H:%M:%S')
+		fname = 'frgPL_spotCalibration_{0}_{1:04d}.h5'.format(todaysDate, sampleNumber)
+		fpath = os.path.join(calibrationfolder, fname)
+
+		## write h5 file
+
+		with h5py.File(fpath, 'w') as f:
+			# sample info
+			info = f.create_group('/info')
+			info.attrs['description'] = 'Metadata describing sample, datetime, etc.'
+			
+			# temp = info.create_dataset('name', data = self.sampleName.encode('utf-8'))
+			# temp.attrs['description'] = 'Sample name.'
+			
+			temp = info.create_dataset('notes', data = note.encode())
+			temp.attrs['description'] = 'Any notes describing each measurement.'
+
+			temp = info.create_dataset('date', data = todaysDate.encode())
+			temp.attrs['description'] = 'Measurement date.'
+			
+			temp = info.create_dataset('time', data =  todaysTime.encode())
+			temp.attrs['description'] = 'Measurement time of day.'
+
+
+			# calibrations
+			calibrations = f.create_group('/calibrations')
+			calibrations.attrs['description'] = 'Instrument calibrations to be used for data analysis.'
+
+			temp = calibrations.create_dataset('samplepos', data = np.array(self.__sampleposition))
+			temp.attrs['description'] = 'Stage position (um)[x,y] where sample is centered in camera field of view'
+
+			temp = calibrations.create_dataset('detectorpos', data = np.array(self.__detectorposition))
+			temp.attrs['description'] = 'Stage position (um) [x,y] where photodetector is centered in camera field of view'
+
+			temp = calibrations.create_dataset('camerafov', data = np.array(self.__fov))
+			temp.attrs['description'] = 'Camera field of view (um) [x,y]'
+
+			temp = calibrations.create_dataset('spot', data = np.array(self._spotMap))
+			temp.attrs['description'] = 'Map [y, x] of incident optical power across camera FOV, can be used to normalize PL images. Laser power set to 0.5 during spot mapping.'
+
+			temp = calibrations.create_dataset('spotx', data = np.array(self._spotMapX))
+			temp.attrs['description'] = 'X positions (um) for map of incident optical power across camera FOV, can be used to normalize PL images.'
+
+			temp = calibrations.create_dataset('spoty', data = np.array(self._spotMapY))
+			temp.attrs['description'] = 'Y positions (um) for map of incident optical power across camera FOV, can be used to normalize PL images.'
+
+		print('Data saved to {0}'.format(fpath))	
+
+	def loadSpotCalibration(self, calibrationnumber = None):
+		fids = os.listdir(calibrationfolder)
+		calnum = []
+		for fid in fids:
+			if 'frgPL_spotCalibration' in fid:
+				calnum.append(int(fid.split('_')[3].split('.')[0]))
+			else:
+				calnum.append(0)
+
+		calfile = fids[calnum.index(max(calnum))]	#default to most recent calibration
+		
+		if calibrationnumber is not None:
+			try:
+				calfile = fids[calnum.index(max(calibrationnumber))]
+			except:
+				print('Could not find calibration {0}: defaulting to most recent calibration {1}'.format(calibrationnumber, max(calnum)))
+		fpath = os.path.join(calibrationfolder, calfile)
+		## write h5 file
+
+		with h5py.File(fpath, 'r') as f:
+			self._spotMap = f['calibrations']['spot'][:]
+			self._spotMapX = f['calibrations']['spotx'][:]
+			self._spotMapT = f['calibrations']['spoty'][:]
+
+		print('Loaded calibration {0} from {1}.'.format(calibrationnumber, fpath))
+		return True
 
 	### group measurement methods
 
@@ -655,6 +751,10 @@ class control:
 
 		return power
 
+	def _backgroundCorrection(self, img):
+		img = img - self.__backgroundImage
+		img[img<0] = 0
 
+		return img
 	#def normalizePL(self):
 	### used laser spot power map to normalize PL counts to incident optical power
