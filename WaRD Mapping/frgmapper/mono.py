@@ -18,11 +18,6 @@ class mono(object):
 
 		self.wavelengthTolerance = 0.1 #nm
 		self.shutterOpenStatus = False
-		
-		## add del method to close handle
-	def __del__(self):
-		self.closeShutter()
-		self.handle.clear()
 
 	def openShutter(self):
 		if not self.shutterOpenStatus:
