@@ -13,7 +13,7 @@ class lockin(object):
 		# Send initialization commands
 		self.handle.write('OUTX 1') # Set the communication mode to GPIB
 		self.handle.write('FMOD 0') # Set to external reference mode (ref signal from the chopper wheel)
-		self.handle.write('RSLP 1') # Set slope to Sine(0) for referene signal trigger
+		self.handle.write('RSLP 1') # Set slope to Sine(0) for reference signal trigger
 		self.handle.write('ISRC 0') # Set input signal to channel A (IMPORTANT FOR CONNECTION!)
 		self.handle.write('IGND 0') # Set to floating ground
 		self.handle.write('ICPL 0') # Set to AC coupling
@@ -110,7 +110,9 @@ class lockin(object):
 		self.handle.write(tc_string)
 		#pdb.set_trace()
 	
-	def SetLockinSensitivity(self): # set sensitivity, ie adjust amplification to avoid lockin overload (signal saturation)
+	# set sensitivity, ie adjust amplification to avoid lockin overload (signal saturation)
+	# (Do this for with the light beam on at a wavelength having the highest intensity in 1700-2000 nm range)
+	def SetLockinSensitivity(self): 
 		self.handle.write('SENS ?') # Query sensitivity
 		sens=int(self.handle.read()) # Number corresponding to the sensitivity (manual p. 5-6)
 
@@ -156,4 +158,5 @@ class lockin(object):
 
 		time.sleep(10*self.SRS_TC)
 
+	# Function sweeping the wavelength over the wavelength range and measuring raw intensity to find the max
 

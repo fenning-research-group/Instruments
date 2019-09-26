@@ -4,6 +4,7 @@ from _ctypes import POINTER, addressof, sizeof
 from mcculw import ul
 from mcculw.enums import ScanOptions, FunctionType, Status, ChannelType, ULRange, InterfaceType
 from mcculw.ul import ULError
+from .lockin import lockin
 import numpy as np
 import time
 import os 
@@ -14,16 +15,13 @@ import time
 
 from builtins import *  # @UnusedWildImport
 
-from mcculw import ul
-from mcculw.enums import ScanOptions, FunctionType, Status
-from examples.console import util
-from examples.props.ai import AnalogInputProps
-from mcculw.ul import ULError
+#from examples.console import util
+#from examples.props.ai import AnalogInputProps
 import threading
 
 board_num = 0
 channel_intSphere = 0
-channel_ref = 2
+channel_ref = 2 # will be replaced by the lockin reading
 ai_range = ULRange.BIP5VOLTS
 max_rate = 50e3
 

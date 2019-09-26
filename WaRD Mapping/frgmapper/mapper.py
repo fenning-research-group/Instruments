@@ -8,6 +8,7 @@ import datetime
 from .stage import stage
 from .mono import mono
 from .daq import daq
+#from .lockin import lockin
 import datetime
 from tqdm import tqdm
 import h5py
