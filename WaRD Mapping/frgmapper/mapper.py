@@ -56,10 +56,13 @@ class controlGeneric(object):
 		
 		#dark baseline
 		storeddwelltime = self.__dwelltime
+		storedUseExtClock = self.daq.useExtClock
 		self.dwelltime = 5	#take a long acquisition for the dark baseline, as it is a single point measurement
+		self.daq.useExtClock = False
 		out = self.daq.read()
 		self.dwelltime = storeddwelltime
-		
+		self.daq.useExtClock = storedUseExtClock
+
 		self.__baseline['DarkRaw'] = out['IntSphere']['Mean']
 		self.__baseline['DarkRefRaw'] = out['Reference']['Mean']
 		self.__baseline['Dark'] = self.__baseline['DarkRaw'] / self.__baseline['DarkRefRaw']
@@ -160,12 +163,12 @@ class controlGeneric(object):
 			fig, ax = plt.subplots(2,1)
 			ax[0].plot(allx, xdata)
 			ax[0].set_xlabel('X Position (mm)')
-			ax[0].set_ylabel('Reflectance at {0:d} nm'.format(wavelength[0]))
+			ax[0].set_ylabel('Reflectance at {0} nm'.format(wavelength[0]))
 			ax[0].set_title('X Scan')
 
 			ax[1].plot(ally, ydata)
 			ax[1].set_xlabel('Y Position (mm)')
-			ax[1].set_ylabel('Reflectance at {0:d} nm'.format(wavelength[0]))
+			ax[1].set_ylabel('Reflectance at {0} nm'.format(wavelength[0]))
 			ax[1].set_title('Y Scan')
 			plt.tight_layout()
 			plt.show()
@@ -561,6 +564,7 @@ class controlMono(controlGeneric):
 		self.mono = None
 		self.daq = None
 		self.connect()
+		self.daq.useExtClock = False	#dont use external trigger to drive daq
 		plt.ion()	#make plots of results non-blocking
 
 	def connect(self):
@@ -599,6 +603,7 @@ class controlNKT(controlGeneric):
 		self.compact = None
 		self.daq = None
 		self.connect()
+		self.daq.useExtClock = True	#use external Compact trigger to drive daq, match the laser pulse train
 		plt.ion()	#make plots of results non-blocking
 
 	def connect(self):

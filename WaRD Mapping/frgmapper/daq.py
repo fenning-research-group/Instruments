@@ -29,12 +29,13 @@ max_rate = 50e3
 
 class daq(object):
 
-	def __init__(self, channel_intSphere = 0, channel_ref = 2, rate = 10000, dwelltime = None, counts = 500):
+	def __init__(self, channel_intSphere = 0, channel_ref = 2, rate = 10000, dwelltime = None, counts = 500, extclock = False):
 		self.board_num = 0
 		# self.ai_range = ULRange.BIP5VOLTS
 		self.__rate = rate
 		self.__dwelltime = dwelltime
 		self.acquiringBG = False
+		self.useExtClock = extclock
 
 		# prioritize dwelltime argument when setting counts/rate. if none provided, use explicitly provided counts
 		if dwelltime is not None:
@@ -119,7 +120,10 @@ class daq(object):
 		memhandle = ul.scaled_win_buf_alloc(totalCount)
 		ctypesArray = ctypes.cast(memhandle, ctypes.POINTER(ctypes.c_double))
 		
-		scan_options = ScanOptions.FOREGROUND | ScanOptions.SCALEDATA
+		if self.useExtClock:
+			scan_options = ScanOptions.FOREGROUND | ScanOptions.SCALEDATA | ScanOptions.EXTCLOCK
+		else:
+			scan_options = ScanOptions.FOREGROUND | ScanOptions.SCALEDATA
 
 		ul.daq_in_scan(
 			board_num = self.board_num,
@@ -176,7 +180,6 @@ class daq(object):
 			os.remove(self.filepathBG)
 		return time, data
 
-
 	def _readBG(self, file_name):
 		# file_name = 'C:\\Users\\PVGroup\\Desktop\\frgmapper\\Data\\20190913\\test.data'
 		# totalCount = len(self.channels['Number']) * self.__countsPerChannel
@@ -217,8 +220,10 @@ class daq(object):
 		# When handling the buffer, we will read 1/10 of the buffer at a time
 		write_chunk_size = int(ul_buffer_count / 100)
 
-		scan_options = (ScanOptions.BACKGROUND | ScanOptions.CONTINUOUS |
-						ScanOptions.SCALEDATA)
+		if self.useExtClock:
+			scan_options = ScanOptions.BACKGROUND | ScanOptions.CONTINUOUS | ScanOptions.SCALEDATA | ScanOptions.EXTCLOCK
+		else:
+			scan_options = ScanOptions.BACKGROUND | ScanOptions.CONTINUOUS | ScanOptions.SCALEDATA
 
 		memhandle = ul.scaled_win_buf_alloc(ul_buffer_count)
 

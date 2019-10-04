@@ -12,6 +12,7 @@ if (ctypes.sizeof(ctypes.c_voidp) == 4):
         print('Loading x86 DLL from:', dllFolder + r'\NKTPDLL\x86\NKTPDLL.dll')
         NKTPDLL = ctypes.cdll.LoadLibrary( dllFolder + r'\NKTPDLL\x86\NKTPDLL.dll' )
 else:
+        dllFolder = r'C:\Users\Public\Documents\NKT Photonics\SDK'
         print('Loading x64 DLL from:', dllFolder + r'\NKTPDLL\x64\NKTPDLL.dll')
         NKTPDLL = ctypes.cdll.LoadLibrary( dllFolder + r'\NKTPDLL\x64\NKTPDLL.dll')
 
