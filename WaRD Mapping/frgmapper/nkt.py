@@ -194,11 +194,11 @@ class select(object):
 		self._range = [None] * 2
 		self.__maxRange = (1100, 2000) #set the min/max wavelength range allowed by AOTF here
 		self.rfOn = None
-
+		self.wlDelay = 0.01
 		if self.connect():
 			self.off()	#turn off RF to allow AOTF selection
 			self.selectAOTF(1)	#set to IR AOTF. 
-			self.setAOTF(wavelength = self.__defaultWavelengths, amplitude = [1000] + [0] * 7)
+			self.setAOTF(wavelength = self.__defaultWavelengths, amplitude = [1] + [0] * 7)
 			self.on()	#turn on RF
 			self.setWavelengthRange()	#set range to default range
 		
@@ -278,6 +278,8 @@ class select(object):
 
 		if leaveOn:
 			self.on()
+
+		time.sleep(self.wlDelay)	#allow select to execute changes
 		return True
 
 	def setAOTF(self, wavelength, amplitude = None, gain = None):
@@ -363,6 +365,7 @@ class select(object):
 				print('Error encountered when trying to change gain {0} to {1}:'.format(idx, g/1000), RegisterResultTypes(result))
 				success = False
 
+		time.sleep(self.wlDelay)	#allow select to execute changes
 		return success
 
 	def setSingleAOTF(self, wavelength, amplitude = None, gain = None):
@@ -391,16 +394,17 @@ class select(object):
 		if result == 0:
 			self._wavelengths[0] = wavelength
 		else:
-			print('Error encountered when trying to change wavelength {0} to {1} nm:'.format(idx, wavelength/1000), RegisterResultTypes(result))
+			print('Error encountered when trying to change wavelength for channel {0} to {1} nm:'.format(0, wavelength/1000), RegisterResultTypes(result))
 			success = False
 
-		# # result = nktdll.registerWriteU16(self.__handle, self.__address, int('0xB{0}'.format(idx),16), a, -1)
-		# result = nktdll.registerWriteU16(self.__handle, self.__address, 0xB0, amplitude, -1)
-		# if result == 0:
-		# 	self._amplitudes[0] = amplitude
-		# else:
-		# 	print('Error encountered when trying to change amplitude {0} to {1}:'.format(idx, amplitude/1000), RegisterResultTypes(result))
-		# 	success = False
+		# result = nktdll.registerWriteU16(self.__handle, self.__address, int('0xB{0}'.format(idx),16), a, -1)
+		if self._amplitudes[0] != amplitude:
+			result = nktdll.registerWriteU16(self.__handle, self.__address, 0xB0, amplitude, -1)
+			if result == 0:
+				self._amplitudes[0] = amplitude
+			else:
+				print('Error encountered when trying to change amplitude for channel {0} to {1}:'.format(0, amplitude/1000), RegisterResultTypes(result))
+				success = False
 
 		# # result = nktdll.registerWriteU16(self.__handle, self.__address, int('0xC{0}'.format(idx),16), g, -1)
 		# result = nktdll.registerWriteU16(self.__handle, self.__address, 0xC0, gain, -1)
@@ -411,8 +415,8 @@ class select(object):
 		# 	print('Error encountered when trying to change gain {0} to {1}:'.format(idx, gain/1000), RegisterResultTypes(result))
 		# 	success = False
 
+		time.sleep(self.wlDelay)	#allow select to execute changes
 		return success
-
 
 	def setWavelengthRange(self, wmin = None, wmax = None):
 		## takes inputs in nm
