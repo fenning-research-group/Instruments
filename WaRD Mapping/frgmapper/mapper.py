@@ -12,6 +12,7 @@ import datetime
 from tqdm import tqdm
 import h5py
 import threading
+from .nkt import compact, select
 
 root = 'C:\\Users\\PVGroup\\Desktop\\frgmapper'
 if not os.path.exists(root):
@@ -619,7 +620,7 @@ class controlNKT(controlGeneric):
 	def _goToWavelength(self, wavelength):
 		if not self.select.rfOn:	#make sure the rf driver is on
 			self.select.on()
-		self.select.setAOTF(wavelength)
+		self.select.setSingleAOTF(wavelength)
 		return True
 
 	def _lightOn(self):

@@ -152,14 +152,7 @@ class daq(object):
 			data[ch]['Mean'] = np.mean(data[ch]['Raw'])
 			data[ch]['Std'] = np.std(data[ch]['Raw'])
 
-		# for ch in self.channels['Label']:
-		#     tempdat = {'Raw': []}
-		#     for each in range(self.__countsPerChannel):
-		#         tempdat['Raw'].append(ctypesArray[dataIndex])
-		#         dataIndex += 1
-		#     tempdat['Mean'] = np.mean(tempdat['Raw'])
-		#     tempdat['Std'] = np.std(tempdat['Raw'])
-		#     data[ch] = tempdat
+		data['Reference']['Mean'] = np.ones(data['Reference']['Mean'].shape)	#set reference detector readings to 1
 
 		ul.win_buf_free(memhandle)
 
