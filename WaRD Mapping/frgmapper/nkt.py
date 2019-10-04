@@ -198,7 +198,7 @@ class select(object):
 		if self.connect():
 			self.off()	#turn off RF to allow AOTF selection
 			self.selectAOTF(1)	#set to IR AOTF. 
-			self.setAOTF(wavelength = self.__defaultWavelengths, amplitude = [0] * 8)
+			self.setAOTF(wavelength = self.__defaultWavelengths, amplitude = [1000] + [0] * 7)
 			self.on()	#turn on RF
 			self.setWavelengthRange()	#set range to default range
 		

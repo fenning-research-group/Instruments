@@ -578,6 +578,11 @@ class controlMono(controlGeneric):
 		self.stage = stage()
 		print("stage connected")
 
+	def disconnect(self):
+		self.mono.disconnect()
+		self.daq.disconnect()
+		self.stage.disable()
+		
 	### internal methods specific to mono hardware setup
 
 	def _goToWavelength(self, wavelength):
@@ -619,6 +624,12 @@ class controlNKT(controlGeneric):
 
 		self.stage = stage()
 		print("stage connected")
+
+	def disconnect(self):
+		self.compact.disconnect()
+		self.select.disconnect()
+		self.daq.disconnect()
+		self.stage.disable()
 
 	### internal methods specific to nkt hardware setup
 
