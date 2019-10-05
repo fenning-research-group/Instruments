@@ -56,16 +56,32 @@ class compact(object):
 			nktdll.closePorts(self.__handle)
 			self.__handle = None
 			self.__address = None
+	
+	def checkInterlock(self):
+		interlockStatus = True
+
+		bits = self.getStatusBits()
+		if bits[1]:
+			print('Interlock is off - may need to press reset button on front panel of the Compact')
+			interlockStatus = False
+		if bits[3]:
+			print('Interlock loop is off - is the door open?')
+			interlockStatus = False
+
+		return interlockStatus
 
 	def on(self):
 		if not self.emissionOn:
-			result = nktdll.registerWriteU8(self.__handle, self.__address, 0x30, 1, -1) # check whether 1 should be sent as an hexadecimal value. Might need to make a function to convert to hex values
-			if result == 0:
-				time.sleep(3)	#laser take a few seconds to fully turn on
-				self.emissionOn = True
-				return True
-			else:
-				print('Error encountered when trying to turn laser emission on:', RegisterResultTypes(result))
+			if self.checkInterlock():
+				result = nktdll.registerWriteU8(self.__handle, self.__address, 0x30, 1, -1) # check whether 1 should be sent as an hexadecimal value. Might need to make a function to convert to hex values
+				if result == 0:
+					time.sleep(3)	#laser take a few seconds to fully turn on
+					self.emissionOn = True
+					return True
+				else:
+					print('Error encountered when trying to turn laser emission on:', RegisterResultTypes(result))
+					return False
+			else:	
 				return False
 		else:
 			return True
@@ -183,6 +199,31 @@ class compact(object):
 
 		return success
 
+	def getStatusBits(self):
+		#### Bit Key ###
+		# 0	Emission
+		# 1	Interlock off
+		# 2	Interlock power failure
+		# 3	Interlock loop off
+		# 4	-
+		# 5	Supply voltage low
+		# 6	Module temp range
+		# 7	Pump temp high
+		# 8	Pulse overrun
+		# 9	Trig signal level
+		# 10	Trig edge
+		# 11	-
+		# 12	-
+		# 13	-
+		# 14	-
+		# 15	Error code present
+		result, value = nktdll.registerReadU8(self.__handle, self.__address, 0x66, 0)
+		bits = [int(x) for x in bin(value)[2:]]	#break number into bits
+		bits = [0] * (8-len(bits)) + bits	#pad with 0's for bits not needed to output int value
+		bits.reverse()	#reverse bits into order matching register file description
+
+		return bits
+
 class select(object):
 
 	def __init__(self, portName = 'COM13'):		# TODO: add select port here as default
@@ -194,6 +235,7 @@ class select(object):
 		self._range = [None] * 2
 		self.__maxRange = (1100, 2000) #set the min/max wavelength range allowed by AOTF here
 		self.rfOn = None
+		self.currentAOTF = None
 		self.wlDelay = 0.01
 		if self.connect():
 			self.off()	#turn off RF to allow AOTF selection
@@ -235,6 +277,21 @@ class select(object):
 			self.__address = None
 			self.__address2 = None
 
+	def checkShutter(self):
+		shutterStatus = True
+
+		bits = self.getStatusBits()
+		if self.currentAOTF == 0:
+			if bits[8] == 0:	#IR shutter closed
+				print('Vis shutter on Select is closed!')
+				shutterStatus = False
+		else:
+			if bits[9] == 0: #Vis shutter closed
+				print('IR shutter on Select is closed!')
+				shutterStatus = False
+
+		return shutterStatus
+	
 	def on(self):
 		if not self.rfOn:
 			result = nktdll.registerWriteU8(self.__handle, self.__address, 0x30, 1, -1)
@@ -266,6 +323,9 @@ class select(object):
 			print('Error: {0} is an invalid index. Set 0 for Vis, 1 for IR'.format(index))
 			return False
 
+		if index == self.currentAOTF:
+			return True
+
 		leaveOn = False
 		if self.rfOn:
 			leaveOn = True
@@ -275,6 +335,7 @@ class select(object):
 		if result != 0:
 			print('Error encountered when trying to set AOTF:', nktdll.RegisterResultTypes(result))
 			return False
+		self.currentAOTF = index
 
 		if leaveOn:
 			self.on()
@@ -446,3 +507,36 @@ class select(object):
 			success = False
 
 		return success
+
+	def getStatusBits(self):
+		#### Bit Key ###
+		# 0	-
+		# 1	Interlock off
+		# 2	Interlock loop in
+		# 3	Interlock loop out
+		# 4	-
+		# 5	Supply voltage low
+		# 6	Module temp range
+		# 7	-
+		# 8	Shutter sensor1
+		# 9	Shutter sensor2
+		# 10	New crystal1 temperature
+		# 11	New crystal2 temperature
+		# 12	-
+		# 13	-
+		# 14	-
+		# 15	Error code present
+
+		result, value = nktdll.registerReadU8(self.__handle, self.__address2, 0x66, 0)
+		bits = [int(x) for x in bin(value)[2:]]	#break number into bits
+		bits = [0] * (8-len(bits)) + bits	#pad with 0's for bits not needed to output int value
+		bits.reverse()	#reverse bits into order matching register file description
+
+		result, value = nktdll.registerReadU8(self.__handle, self.__address2, 0x66, 1)
+		bits2 = [int(x) for x in bin(value)[2:]]	#break number into bits
+		bits2 = [0] * (8-len(bits2)) + bits2	#pad with 0's for bits not needed to output int value
+		bits2.reverse()	#reverse bits into order matching register file description
+
+		bits = bits + bits2
+
+		return bits

@@ -22,7 +22,7 @@ if not os.path.exists(datafolder):
 	os.mkdir(datafolder)
 
 class controlGeneric(object):
-	def __init__(self, dwelltime = 0.1):
+	def __init__(self, dwelltime = 0.2):
 		todaysDate = datetime.datetime.now().strftime('%Y%m%d')
 		self.outputdir = os.path.join(root, datafolder, todaysDate)
 		self.__hardwareSetup = 'mono'		#distinguish whether saved data comes from the mono or nkt setup
@@ -122,9 +122,9 @@ class controlGeneric(object):
 		
 
 		self._goToWavelength(wavelength[0])
-		
+
+		self._lightOn()	
 		self.stage.moveto(x = allx[0], y = y0)
-		self._lightOn()		
 		xdata = np.zeros((xsteps,))
 		for idx, x in tqdm(enumerate(allx), desc = 'Scanning X', total = allx.shape[0], leave = False):
 			self.stage.moveto(x = x)
@@ -412,7 +412,7 @@ class controlGeneric(object):
 
 		return corrected
 
-	def _findEdges(x,r, ax = None):
+	def _findEdges(self, x,r, ax = None):
 		### Given stage positions x and reflectance values r from a line scan at a single wavelength, compute the edges and center of 
 		# the sample area using the first derivative. If given an axis handle, plots the line scan + suggested positions to this axis.
 		r1 = np.gradient(r)
@@ -421,7 +421,7 @@ class controlGeneric(object):
 		x1 = x[np.where(r1==r1.max())]
 		x2 = x[np.where(r1==r1.min())]  
 		if x1 > x2:   #force x2 > x1 - initial order depends on whether reflectance is higher or lower on target area vs background
-			x1 = temp
+			temp = x1
 			x1 = x2
 			x2 = temp    
 		center = np.mean([x1,x2])
@@ -758,7 +758,7 @@ class controlGeneric(object):
 
 class controlMono(controlGeneric):
 
-	def __init__(self, dwelltime = 0.1):
+	def __init__(self, dwelltime = 0.25):
 		super().__init__(dwelltime = dwelltime)
 		self.__hardwareSetup = 'mono'		#distinguish whether saved data comes from the mono or nkt setup
 		self.stage = None
@@ -801,7 +801,7 @@ class controlMono(controlGeneric):
 
 class controlNKT(controlGeneric):
 
-	def __init__(self, dwelltime = 0.1):
+	def __init__(self, dwelltime = 0.2):
 		super().__init__(dwelltime = dwelltime)
 		self.__hardwareSetup = 'nkt'		#distinguish whether saved data comes from the mono or nkt setup
 		self.stage = None
@@ -841,12 +841,23 @@ class controlNKT(controlGeneric):
 		return True
 
 	def _lightOn(self):
+		self.preCheck()	#checks shutters and interlock, gives user a chance to remedy before continuing
 		if not self.compact.emissionOn:
 			self.compact.on()
 		return True
-
+		
 	def _lightOff(self):
 		if self.compact.emissionOn:
 			self.compact.off()
 		return True
 
+	def preCheck(self):
+		goodToGo = False
+
+		while not goodToGo:
+			if self.select.checkShutter() and self.compact.checkInterlock():
+				goodToGo = True
+			else:
+				input('Press Enter when issues have been resolved')
+
+		return goodToGo

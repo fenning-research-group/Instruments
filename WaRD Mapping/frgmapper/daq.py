@@ -29,7 +29,7 @@ max_rate = 50e3
 
 class daq(object):
 
-	def __init__(self, channel_intSphere = 0, channel_ref = 2, rate = 10000, dwelltime = None, counts = 500, extclock = False):
+	def __init__(self, channel_intSphere = 0, channel_ref = 2, rate = 21505, dwelltime = None, counts = 500, extclock = False):
 		self.board_num = 0
 		# self.ai_range = ULRange.BIP5VOLTS
 		self.__rate = rate
