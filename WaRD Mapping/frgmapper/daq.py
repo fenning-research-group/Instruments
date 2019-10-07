@@ -8,6 +8,7 @@ from .lockin import lockin
 import numpy as np
 import time
 import os 
+import pdb
 
 from _ctypes import POINTER, addressof, sizeof
 from ctypes import c_double, cast
@@ -33,6 +34,11 @@ class daq(object):
 		self.__rate = rate
 		self.__dwelltime = dwelltime
 		self.acquiringBG = False
+		# Connect the lockin
+		self._lockin=lockin()
+		print("Lockin connected")
+		#self._lockin.SetLockinTimeConstant() # will need to change the time constant acquisition method
+		#self._lockin.SetLockinSensitivity() # will need to set the sensisitivity for the wavelength having the highest intensity
 
 		# prioritize dwelltime argument when setting counts/rate. if none provided, use explicitly provided counts
 		if dwelltime is not None:
@@ -107,7 +113,7 @@ class daq(object):
 		ul.create_daq_device(board_num, devices[0])
 		return True
 
-# disconnects the daq device
+	# disconnects the daq device
 	def disconnect(self):
 		ul.release_daq_device(self.board_num)
 		return True
@@ -118,13 +124,15 @@ class daq(object):
 		ctypesArray = ctypes.cast(memhandle, ctypes.POINTER(ctypes.c_double))
 		
 		scan_options = ScanOptions.FOREGROUND | ScanOptions.SCALEDATA
-
+		
+		# Scan channels synchronously
+		# (Only the first channel, corresponding to the sphere detector)
 		ul.daq_in_scan(
 			board_num = self.board_num,
-			chan_list = self.channels['Number'],
-			chan_type_list = self.channels['Type'],
-			gain_list = self.channels['Gain'],
-			chan_count = len(self.channels['Number']),
+			chan_list = [self.channels['Number'][0]], # only integrating sphere channel
+			chan_type_list = [self.channels['Type'][0]], # only integrating sphere channel
+			gain_list = [self.channels['Gain'][0]], # only integrating sphere channel
+			chan_count = len([self.channels['Number'][0]]), # only integrating sphere channel
 			rate = self.__rate,
 			pretrig_count = 0,
 			total_count = totalCount,
@@ -140,13 +148,21 @@ class daq(object):
 				'Std': None
 				}
 
+		# Read reference detector data from the lockin
+		###### Make a condition to choose if we read with or without the lockin
+		for each in range(10): # check how many counts are used in the EQE code
+			[Vsig, phase, freq]=self._lockin.LockinReadOutput()
+			data['Reference']['Raw'].append(float(Vsig))
+		
+		# Read integrating sphere data
 		dataIndex = 0
 		for each in range(self.__countsPerChannel):
-			for ch in self.channels['Label']:
-				data[ch]['Raw'].append(ctypesArray[dataIndex])
-				dataIndex += 1
+			#for ch in self.channels['Label']:
+			data['IntSphere']['Raw'].append(ctypesArray[dataIndex])
+			dataIndex += 1
 
 		for ch in self.channels['Label']:
+			#pdb.set_trace()
 			data[ch]['Mean'] = np.mean(data[ch]['Raw'])
 			data[ch]['Std'] = np.std(data[ch]['Raw'])
 

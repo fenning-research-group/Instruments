@@ -12,6 +12,7 @@ from .daq import daq
 import datetime
 from tqdm import tqdm
 import h5py
+import pdb
 
 root = 'C:\\Users\\PVGroup\\Desktop\\frgmapper'
 if not os.path.exists(root):
@@ -333,6 +334,8 @@ class control(object):
 		signal = np.zeros(wavelengths.shape)
 		ref = np.zeros(wavelengths.shape)
 		for idx, wl in tqdm(enumerate(wavelengths), total = wavelengths.shape[0], desc = 'Scanning {0:.1f}-{1:.1f} nm'.format(wavelengths[0], wavelengths[-1]), leave = False):
+			#scanname='scan '+str(idx)
+			#print(scanname)
 			self._mono.goToWavelength(wl)
 			out = self._daq.read()
 			signal[idx] = out['IntSphere']['Mean']
@@ -564,13 +567,25 @@ class control(object):
 	# 	-e flag (editable) makes future changes reflected in the module, so we can use import frmapper / reload(frgmapper) from anywhe (including
 	#	within the test script)
 
-	def measspectra(self):
+	def testspectra(self):
 		wave=np.linspace(1700,2000,151,dtype=int)
-		wave=wave.tolist()
-		self.connect()
-		self.connectStage()
+		#mapobj=frgmapper.mapper.control()
+		#mapobj.takeBaseline(wave)
 		self.takeBaseline(wave)
-		input('Place stage on integrating sphere: press enter to scan')
-		self.takeScan("test",wave,True,False,False) # green stage
-		input('Place mini module on sphere: press enter to scan')
-		self.takeScan("test",wave,True,False,False) # minimodule
+		
+		pdb.set_trace()
+		basel=mapobj._control__baseline
+		plt.plot(basel['Wavelengths'],basel['LightRefRaw'])
+		plt.figure()
+		plt.plot(basel['Wavelengths'],basel['LightRaw'])
+		plt.legend(['sphere signal'])
+
+		#wave=np.linspace(1700,2000,51,dtype=int)
+		#wave=wave.tolist()
+		#self.connect()
+		#self.connectStage()
+		#self.takeBaseline(wave)
+		#input('Place stage on integrating sphere: press enter to scan')
+		#self.takeScan("test",wave,True,False,False) # green stage
+		#input('Place mini module on sphere: press enter to scan')
+		#self.takeScan("test",wave,True,False,False) # minimodule

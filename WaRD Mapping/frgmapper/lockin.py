@@ -23,8 +23,8 @@ class lockin(object):
 		self.handle.write('DDEF 1,0') # ?? see manual p. 5-8. Display X (amplitude) on channel 1??
 		self.handle.write('FAST 2') # Set data transfer ON, Windows interface
 		self.SRS_TC=0 # lock in time constant
-		self.setLockinTimeConstant()
-		self.setLockinSensitivity()
+		self.SetLockinTimeConstant()
+		self.SetLockinSensitivity()
 
 	def CloseLockin(self):
 		rm=pyvisa.ResourceManager()
@@ -137,7 +137,7 @@ class lockin(object):
 				overload=int(self.handle.read())
 		elif(overload != 0 and sens == 26): # the index corresponding to the max sensitivity is 26
 			print("System overloaded while at minimum sensitivity!")
-			break
+			#break
 		else:
 			while(sens > 0 and overload == 0): # increase sensitivity if the system is not overloaded
 				sens=sens - 1
