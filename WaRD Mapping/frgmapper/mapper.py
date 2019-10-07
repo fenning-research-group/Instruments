@@ -337,7 +337,7 @@ class control(object):
 			#scanname='scan '+str(idx)
 			#print(scanname)
 			self._mono.goToWavelength(wl)
-			out = self._daq.read()
+			out = self._daq.read(False)
 			signal[idx] = out['IntSphere']['Mean']
 			ref[idx] = out['Reference']['Mean']
 		

@@ -118,7 +118,7 @@ class daq(object):
 		ul.release_daq_device(self.board_num)
 		return True
 
-	def read(self, Lockin=True):
+	def read(self, lockinOpt=True):
 		totalCount = len(self.channels['Number']) * self.__countsPerChannel
 		memhandle = ul.scaled_win_buf_alloc(totalCount)
 		ctypesArray = ctypes.cast(memhandle, ctypes.POINTER(ctypes.c_double))
@@ -133,7 +133,7 @@ class daq(object):
 				'Std': None
 				}
 		
-		if(lockin): # read from the lockin instead of channel 2 of the daq if the lockin option is selected
+		if(lockinOpt): # read from the lockin instead of channel 2 of the daq if the lockin option is selected
 			# Scan channels synchronously
 			# (Only the first channel, corresponding to the sphere detector)
 			ul.daq_in_scan(
