@@ -121,9 +121,37 @@ class daq(object):
 		ctypesArray = ctypes.cast(memhandle, ctypes.POINTER(ctypes.c_double))
 		
 		if self.useExtClock:
-			scan_options = ScanOptions.FOREGROUND | ScanOptions.SCALEDATA | ScanOptions.EXTCLOCK
+			# scan_options = ScanOptions.FOREGROUND | ScanOptions.SCALEDATA | ScanOptions.EXTCLOCK
+			scan_options = ScanOptions.FOREGROUND | ScanOptions.SCALEDATA | ScanOptions.EXTTRIGGER
 		else:
 			scan_options = ScanOptions.FOREGROUND | ScanOptions.SCALEDATA
+		ul.daq_set_trigger(
+                board_num = self.board_num, 
+                trig_source = TriggerSource.ANALOG_HW,
+                trig_sense = TriggerSensitivity.RISING_EDGE,
+                trig_chan = self.chan_list[0], 
+                chan_type = self.chan_type_list[0],
+                gain = self.gain_list[0],
+                level = 2, 
+                variance = 0, 
+                trig_event = TriggerEvent.START)
+
+		ul.daq_set_trigger(	
+                self.board_num, 
+                TriggerSource.COUNTER,
+                TriggerSensitivity.ABOVE_LEVEL,
+                self.chan_list[2], 
+                self.chan_type_list[2],
+                self.gain_list[2],
+                2, 
+                0, 
+                TriggerEvent.START)
+
+        # Set the stop trigger settings
+        ul.daq_set_trigger(
+            self.board_num, TriggerSource.COUNTER, TriggerSensitivity.ABOVE_LEVEL,
+            self.chan_list[2], self.chan_type_list[2], self.gain_list[2],
+            2, 0, TriggerEvent.START)
 
 		ul.daq_in_scan(
 			board_num = self.board_num,
