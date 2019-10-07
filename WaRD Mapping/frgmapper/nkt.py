@@ -1,4 +1,4 @@
-import NKTP_DLL as nktdll
+import frgmapper.NKTP_DLL as nktdll
 
 ## TO DO (ctrl-f TODO)
 #
