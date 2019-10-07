@@ -118,28 +118,13 @@ class daq(object):
 		ul.release_daq_device(self.board_num)
 		return True
 
-	def read(self):
+	def read(self, Lockin=True):
 		totalCount = len(self.channels['Number']) * self.__countsPerChannel
 		memhandle = ul.scaled_win_buf_alloc(totalCount)
 		ctypesArray = ctypes.cast(memhandle, ctypes.POINTER(ctypes.c_double))
 		
 		scan_options = ScanOptions.FOREGROUND | ScanOptions.SCALEDATA
 		
-		# Scan channels synchronously
-		# (Only the first channel, corresponding to the sphere detector)
-		ul.daq_in_scan(
-			board_num = self.board_num,
-			chan_list = [self.channels['Number'][0]], # only integrating sphere channel
-			chan_type_list = [self.channels['Type'][0]], # only integrating sphere channel
-			gain_list = [self.channels['Gain'][0]], # only integrating sphere channel
-			chan_count = len([self.channels['Number'][0]]), # only integrating sphere channel
-			rate = self.__rate,
-			pretrig_count = 0,
-			total_count = totalCount,
-			memhandle = memhandle,
-			options = scan_options
-			)
-
 		data = {}
 		for ch in self.channels['Label']:
 			data[ch] = {
@@ -147,19 +132,55 @@ class daq(object):
 				'Mean': None,
 				'Std': None
 				}
-
-		# Read reference detector data from the lockin
-		###### Make a condition to choose if we read with or without the lockin
-		for each in range(10): # check how many counts are used in the EQE code
-			[Vsig, phase, freq]=self._lockin.LockinReadOutput()
-			data['Reference']['Raw'].append(float(Vsig))
 		
-		# Read integrating sphere data
-		dataIndex = 0
-		for each in range(self.__countsPerChannel):
-			#for ch in self.channels['Label']:
-			data['IntSphere']['Raw'].append(ctypesArray[dataIndex])
-			dataIndex += 1
+		if(lockin): # read from the lockin instead of channel 2 of the daq if the lockin option is selected
+			# Scan channels synchronously
+			# (Only the first channel, corresponding to the sphere detector)
+			ul.daq_in_scan(
+				board_num = self.board_num,
+				chan_list = [self.channels['Number'][0]], # only integrating sphere channel
+				chan_type_list = [self.channels['Type'][0]], # only integrating sphere channel
+				gain_list = [self.channels['Gain'][0]], # only integrating sphere channel
+				chan_count = len([self.channels['Number'][0]]), # only integrating sphere channel
+				rate = self.__rate,
+				pretrig_count = 0,
+				total_count = totalCount,
+				memhandle = memhandle,
+				options = scan_options
+				)
+
+			# Read reference detector data from the lockin
+			for each in range(10): # Number of counts set here. Check how many counts are used in the EQE code
+				[Vsig, phase, freq]=self._lockin.LockinReadOutput()
+				data['Reference']['Raw'].append(float(Vsig))
+		
+			# Read integrating sphere data
+			dataIndex = 0
+			for each in range(self.__countsPerChannel):
+				#for ch in self.channels['Label']:
+				data['IntSphere']['Raw'].append(ctypesArray[dataIndex])
+				dataIndex += 1
+				
+		else: # if the lockin option is not selected read from both daq channels
+			ul.daq_in_scan(
+				board_num = self.board_num,
+				chan_list = self.channels['Number'], # only integrating sphere channel
+				chan_type_list = self.channels['Type'], # only integrating sphere channel
+				gain_list = self.channels['Gain'], # only integrating sphere channel
+				chan_count = len(self.channels['Number']), # only integrating sphere channel
+				rate = self.__rate,
+				pretrig_count = 0,
+				total_count = totalCount,
+				memhandle = memhandle,
+				options = scan_options
+				)
+					
+			dataIndex = 0
+			for each in range(self.__countsPerChannel):
+				for ch in self.channels['Label']:
+					data['IntSphere']['Raw'].append(ctypesArray[dataIndex])
+					dataIndex += 1
+		
 
 		for ch in self.channels['Label']:
 			#pdb.set_trace()
