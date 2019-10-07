@@ -35,9 +35,9 @@ class compact(object):
 	def connect(self, portName = 'INSERTDEFAULTCOMPACTPORTHERE'):
 		result, devList = nktdll.deviceGetAllTypes(portName)
 		for devId in range(0, len(devList)):
-			if int(devList[devId], 16) == 74:		# TODO portData should hold a hex value corresponding to device found at this port. Compact = 74, select = 66. 
+			if int(devList[devId], 16) == 0x74:		# TODO portData should hold a hex value corresponding to device found at this port. Compact = 74 (0x74?), select = 66 (0x66?). 
 				# portData = nktdll.openPorts(portName, 0, 0) # TODO I think the port is still open after running nktdll.deviceGetAllTypes(portName), but if not we can reconnect here
-				print('Connected to NKT COMPACT')
+				print('Connected to NKT COMPACT (0x74)')
 				self.__handle = portName
 				self.__address = devId
 				return True
@@ -168,9 +168,9 @@ class compact(object):
 				print('Note: only integer values 0-4000 (0-4 V) allowed as trigger voltage settings: increasing {0:d} to 0.'.format(setPoint))
 				setPoint = 0
 
-			result = nktdll.registerWriteU16(self.__handle, self.__address, 0x24, mode, -1)
+			result = nktdll.registerWriteU16(self.__handle, self.__address, 0x24, setPoint, -1)
 			if result == 0:
-				self.trigger.mode = mode
+				self.trigger.setPoint = setPoint
 				success = True
 			else:
 				print('Error encountered when trying to change laser trigger voltage:', RegisterResultTypes(result))
@@ -191,23 +191,22 @@ class select(object):
 
 		if self.connect():
 			self.set(wavelength = self.__defaultWavelengths, amplitude = [0] * 8)
-			self.wavelengthRange()	#set range to default range
+			self.setWavelengthRange()	#set range to default range
 		self.rfOn = False
 		
-
 	def connect(self, portName = 'INSERTDEFAULTSELECTPORTHERE'):
 		result, devList = nktdll.deviceGetAllTypes(portName)
 		success = 0
 		for devId in range(0, len(devList)):
-			if int(devList[devId], 16) == 66:		#TODO portData should hold a hex value corresponding to device found at this port. Compact = 74, select = 67 (? not sure why its here on its own), select + rf driver = 66. 
+			if int(devList[devId], 16) == 0x66:		#TODO portData should hold a hex value corresponding to device found at this port. Compact = 74, select = 67 (? not sure why its here on its own), select + rf driver = 66. 
 				# portData = nktdll.openPorts(portName, 0, 0) # TODO I think the port is still open after running nktdll.deviceGetAllTypes(portName), but if not we can reconnect here
-				print('Connected to NKT SELECT + RF (66)')
+				print('Connected to NKT SELECT + RF (0x66)')
 				self.__handle = portName
 				self.__address = devId
 				success = success + 1
-			if int(devList[devId], 16) == 67:		#TODO portData should hold a hex value corresponding to device found at this port. Compact = 74, select = 67 (? not sure why its here on its own), select + rf driver = 66. 
+			if int(devList[devId], 16) == 0x67:		#TODO portData should hold a hex value corresponding to device found at this port. Compact = 74, select = 67 (? not sure why its here on its own), select + rf driver = 66. 
 				# portData = nktdll.openPorts(portName, 0, 0) # TODO I think the port is still open after running nktdll.deviceGetAllTypes(portName), but if not we can reconnect here
-				print('Connected to NKT SELECT (67)')
+				print('Connected to NKT SELECT (0x67)')
 				self.__handle = portName
 				self.__address2 = devId
 				success = success + 1
@@ -349,14 +348,14 @@ class select(object):
 		# set wavelength range
 		success = True
 
-		result = nktdll.registerWriteU32(self.__handle, self.__address, 0x34, wmin * 1000, -1)	#multiply by 1000 because compact reads input in terms of 0.001 nm
+		result = nktdll.registerWriteU32(self.__handle, self.__address, 0x34, round(wmin * 1000), -1)	#multiply by 1000 because compact reads input in terms of 0.001 nm
 		if result == 0:
 			self._range[0] = wmin
 		else:
 			print('Error encountered when trying to set wavelength range lower bound to {0} nm:'.format(wmin), RegisterResultTypes(result))
 			success = False
 
-		result = nktdll.registerWriteU32(self.__handle, self.__address, 0x35, wmax * 1000, -1)	#multiply by 1000 because compact reads input in terms of 0.001 nm
+		result = nktdll.registerWriteU32(self.__handle, self.__address, 0x35, round(wmax * 1000), -1)	#multiply by 1000 because compact reads input in terms of 0.001 nm
 		if result == 0:
 			self._range[1] = wmax
 		else:
