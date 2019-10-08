@@ -156,7 +156,7 @@ class daq(object):
 			data[ch]['Mean'] = np.mean(data[ch]['Raw'])
 			data[ch]['Std'] = np.std(data[ch]['Raw'])
 
-		#data['Reference']['Mean'] = np.ones(data['Reference']['Mean'].shape)	#set reference detector readings to 1
+		data['Reference']['Mean'] = np.ones(data['Reference']['Mean'].shape)	#set reference detector readings to 1
 
 		ul.win_buf_free(memhandle)
 

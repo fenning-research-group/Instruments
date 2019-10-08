@@ -445,7 +445,8 @@ class controlGeneric(object):
 			meas = signal[idx]/reference[idx]
 			bl_idx = np.where(self.__baseline['Wavelengths'] == wl)[0]
 			numerator[idx] = (signal[idx]-self.__baseline['DarkRaw']) / (self.__baseline['LightRaw'][bl_idx]-self.__baseline['DarkRaw'])
-			denominator[idx] = (reference[idx]-self.__baseline['DarkRefRaw']) / (self.__baseline['LightRefRaw'][bl_idx]-self.__baseline['DarkRefRaw'])
+			# denominator[idx] = (reference[idx]-self.__baseline['DarkRefRaw']) / (self.__baseline['LightRefRaw'][bl_idx]-self.__baseline['DarkRefRaw'])
+			denominator[idx] = 1
 			# corrected[idx] = (meas-self.__baseline['Dark']) / (self.__baseline['Light'][bl_idx]-self.__baseline['Dark']) 
 		corrected = numerator/denominator
 		
