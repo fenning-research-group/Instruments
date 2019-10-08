@@ -404,12 +404,17 @@ class controlGeneric(object):
 		if self.__baselineTaken == False:
 			raise ValueError("Take baseline first")
 
-		corrected = np.zeros(wavelengths.shape)
+		# corrected = np.zeros(wavelengths.shape)
+		numerator = np.zeros(wavelengths.shape)
+		denominator = np.zeros(wavelengths.shape)
 		for idx, wl in enumerate(wavelengths):
 			meas = signal[idx]/reference[idx]
 			bl_idx = np.where(self.__baseline['Wavelengths'] == wl)[0]
-			corrected[idx] = (meas-self.__baseline['Dark']) / (self.__baseline['Light'][bl_idx]-self.__baseline['Dark']) 
-
+			numerator[idx] = (signal[idx]-self.__baseline['DarkRaw']) / (self.__baseline['LightRaw'][bl_idx]-self.__baseline['DarkRaw'])
+			denominator[idx] = (reference[idx]-self.__baseline['DarkRefRaw']) / (self.__baseline['LightRefRaw'][bl_idx]-self.__baseline['DarkRefRaw'])
+			# corrected[idx] = (meas-self.__baseline['Dark']) / (self.__baseline['Light'][bl_idx]-self.__baseline['Dark']) 
+		corrected = numerator/denominator
+		
 		return corrected
 
 	def _findEdges(self, x,r, ax = None):
