@@ -311,6 +311,8 @@ class controlGeneric(object):
 		wavelengths = np.array(wavelengths)
 
 		reflectance = []
+		signal = []
+		reference = []
 		delay = []
 		startTime = time.time()
 		pbarPercent = 0
@@ -318,8 +320,10 @@ class controlGeneric(object):
 			while (time.time() - startTime) <= duration:
 				if (time.time()-startTime) >= (interval*len(delay)):	#time for the next scan
 					delay.append(time.time() - startTime)
-					signal, reference = self._scanroutine(wavelengths, lastscan = False)
-					reflectance.append(self._baselineCorrectionRoutine(wavelengths, signal, reference))
+					sig, ref = self._scanroutine(wavelengths, lastscan = False)
+					reflectance.append(self._baselineCorrectionRoutine(wavelengths, sig, ref))
+					signal.append(sig)
+					reference.append(ref)
 				else:	#if we have some time to wait between scans, close the shutter and go to the starting wavelength
 					self._lightOff()
 					self._goToWavelength(wavelength = wavelengths[0])
@@ -338,8 +342,20 @@ class controlGeneric(object):
 
 		reflectance = np.array(reflectance)
 		delay = np.array(delay)
+		signal = np.array(signal)
+		reference = np.array(reference)
+
 		if export:
-			self._save_timeSeries(label = label, wavelengths = wavelengths, reflectance = reflectance, delay = delay, duration = duration, interval = interval)
+			self._save_timeSeries(
+				label = label, 
+				wavelengths = wavelengths, 
+				reflectance = reflectance, 
+				delay = delay, 
+				duration = duration, 
+				interval = interval,
+				signal = signal,
+				reference = reference
+				)
 
 		# if plot:
 		# 	plt.plot(data['Wavelengths'],data['Reflectance'])
@@ -739,7 +755,7 @@ class controlGeneric(object):
 
 		print('Data saved to {0}'.format(fpath))
 
-	def _save_timeSeries(self, label, wavelengths, reflectance, delay, duration, interval):
+	def _save_timeSeries(self, label, wavelengths, reflectance, delay, duration, interval, signal, reference):
 
 		fpath = self._getSavePath(label = label)	#generate filepath for saving data
 
@@ -767,7 +783,13 @@ class controlGeneric(object):
 
 			temp = rawdata.create_dataset('reflectance', data = np.array(reflectance))
 			temp.attrs['description'] = 'Baseline-corrected reflectance measured. Stored as [y, x, wl]. Stored as fraction (0-1), not percent!'
+			
+			temp = rawdata.create_dataset('signalRaw', data = np.array(signal))
+			temp.attrs['description'] = 'Raw signal for integrating sphere detector. (V)'
 
+			temp = rawdata.create_dataset('referenceRaw', data = np.array(reference))
+			temp.attrs['description'] = 'Raw signal for reference detector. (V)'
+			
 			temp = rawdata.create_dataset('delay', data = np.array(delay))
 			temp.attrs['description'] = 'Time (seconds) that each scan was acquired at. Measured as seconds since first scan point.'			
 
