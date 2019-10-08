@@ -58,7 +58,7 @@ class controlGeneric(object):
 		#dark baseline
 		storeddwelltime = self.__dwelltime
 		self.dwelltime = 5	#take a long acquisition for the dark baseline, as it is a single point measurement
-		out = self.daq.read(False)
+		out = self.daq.read()
 		self.dwelltime = storeddwelltime
 		
 		self.__baseline['DarkRaw'] = out['IntSphere']['Mean']
@@ -299,6 +299,10 @@ class controlGeneric(object):
 		self._goToWavelength(wavelengths[0])
 		if firstscan:
 			self._lightOn()
+
+		# Set the lockin sensitivity here (as the laser needs to be on at the wavelength of highest power, which is 1700 nm
+		# in the range 1700-2000 nm)
+
 
 		signal = np.zeros(wavelengths.shape)
 		ref = np.zeros(wavelengths.shape)
@@ -603,7 +607,7 @@ class controlNKT(controlGeneric):
 		plt.ion()	#make plots of results non-blocking
 
 	def connect(self):
-		#connect to mono, stage, detector+daq hardware
+		#connect to nkt, stage, detector+daq hardware
 		self.compact = compact()
 		print("compact connected")
 
@@ -640,9 +644,11 @@ class controlNKT(controlGeneric):
 		#mapobj.takeBaseline(wave)
 		self.takeBaseline(wave)
 		
-		pdb.set_trace()
-		basel=mapobj._control__baseline
+		
+		basel=self._controlGeneric__baseline
 		plt.plot(basel['Wavelengths'],basel['LightRefRaw'])
 		plt.figure()
 		plt.plot(basel['Wavelengths'],basel['LightRaw'])
 		plt.legend(['sphere signal'])
+		plt.show()
+		pdb.set_trace()

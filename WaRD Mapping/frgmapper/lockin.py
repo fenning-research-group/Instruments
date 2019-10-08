@@ -2,17 +2,21 @@ import pyvisa
 import pdb
 import math
 import time
+#from .mapper import controlNKT
+from .nkt import compact,select
+import math
 
 # code for the Stanford Research Systems SR830 lock-in
 
 class lockin(object):
 
-	def __init__(self,LockinAddress='GPIB0::8::INSTR'): # Connect and send initialization commands
+	def __init__(self,LockinAddress='GPIB1::8::INSTR'): # Connect and send initialization commands
 		rm=pyvisa.ResourceManager()
 		self.handle = rm.open_resource(LockinAddress)
 		# Send initialization commands
 		self.handle.write('OUTX 1') # Set the communication mode to GPIB
-		self.handle.write('FMOD 0') # Set to external reference mode (ref signal from the chopper wheel)
+		self.handle.write('FMOD 0') # Set to external reference mode (ref signal from the chopper wheel or NKT laser)
+		#self.handle.write('FMOD 1') # Set to internal reference mode
 		self.handle.write('RSLP 1') # Set slope to Sine(0) for reference signal trigger
 		self.handle.write('ISRC 0') # Set input signal to channel A (IMPORTANT FOR CONNECTION!)
 		self.handle.write('IGND 0') # Set to floating ground
@@ -23,8 +27,23 @@ class lockin(object):
 		self.handle.write('DDEF 1,0') # ?? see manual p. 5-8. Display X (amplitude) on channel 1??
 		self.handle.write('FAST 2') # Set data transfer ON, Windows interface
 		self.SRS_TC=0 # lock in time constant
-		self.SetLockinTimeConstant()
+		#self.SetLockinTimeConstant()
+		#self.SetLockinSensitivity()
+		self.select = select()
+		self.compact = compact()
+		self.InitLockin()
+
+	def InitLockin(self):
+		# turn on laser, then set time constant and sensitivity
+		self.select.setAOTF(1700)
+		self.compact.on()
+		#self.SetLockinTimeConstant()
 		self.SetLockinSensitivity()
+		print("Locking initialized")
+		self.compact.off()
+		#self.select.disconnect()
+		#self.compact.disconnect()
+
 
 	def CloseLockin(self):
 		rm=pyvisa.ResourceManager()
@@ -43,9 +62,14 @@ class lockin(object):
 
 	def SetLockinTimeConstant(self):# Method to set time constant based on chopper frequency
 		[Vsig, phase, f]=self.LockinReadOutput() # Query frequency from the lockin (set on the chopper by the user)
+		#pdb.set_trace()
 		freq=10*math.ceil(float(f)/10) # round frequency
-		tc_s = 1/(freq*10**(-3/10)) # -3 dB the freq (G=10*log(f0)?)
+		#tc_s = 1/(freq*10**(-3/10)) # -3 dB the freq (G=10*log(f0)?)
+		tc_s=1/(2*math.pi*1.5*freq)
 		
+		if tc_s < 10E-6:
+			SRS_TC_N = 1
+			SRS_TC = 30E-6
 		if tc_s > 10E-6 and tc_s <= 30E-6:
 			SRS_TC_N = 1
 			SRS_TC = 30E-6
@@ -111,7 +135,7 @@ class lockin(object):
 		#pdb.set_trace()
 	
 	# set sensitivity, ie adjust amplification to avoid lockin overload (signal saturation)
-	# (Do this for with the light beam on at a wavelength having the highest intensity in 1700-2000 nm range)
+	# (Do this for with the light beam on at a wavelength having the highest intensity in 1700-2000 nm range, ie 1700 nm on the compact)
 	def SetLockinSensitivity(self): 
 		self.handle.write('SENS ?') # Query sensitivity
 		sens=int(self.handle.read()) # Number corresponding to the sensitivity (manual p. 5-6)
@@ -158,5 +182,6 @@ class lockin(object):
 
 		time.sleep(10*self.SRS_TC)
 
+		#pdb.set_trace()
 	# Function sweeping the wavelength over the wavelength range and measuring raw intensity to find the max
 

@@ -134,32 +134,44 @@ class daq(object):
 				}
 		
 		if(lockinOpt): # read from the lockin instead of channel 2 of the daq if the lockin option is selected
+
+			#### NOTE: Uncomment this section if the lockin is used on the ref detector and the daq on the sphere
 			# Scan channels synchronously
 			# (Only the first channel, corresponding to the sphere detector)
-			ul.daq_in_scan(
-				board_num = self.board_num,
-				chan_list = [self.channels['Number'][0]], # only integrating sphere channel
-				chan_type_list = [self.channels['Type'][0]], # only integrating sphere channel
-				gain_list = [self.channels['Gain'][0]], # only integrating sphere channel
-				chan_count = len([self.channels['Number'][0]]), # only integrating sphere channel
-				rate = self.__rate,
-				pretrig_count = 0,
-				total_count = totalCount,
-				memhandle = memhandle,
-				options = scan_options
-				)
+			#ul.daq_in_scan(
+			#	board_num = self.board_num,
+			#	chan_list = [self.channels['Number'][0]], # only integrating sphere channel
+			#	chan_type_list = [self.channels['Type'][0]], # only integrating sphere channel
+			#	gain_list = [self.channels['Gain'][0]], # only integrating sphere channel
+			#	chan_count = len([self.channels['Number'][0]]), # only integrating sphere channel
+			#	rate = self.__rate,
+			#	pretrig_count = 0,
+			#	total_count = totalCount,
+			#	memhandle = memhandle,
+			#	options = scan_options
+			#	)
+			####
 
+			#### NOTE: Uncomment this section if the lockin is used on the ref detector and the daq on the sphere
 			# Read reference detector data from the lockin
+			#for each in range(10): # Number of counts set here. Check how many counts are used in the EQE code
+			#	[Vsig, phase, freq]=self._lockin.LockinReadOutput()
+			#	data['Reference']['Raw'].append(float(Vsig))
+			####
+
+			# Read integrating sphere data from the lockin (without using the reference detector)
 			for each in range(10): # Number of counts set here. Check how many counts are used in the EQE code
 				[Vsig, phase, freq]=self._lockin.LockinReadOutput()
-				data['Reference']['Raw'].append(float(Vsig))
+				data['IntSphere']['Raw'].append(float(Vsig))
 		
+			#### NOTE: Uncomment this section if the lockin is used on the ref detector and the daq on the sphere
 			# Read integrating sphere data
-			dataIndex = 0
-			for each in range(self.__countsPerChannel):
-				#for ch in self.channels['Label']:
-				data['IntSphere']['Raw'].append(ctypesArray[dataIndex])
-				dataIndex += 1
+			#dataIndex = 0
+			#for each in range(self.__countsPerChannel):
+				##for ch in self.channels['Label']:
+			#	data['IntSphere']['Raw'].append(ctypesArray[dataIndex])
+			#	dataIndex += 1
+			####
 				
 		else: # if the lockin option is not selected read from both daq channels
 			ul.daq_in_scan(
@@ -195,6 +207,8 @@ class daq(object):
 		#     tempdat['Mean'] = np.mean(tempdat['Raw'])
 		#     tempdat['Std'] = np.std(tempdat['Raw'])
 		#     data[ch] = tempdat
+
+		data['Reference']['Mean'] = np.ones(data['Reference']['Mean'].shape)	#set reference detector readings to 1
 
 		ul.win_buf_free(memhandle)
 

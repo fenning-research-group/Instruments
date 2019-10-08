@@ -1,4 +1,5 @@
-import frgmapper.NKTP_DLL as nktdll
+from . import NKTP_DLL as nktdll
+import time
 
 ## TO DO (ctrl-f TODO)
 #
@@ -23,26 +24,29 @@ import frgmapper.NKTP_DLL as nktdll
 
 class compact(object):
 
-	def __init__(self, portName = 'INSERTDEFAULTCOMPACTPORTHERE'):		# TODO: add compact port here as default
+	def __init__(self, portName = 'COM13'):		# TODO: add compact port here as default
 		self.__handle = None	#will be overwritten upon connecting, set back to None upon disconnecting
-		if self.connect():
+		self.triggerMode = None
+		self.triggerSetPoint = None
+		if self.connect(portName = portName):
 			self.setPower(powerLevel = 50) #default starting power level, 0-100 = 0-100% power
 			self.setPulseFrequency(pulseFrequency = 1000)	#default pulse frequency set to 1 kHz
 			self.setTrigger(mode = 0)	#turn off external trigger mode
 
 		self.emissionOn = False
 
-	def connect(self, portName = 'INSERTDEFAULTCOMPACTPORTHERE'):
+	def connect(self, portName = 'COM13'):
+		nktdll.openPorts(portName, 1 ,1)
 		result, devList = nktdll.deviceGetAllTypes(portName)
-		for devId in range(0, len(devList)):
-			if int(devList[devId], 16) == 0x74:		# TODO portData should hold a hex value corresponding to device found at this port. Compact = 74 (0x74?), select = 66 (0x66?). 
+		for devId in devList:
+			if devId == 0x74:		# TODO portData should hold a hex value corresponding to device found at this port. Compact = 74 (0x74?), select = 66 (0x66?). 
 				# portData = nktdll.openPorts(portName, 0, 0) # TODO I think the port is still open after running nktdll.deviceGetAllTypes(portName), but if not we can reconnect here
 				print('Connected to NKT COMPACT (0x74)')
 				self.__handle = portName
-				self.__address = devId
+				self.__address = devList.index(devId)
 				return True
 		#if we made it here, we didnt find the COMPACT at the supplied portName
-		closePorts(portName)
+		nktdll.closePorts(portName)
 		print('NKT COMPACT not found at port {0}. Not connected.'.format(portName))
 		return False
 
@@ -52,15 +56,33 @@ class compact(object):
 			nktdll.closePorts(self.__handle)
 			self.__handle = None
 			self.__address = None
+			print("Compact disconnected")
+	
+	def checkInterlock(self):
+		interlockStatus = True
+
+		bits = self.getStatusBits()
+		if bits[1]:
+			print('Interlock is off - may need to press reset button on front panel of the Compact')
+			interlockStatus = False
+		if bits[3]:
+			print('Interlock loop is off - is the door open?')
+			interlockStatus = False
+
+		return interlockStatus
 
 	def on(self):
 		if not self.emissionOn:
-			result = nktdll.registerWriteU8(self.__handle, self.__address, 0x30, 1, -1) # check whether 1 should be sent as an hexadecimal value. Might need to make a function to convert to hex values
-			if result == 0:
-				self.emissionOn = True
-				return True
-			else:
-				print('Error encountered when trying to turn laser emission on:', RegisterResultTypes(result))
+			if self.checkInterlock():
+				result = nktdll.registerWriteU8(self.__handle, self.__address, 0x30, 1, -1) # check whether 1 should be sent as an hexadecimal value. Might need to make a function to convert to hex values
+				if result == 0:
+					time.sleep(3)	#laser take a few seconds to fully turn on
+					self.emissionOn = True
+					return True
+				else:
+					print('Error encountered when trying to turn laser emission on:', RegisterResultTypes(result))
+					return False
+			else:	
 				return False
 		else:
 			return True
@@ -145,7 +167,7 @@ class compact(object):
 
 			result = nktdll.registerWriteU8(self.__handle, self.__address, 0x31, mode, -1)
 			if result == 0:
-				self.trigger.mode = mode
+				self.triggerMode = mode
 				success = True
 			else:
 				print('Error encountered when trying to change laser trigger mode:', RegisterResultTypes(result))
@@ -170,7 +192,7 @@ class compact(object):
 
 			result = nktdll.registerWriteU16(self.__handle, self.__address, 0x24, setPoint, -1)
 			if result == 0:
-				self.trigger.setPoint = setPoint
+				self.triggerSetPoint = setPoint
 				success = True
 			else:
 				print('Error encountered when trying to change laser trigger voltage:', RegisterResultTypes(result))
@@ -178,9 +200,34 @@ class compact(object):
 
 		return success
 
+	def getStatusBits(self):
+		#### Bit Key ###
+		# 0	Emission
+		# 1	Interlock off
+		# 2	Interlock power failure
+		# 3	Interlock loop off
+		# 4	-
+		# 5	Supply voltage low
+		# 6	Module temp range
+		# 7	Pump temp high
+		# 8	Pulse overrun
+		# 9	Trig signal level
+		# 10	Trig edge
+		# 11	-
+		# 12	-
+		# 13	-
+		# 14	-
+		# 15	Error code present
+		result, value = nktdll.registerReadU8(self.__handle, self.__address, 0x66, 0)
+		bits = [int(x) for x in bin(value)[2:]]	#break number into bits
+		bits = [0] * (8-len(bits)) + bits	#pad with 0's for bits not needed to output int value
+		bits.reverse()	#reverse bits into order matching register file description
+
+		return bits
+
 class select(object):
 
-	def __init__(self, portName = 'INSERTDEFAULTSELECTPORTHERE'):		# TODO: add select port here as default
+	def __init__(self, portName = 'COM13'):		# TODO: add select port here as default
 		self.__handle = None	#will be overwritten upon connecting, set back to None upon disconnecting
 		self.__defaultWavelengths = [1700, 1750, 1800, 1850, 1900, 1902, 1950, 2000]	#default values to assign to unspecified wavelength selections
 		self._wavelengths = [None] * 8
@@ -188,37 +235,39 @@ class select(object):
 		self._gains = [None] * 8
 		self._range = [None] * 2
 		self.__maxRange = (1100, 2000) #set the min/max wavelength range allowed by AOTF here
-
+		self.rfOn = None
+		self.currentAOTF = None
+		self.wlDelay = 0.01
 		if self.connect():
-			self.set(wavelength = self.__defaultWavelengths, amplitude = [0] * 8)
+			self.off()	#turn off RF to allow AOTF selection
+			self.selectAOTF(1)	#set to IR AOTF. 
+			self.setAOTF(wavelength = self.__defaultWavelengths, amplitude = [1] + [0] * 7)
+			self.on()	#turn on RF
 			self.setWavelengthRange()	#set range to default range
-		self.rfOn = False
 		
-	def connect(self, portName = 'INSERTDEFAULTSELECTPORTHERE'):
+	def connect(self, portName = 'COM13'):
+		nktdll.openPorts(portName, 1 ,1)
 		result, devList = nktdll.deviceGetAllTypes(portName)
 		success = 0
-		for devId in range(0, len(devList)):
-			if int(devList[devId], 16) == 0x66:		#TODO portData should hold a hex value corresponding to device found at this port. Compact = 74, select = 67 (? not sure why its here on its own), select + rf driver = 66. 
+		for devId in devList:
+			if devId == 0x66:		#TODO portData should hold a hex value corresponding to device found at this port. Compact = 74, select = 67 (? not sure why its here on its own), select + rf driver = 66. 
 				# portData = nktdll.openPorts(portName, 0, 0) # TODO I think the port is still open after running nktdll.deviceGetAllTypes(portName), but if not we can reconnect here
 				print('Connected to NKT SELECT + RF (0x66)')
 				self.__handle = portName
-				self.__address = devId
+				self.__address = devList.index(devId)
 				success = success + 1
-			if int(devList[devId], 16) == 0x67:		#TODO portData should hold a hex value corresponding to device found at this port. Compact = 74, select = 67 (? not sure why its here on its own), select + rf driver = 66. 
+			if devId == 0x67:		#TODO portData should hold a hex value corresponding to device found at this port. Compact = 74, select = 67 (? not sure why its here on its own), select + rf driver = 66. 
 				# portData = nktdll.openPorts(portName, 0, 0) # TODO I think the port is still open after running nktdll.deviceGetAllTypes(portName), but if not we can reconnect here
 				print('Connected to NKT SELECT (0x67)')
 				self.__handle = portName
-				self.__address2 = devId
+				self.__address2 = devList.index(devId)
 				success = success + 1
-				result = nktdll.registerWriteU8(self.__handle, self.__address2, 0x34, 1, -1)	#TODO set to 1, assuming that this corresponds to the IR aotf. may need to change this to properly select the IR aotf
-				if result != 0:
-					print('Error encountered when trying to direct RF to IR AOTF:', RegisterResultTypes(result))
-					success = False
+
 								
 		if success == 2:	#found both addresses, no issues setting to IR aotf
 			return True
 		else:
-			closePorts(portName)
+			nktdll.closePorts(portName)
 			print('Not connected.'.format(portName))
 			return False
 
@@ -228,7 +277,23 @@ class select(object):
 			self.__handle = None
 			self.__address = None
 			self.__address2 = None
+			print("Select disconnected")
 
+	def checkShutter(self):
+		shutterStatus = True
+
+		bits = self.getStatusBits()
+		if self.currentAOTF == 0:
+			if bits[8] == 0:	#IR shutter closed
+				print('Vis shutter on Select is closed!')
+				shutterStatus = False
+		else:
+			if bits[9] == 0: #Vis shutter closed
+				print('IR shutter on Select is closed!')
+				shutterStatus = False
+
+		return shutterStatus
+	
 	def on(self):
 		if not self.rfOn:
 			result = nktdll.registerWriteU8(self.__handle, self.__address, 0x30, 1, -1)
@@ -254,6 +319,32 @@ class select(object):
 		else:
 			return True
 
+	def selectAOTF(self, index):
+		### chooses either IR or Vis AOTF. 0 = Vis, 1 = IR
+		if index not in [0,1]:
+			print('Error: {0} is an invalid index. Set 0 for Vis, 1 for IR'.format(index))
+			return False
+
+		if index == self.currentAOTF:
+			return True
+
+		leaveOn = False
+		if self.rfOn:
+			leaveOn = True
+			self.off()
+
+		result = nktdll.registerWriteU8(self.__handle, self.__address2, 0x34, index, -1)	#TODO set to 1, assuming that this corresponds to the IR aotf. may need to change this to properly select the IR aotf
+		if result != 0:
+			print('Error encountered when trying to set AOTF:', nktdll.RegisterResultTypes(result))
+			return False
+		self.currentAOTF = index
+
+		if leaveOn:
+			self.on()
+
+		time.sleep(self.wlDelay)	#allow select to execute changes
+		return True
+
 	def setAOTF(self, wavelength, amplitude = None, gain = None):
 		### takes input to set wavelength. 
 		# takes input 0-1 to set amplitude
@@ -262,7 +353,7 @@ class select(object):
 		## tidy up inputs
 		if type(wavelength) is not list:
 			wavelength = [wavelength] 
-		wavelength = [round(x * 1000) for x in wavelength] 	#when talking to select, (0.001 * input = wavelength (nm)). 
+		wavelength = [int(x * 1000) for x in wavelength] 	#when talking to select, (0.001 * input = wavelength (nm)). 
 		
 		if amplitude is not None:
 			if type(amplitude) is not list:
@@ -304,7 +395,7 @@ class select(object):
 		# set all the wavelengths, amplitudes, and gains
 		success = True
 
-		for idx, wl, a, g in enumerate(zip(wavelength, amplitude, gain)):
+		for idx, wl, a, g in zip(range(len(wavelength)), wavelength, amplitude, gain):
 			# if type(wl) != int:
 			# 	if type(wl) == float:
 			# 		print('Note: only integer values 0-100 allowed as power settings: rounding float {0:f} to nearest int {1:d}').format(powerLevel, round(powerLevel))
@@ -312,27 +403,82 @@ class select(object):
 			# 	else:
 			# 		print('TypeError: only integer values 0-100 allowed as power settings.')
 			# 		return False
-			result = nktdll.registerWriteU32(self.__handle, self.__address, int('0x9{0}'.format(idx),16), wl, -1)
+			# result = nktdll.registerWriteU32(self.__handle, self.__address, int('0x9{0}'.format(idx),16), wl, -1)
+			result = nktdll.registerWriteU32(self.__handle, self.__address, 0x90 + idx, wl, -1)
 			if result == 0:
 				self._wavelengths[idx] = wl
 			else:
 				print('Error encountered when trying to change wavelength {0} to {1} nm:'.format(idx, wl/1000), RegisterResultTypes(result))
 				success = False
 
-			result = nktdll.registerWriteU16(self.__handle, self.__address, int('0xB{0}'.format(idx),16), a, -1)
+			# result = nktdll.registerWriteU16(self.__handle, self.__address, int('0xB{0}'.format(idx),16), a, -1)
+			result = nktdll.registerWriteU16(self.__handle, self.__address, 0xB0 + idx, a, -1)
 			if result == 0:
 				self._amplitudes[idx] = a
 			else:
 				print('Error encountered when trying to change amplitude {0} to {1}:'.format(idx, a/1000), RegisterResultTypes(result))
 				success = False
 
-			result = nktdll.registerWriteU16(self.__handle, self.__address, int('0xC{0}'.format(idx),16), g, -1)
+			# result = nktdll.registerWriteU16(self.__handle, self.__address, int('0xC{0}'.format(idx),16), g, -1)
+			result = nktdll.registerWriteU16(self.__handle, self.__address, 0xC0 + idx, g, -1)
+
 			if result == 0:
 				self._gains[idx] = g
 			else:
 				print('Error encountered when trying to change gain {0} to {1}:'.format(idx, g/1000), RegisterResultTypes(result))
 				success = False
 
+		time.sleep(self.wlDelay)	#allow select to execute changes
+		return success
+
+	def setSingleAOTF(self, wavelength, amplitude = None, gain = None):
+		### takes input to set wavelength. 
+		# takes input 0-1 to set amplitude
+		# takes input 0-1 to set gain (input * 0.1 = %)
+		
+		## tidy up inputs
+		wavelength = int(wavelength*1000)
+
+		if amplitude is not None:
+			amplitude = int(a * 1000)
+		else:
+			amplitude = 1000
+
+		if gain is not None:
+			gain = int(gain * 1000)
+		else:
+			gain = 0
+				
+		# set all the wavelengths, amplitudes, and gains
+		success = True
+
+	
+		result = nktdll.registerWriteU32(self.__handle, self.__address, 0x90, wavelength, -1)
+		if result == 0:
+			self._wavelengths[0] = wavelength
+		else:
+			print('Error encountered when trying to change wavelength for channel {0} to {1} nm:'.format(0, wavelength/1000), RegisterResultTypes(result))
+			success = False
+
+		# result = nktdll.registerWriteU16(self.__handle, self.__address, int('0xB{0}'.format(idx),16), a, -1)
+		if self._amplitudes[0] != amplitude:
+			result = nktdll.registerWriteU16(self.__handle, self.__address, 0xB0, amplitude, -1)
+			if result == 0:
+				self._amplitudes[0] = amplitude
+			else:
+				print('Error encountered when trying to change amplitude for channel {0} to {1}:'.format(0, amplitude/1000), RegisterResultTypes(result))
+				success = False
+
+		# # result = nktdll.registerWriteU16(self.__handle, self.__address, int('0xC{0}'.format(idx),16), g, -1)
+		# result = nktdll.registerWriteU16(self.__handle, self.__address, 0xC0, gain, -1)
+
+		# if result == 0:
+		# 	self._gains[0] = gain
+		# else:
+		# 	print('Error encountered when trying to change gain {0} to {1}:'.format(idx, gain/1000), RegisterResultTypes(result))
+		# 	success = False
+
+		time.sleep(self.wlDelay)	#allow select to execute changes
 		return success
 
 	def setWavelengthRange(self, wmin = None, wmax = None):
@@ -363,3 +509,32 @@ class select(object):
 			success = False
 
 		return success
+
+	def getStatusBits(self):
+		#### Bit Key ###
+		# 0	-
+		# 1	Interlock off
+		# 2	Interlock loop in
+		# 3	Interlock loop out
+		# 4	-
+		# 5	Supply voltage low
+		# 6	Module temp range
+		# 7	-
+		# 8	Shutter sensor1
+		# 9	Shutter sensor2
+		# 10	New crystal1 temperature
+		# 11	New crystal2 temperature
+		# 12	-
+		# 13	-
+		# 14	-
+		# 15	Error code present
+
+		result, value = nktdll.registerReadU8(self.__handle, self.__address2, 0x66, 0)
+		bits = [int(x) for x in bin(value)[2:]]	#break number into bits
+		bits = [0] * (8-len(bits)) + bits	#pad with 0's for bits not needed to output int value
+		bits.reverse()	#reverse bits into order matching register file description
+
+		result, value = nktdll.registerReadU8(self.__handle, self.__address2, 0x66, 1)
+		bits2 = [int(x) for x in bin(value)[2:]]	#break number into bits
+		bits2 = [0] * (8-len(bits2)) + bits2	#pad with 0's for bits not needed to output int value
+		bits2.reverse()	#reverse bits into order matching register file description
