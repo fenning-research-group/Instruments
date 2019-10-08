@@ -96,7 +96,7 @@ class controlGeneric(object):
 			# fpath = os.path.join(self.outputdir, label + '.json')
 			# with open(fpath, 'w') as f:
 			# 	json.dump(data, f)
-			self._save_scanPoint(label = label, wavelengths = wavelengths, reflectance = reflectance)
+			self._save_scanPoint(label = label, wavelengths = wavelengths, reflectance = reflectance, signal = signal, reference = reference)
 
 		if plot:
 			plt.plot(data['Wavelengths'],data['Reflectance'])
@@ -542,7 +542,7 @@ class controlGeneric(object):
 
 			return info, settings, baseline
 
-	def _save_scanPoint(self, label, wavelengths, reflectance):
+	def _save_scanPoint(self, label, wavelengths, reflectance, signal, reference):
 		
 		fpath = self._getSavePath(label = label)	#generate filepath for saving data
 
@@ -563,6 +563,12 @@ class controlGeneric(object):
 
 			temp = rawdata.create_dataset('reflectance', data = np.array(reflectance))
 			temp.attrs['description'] = 'Baseline-corrected reflectance measured. Stored as fraction (0-1), not percent!'
+
+			temp = rawdata.create_dataset('signalRaw', data = np.array(signal))
+			temp.attrs['description'] = 'Raw signal for integrating sphere detector. (V)'
+
+			temp = rawdata.create_dataset('referenceRaw', data = np.array(reference))
+			temp.attrs['description'] = 'Raw signal for reference detector. (V)'
 
 		print('Data saved to {0}'.format(fpath))	
 
