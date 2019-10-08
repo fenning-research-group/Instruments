@@ -96,7 +96,13 @@ class controlGeneric(object):
 			# fpath = os.path.join(self.outputdir, label + '.json')
 			# with open(fpath, 'w') as f:
 			# 	json.dump(data, f)
-			self._save_scanPoint(label = label, wavelengths = wavelengths, reflectance = reflectance, signal = signal, reference = reference)
+			self._save_scanPoint(
+				label = label, 
+				wavelengths = wavelengths, 
+				reflectance = reflectance, 
+				signal = signal, 
+				reference = reference
+				)
 
 		if plot:
 			plt.plot(data['Wavelengths'],data['Reflectance'])
@@ -182,7 +188,10 @@ class controlGeneric(object):
 		ally = np.linspace(y0 - ysize/2, y0 + ysize/2, ysteps)
 
 		data = np.zeros((ysteps, xsteps, len(wavelengths)))
+		signal = np.zeros((ysteps, xsteps, len(wavelengths)))
+		reference = np.zeros((ysteps, xsteps, len(wavelengths)))
 		delay = np.zeros((ysteps, xsteps))
+
 		firstscan = True
 		lastscan = False
 		reverse= -1 # for snaking
@@ -202,8 +211,8 @@ class controlGeneric(object):
 					wlThread.join()
 					moveThread.join()
 
-					signal, reference = self._scanroutine(wavelengths = wavelengths, firstscan = firstscan, lastscan = lastscan)
-					data[yidx, xidx, :] = self._baselineCorrectionRoutine(wavelengths, signal, reference)
+					signal[yidx, xidx, :], reference[yidx, xidx, :] = self._scanroutine(wavelengths = wavelengths, firstscan = firstscan, lastscan = lastscan)
+					data[yidx, xidx, :] = self._baselineCorrectionRoutine(wavelengths, signal[yidx, xidx, :], reference[yidx, xidx, :])
 					delay[yidx, xidx] = time.time() - startTime #time in seconds since scan began
 				else: # go in the reverse direction
 					moveThread = threading.Thread(target = self.stage.moveto, args = (x, ally[ysteps-1-yidx]))
@@ -211,15 +220,24 @@ class controlGeneric(object):
 					wlThread.join()
 					moveThread.join()
 
-					signal,reference = self._scanroutine(wavelengths = wavelengths, firstscan = firstscan, lastscan = lastscan)
-					data[ysteps-1-yidx, xidx, :]= self._baselineCorrectionRoutine(wavelengths, signal, reference) # baseline correction
+					signal[ysteps-1-yidx, xidx, :], reference[ysteps-1-yidx, xidx, :] = self._scanroutine(wavelengths = wavelengths, firstscan = firstscan, lastscan = lastscan)
+					data[ysteps-1-yidx, xidx, :]= self._baselineCorrectionRoutine(wavelengths, signal[ysteps-1-yidx, xidx, :], reference[ysteps-1-yidx, xidx, :]) # baseline correction
 					delay[ysteps-1-yidx, xidx] = time.time() - startTime #time in seconds since scan began
 				firstscan = False
 		self.stage.moveto(x = x0, y = y0)	#go back to map center position
 
 		if export:
 			# export as a hfile
-			self._save_scanArea(label = label, x = allx, y = ally, delay = delay, wavelengths = wavelengths, reflectance = data)
+			self._save_scanArea(
+				label = label,
+				x = allx, 
+				y = ally, 
+				delay = delay, 
+				wavelengths = wavelengths, 
+				reflectance = data, 
+				signal = signal, 
+				reference = reference
+				)
 
 	def flyscanArea(self, label, wavelengths, xsize, ysize, xsteps = 21, ysteps = 21, x0 = None, y0 = None, export = True):
 		# clean up wavelengths input
@@ -579,7 +597,7 @@ class controlGeneric(object):
 
 	# def _save_findArea(self, label, wavelength, reflectance):
 
-	def _save_scanArea(self, label, x, y, delay, wavelengths, reflectance):
+	def _save_scanArea(self, label, x, y, delay, wavelengths, reflectance, signal, reference):
 		
 		fpath = self._getSavePath(label = label)	#generate filepath for saving data
 
@@ -641,6 +659,12 @@ class controlGeneric(object):
 
 			temp = rawdata.create_dataset('reflectance', data = np.array(reflectance))
 			temp.attrs['description'] = 'Baseline-corrected reflectance measured. Stored as [y, x, wl]. Stored as fraction (0-1), not percent!'
+
+			temp = rawdata.create_dataset('signalRaw', data = np.array(signal))
+			temp.attrs['description'] = 'Raw signal for integrating sphere detector. (V)'
+
+			temp = rawdata.create_dataset('referenceRaw', data = np.array(reference))
+			temp.attrs['description'] = 'Raw signal for reference detector. (V)'
 
 			temp = rawdata.create_dataset('delay', data = np.array(delay))
 			temp.attrs['description'] = 'Time (seconds) that each scan was acquired at. Measured as seconds since first scan point.'			
