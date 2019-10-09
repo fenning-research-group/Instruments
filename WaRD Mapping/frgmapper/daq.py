@@ -118,43 +118,47 @@ class daq(object):
 
 	def read(self):
 
-		num_chans = len(self.channels['Number']) + 1
-		totalCount =  num_chans * self.__countsPerChannel
-		memhandle = ul.scaled_win_buf_alloc(totalCount)
-		ctypesArray = ctypes.cast(memhandle, ctypes.POINTER(ctypes.c_double))
+		
 		
 		if self.useExtClock:
 			# scan_options = ScanOptions.FOREGROUND | ScanOptions.SCALEDATA | ScanOptions.EXTCLOCK
 			scan_options = ScanOptions.FOREGROUND | ScanOptions.SCALEDATA | ScanOptions.EXTTRIGGER | ScanOptions.RETRIGMODE
+			num_chans = len(self.channels['Number']) + 1
+			channelList = ['Trigger'] + self.channels['Label']
+			ul.daq_set_trigger(
+					board_num = self.board_num, 
+					trig_source = TriggerSource.EXTTTL,
+					trig_sense = TriggerSensitivity.RISING_EDGE,
+					trig_chan = self.channels['Number'][1], 
+					chan_type = self.channels['Type'][1],
+					gain = self.channels['Gain'][1],
+					level = 2, 
+					variance = 0, 
+					trig_event = TriggerEvent.START
+					)
+
+
+			# Set the stop trigger settings
+			# Code doesn't run with this command - error = "Error 1015: Invalid trigger event specified"
+			# ul.daq_set_trigger(
+			# 		board_num = self.board_num, 
+			# 		trig_source = TriggerSource.SCANCOUNT,
+			# 		trig_sense = TriggerSensitivity.ABOVE_LEVEL,
+			# 		trig_chan = self.channels['Number'][0], 
+			# 		chan_type = self.channels['Type'][0],	#  not sure if these
+			# 		gain = self.channels['Gain'][0],		#  arguments matter here
+			# 		level = 2, 	#number of scans to stop after?
+			# 		variance = 0,
+			# 		trig_event = TriggerEvent.STOP
+			# 		)
 		else:
 			scan_options = ScanOptions.FOREGROUND | ScanOptions.SCALEDATA
+			num_chans = len(self.channels['Number'])
+			channelList = self.channels['Label']
 
-		ul.daq_set_trigger(
-				board_num = self.board_num, 
-				trig_source = TriggerSource.EXTTTL,
-				trig_sense = TriggerSensitivity.RISING_EDGE,
-				trig_chan = self.channels['Number'][1], 
-				chan_type = self.channels['Type'][1],
-				gain = self.channels['Gain'][1],
-				level = 2, 
-				variance = 0, 
-				trig_event = TriggerEvent.START
-				)
-
-
-		# Set the stop trigger settings
-		# Code doesn't run with this command - error = "Error 1015: Invalid trigger event specified"
-		ul.daq_set_trigger(
-				board_num = self.board_num, 
-				trig_source = TriggerSource.SCANCOUNT,
-				trig_sense = TriggerSensitivity.ABOVE_LEVEL,
-				trig_chan = self.channels['Number'][0], 
-				chan_type = self.channels['Type'][0],	#  not sure if these
-				gain = self.channels['Gain'][0],		#  arguments matter here
-				level = 2, 	#number of scans to stop after?
-				variance = 0,
-				trig_event = TriggerEvent.STOP
-				)
+		totalCount =  num_chans * self.__countsPerChannel
+		memhandle = ul.scaled_win_buf_alloc(totalCount)
+		ctypesArray = ctypes.cast(memhandle, ctypes.POINTER(ctypes.c_double))
 
 		ul.daq_in_scan(
 			board_num = self.board_num,
@@ -170,7 +174,7 @@ class daq(object):
 			)
 
 		data = {}
-		for ch in ['Trigger'] + self.channels['Label']:
+		for ch in channelList:
 			data[ch] = {
 				'Raw':[],
 				'Mean': None,
@@ -179,15 +183,15 @@ class daq(object):
 
 		dataIndex = 0
 		for each in range(self.__countsPerChannel):
-			for ch in ['Trigger'] + self.channels['Label']:
+			for ch in channelList:
 				data[ch]['Raw'].append(ctypesArray[dataIndex])
 				dataIndex += 1
 
-		for ch in ['Trigger'] + self.channels['Label']:
+		for ch in channelList:
 			data[ch]['Mean'] = np.mean(data[ch]['Raw'])
 			data[ch]['Std'] = np.std(data[ch]['Raw'])
 
-		data['Reference']['Mean'] = np.ones(data['Reference']['Mean'].shape)	#set reference detector readings to 1
+		# data['Reference']['Mean'] = np.ones(data['Reference']['Mean'].shape)	#set reference detector readings to 1
 
 		ul.win_buf_free(memhandle)
 
