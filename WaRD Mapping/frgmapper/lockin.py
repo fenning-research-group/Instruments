@@ -29,12 +29,15 @@ class lockin(object):
 		self.SRS_TC=0 # lock in time constant
 		#self.SetLockinTimeConstant()
 		#self.SetLockinSensitivity()
+		
 		self.select = select()
 		self.compact = compact()
 		self.InitLockin()
 
 	def InitLockin(self):
 		# turn on laser, then set time constant and sensitivity
+		self.compact.connect()
+		self.select.connect()
 		self.select.setAOTF(1700)
 		self.compact.on()
 		#self.SetLockinTimeConstant()
