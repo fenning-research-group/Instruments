@@ -15,9 +15,11 @@ from ctypes import c_double, cast
 import time
 
 from builtins import *  # @UnusedWildImport
-
-#from examples.console import util
-#from examples.props.ai import AnalogInputProps
+from mcculw import ul
+from mcculw.enums import ScanOptions, FunctionType, Status
+# from examples.console import util
+# from examples.props.ai import AnalogInputProps
+from mcculw.ul import ULError
 import threading
 
 board_num = 0
@@ -28,17 +30,17 @@ max_rate = 50e3
 
 class daq(object):
 
-	def __init__(self, channel_intSphere = 0, channel_ref = 2, rate = 10000, dwelltime = None, counts = 500):
+	def __init__(self, channel_intSphere = 0, channel_ref = 2, rate = 21505, dwelltime = None, counts = 500, extclock = False):
 		self.board_num = 0
 		# self.ai_range = ULRange.BIP5VOLTS
 		self.__rate = rate
 		self.__dwelltime = dwelltime
 		self.acquiringBG = False
-		# Connect the lockin
 		self._lockin=lockin()
 		print("Lockin connected")
 		#self._lockin.SetLockinTimeConstant() # will need to change the time constant acquisition method
 		#self._lockin.SetLockinSensitivity() # will need to set the sensisitivity for the wavelength having the highest intensity
+		self.useExtClock = extclock
 
 		# prioritize dwelltime argument when setting counts/rate. if none provided, use explicitly provided counts
 		if dwelltime is not None:
@@ -124,7 +126,7 @@ class daq(object):
 		ctypesArray = ctypes.cast(memhandle, ctypes.POINTER(ctypes.c_double))
 		
 		scan_options = ScanOptions.FOREGROUND | ScanOptions.SCALEDATA
-		
+
 		data = {}
 		for ch in self.channels['Label']:
 			data[ch] = {
@@ -199,14 +201,7 @@ class daq(object):
 			data[ch]['Mean'] = np.mean(data[ch]['Raw'])
 			data[ch]['Std'] = np.std(data[ch]['Raw'])
 
-		# for ch in self.channels['Label']:
-		#     tempdat = {'Raw': []}
-		#     for each in range(self.__countsPerChannel):
-		#         tempdat['Raw'].append(ctypesArray[dataIndex])
-		#         dataIndex += 1
-		#     tempdat['Mean'] = np.mean(tempdat['Raw'])
-		#     tempdat['Std'] = np.std(tempdat['Raw'])
-		#     data[ch] = tempdat
+		data['Reference']['Mean'] = np.ones(data['Reference']['Mean'].shape)	#set reference detector readings to 1
 
 		data['Reference']['Mean'] = np.ones(data['Reference']['Mean'].shape)	#set reference detector readings to 1
 
@@ -231,7 +226,6 @@ class daq(object):
 		if removefile:
 			os.remove(self.filepathBG)
 		return time, data
-
 
 	def _readBG(self, file_name):
 		# file_name = 'C:\\Users\\PVGroup\\Desktop\\frgmapper\\Data\\20190913\\test.data'
@@ -273,8 +267,10 @@ class daq(object):
 		# When handling the buffer, we will read 1/10 of the buffer at a time
 		write_chunk_size = int(ul_buffer_count / 100)
 
-		scan_options = (ScanOptions.BACKGROUND | ScanOptions.CONTINUOUS |
-						ScanOptions.SCALEDATA)
+		if self.useExtClock:
+			scan_options = ScanOptions.BACKGROUND | ScanOptions.CONTINUOUS | ScanOptions.SCALEDATA | ScanOptions.EXTCLOCK
+		else:
+			scan_options = ScanOptions.BACKGROUND | ScanOptions.CONTINUOUS | ScanOptions.SCALEDATA
 
 		memhandle = ul.scaled_win_buf_alloc(ul_buffer_count)
 
@@ -417,7 +413,7 @@ class daq(object):
 
 			ul.stop_background(board_num, FunctionType.DAQIFUNCTION)
 		except ULError as e:
-			util.print_ul_error(e)
+			pass
 		finally:
 			# print('Done')
 

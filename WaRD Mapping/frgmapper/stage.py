@@ -1,5 +1,6 @@
 import thorlabs_apt as apt
 import time
+import threading
 
 class stage(object):
 
@@ -31,18 +32,51 @@ class stage(object):
 		# self.y.set_move_home_parameters(self.y.get_move_home_parameters())
 		# self.x.set_velocity_parameters(self.x.get_velocity_parameters())
 		# self.y.set_velocity_parameters(self.y.get_velocity_parameters())
-		self.x.move_home(True)
-		self.y.move_home(True)
-		self.__homed = True
+		def goHomeThread(motor):
+			foundHome = False
+			maxAttempts = 3
+			attempts = 0
+
+			while (attempts < maxAttempts) and not foundHome:
+				try:
+					motor.move_home(True)
+				except:
+					attempts = attempts + 1
+				if motor.has_homing_been_completed:
+					foundHome = True
+
+			return foundHome
+			
+		xThread = threading.Thread(target = goHomeThread, args = (self.x,))
+		yThread = threading.Thread(target = goHomeThread, args = (self.y,))
+		xThread.start()
+		yThread.start()
+		xThread.join()
+		yThread.join()
+
+
+		xHomed = self.x.has_homing_been_completed
+		yHomed = self.y.has_homing_been_completed
+		if xHomed and yHomed:
+			self.__homed = True
+		else:
+			self.__homed = False
+			errorstr = 'Error encounted: '
+			if not xHomed:
+				errorstr += 'x'
+			if not yHomed:
+				errorstr += 'y'
+			errorstr += ' did not successfully find home.'
+			print(errorstr)
 
 		self.postmove()
-		return True
+		return self.__homed
 
 	def movetocenter(self):
 		if not self.premove():
 			return False
 		
-		self.moveto(x = 60, y = 105) 	#position where sample is roughly centered on int sphere port 2019-09-19
+		self.moveto(x = 77, y = 97) 	#position where sample is roughly centered on int sphere port 2019-09-19
 
 		self.postmove()
 		return True
@@ -51,7 +85,7 @@ class stage(object):
 		if not self.premove():
 			return False
 		
-		self.moveto(x = 150, y = 0) 	#position where sample can be easily loaded 2019-08-13
+		self.moveto(x = 0, y = 150) 	#position where sample can be easily loaded 2019-08-13
 		
 		self.postmove()
 		return True

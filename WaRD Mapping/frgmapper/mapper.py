@@ -23,7 +23,8 @@ if not os.path.exists(datafolder):
 	os.mkdir(datafolder)
 
 class controlGeneric(object):
-	def __init__(self, dwelltime = 0.1):
+
+	def __init__(self, dwelltime = 0.2):
 		todaysDate = datetime.datetime.now().strftime('%Y%m%d')
 		self.outputdir = os.path.join(root, datafolder, todaysDate)
 		self.__hardwareSetup = 'mono'		#distinguish whether saved data comes from the mono or nkt setup
@@ -42,6 +43,8 @@ class controlGeneric(object):
 		self.daq.dwelltime = x
 		self.__dwelltime = x
 
+
+	# user methods
 	def generateWavelengths(self, wmin = 1700, wmax = 2000, wsteps = 151):
 		wavelengths = np.linspace(wmin, wmax, wsteps)
 		return wavelengths
@@ -57,10 +60,12 @@ class controlGeneric(object):
 		
 		#dark baseline
 		storeddwelltime = self.__dwelltime
+		storedUseExtClock = self.daq.useExtClock
 		self.dwelltime = 5	#take a long acquisition for the dark baseline, as it is a single point measurement
 		out = self.daq.read()
 		self.dwelltime = storeddwelltime
-		
+		self.daq.useExtClock = storedUseExtClock
+
 		self.__baseline['DarkRaw'] = out['IntSphere']['Mean']
 		self.__baseline['DarkRefRaw'] = out['Reference']['Mean']
 		self.__baseline['Dark'] = self.__baseline['DarkRaw'] / self.__baseline['DarkRefRaw']
@@ -69,7 +74,7 @@ class controlGeneric(object):
 
 	def scanPoint(self, label, wavelengths, plot = True, export = True):
 		# clean up wavelengths input
-		wavelengths = np.array(wavelengths)
+		wavelengths = self._cleanWavelengthInput(wavelengths)
 
 		signal, reference = self._scanroutine(wavelengths)
 		reflectance = self._baselineCorrectionRoutine(wavelengths, signal, reference)
@@ -93,7 +98,13 @@ class controlGeneric(object):
 			# fpath = os.path.join(self.outputdir, label + '.json')
 			# with open(fpath, 'w') as f:
 			# 	json.dump(data, f)
-			self._save_scanPoint(label = label, wavelengths = wavelengths, reflectance = reflectance)
+			self._save_scanPoint(
+				label = label, 
+				wavelengths = wavelengths, 
+				reflectance = reflectance, 
+				signal = signal, 
+				reference = reference
+				)
 
 		if plot:
 			plt.plot(data['Wavelengths'],data['Reflectance'])
@@ -105,22 +116,11 @@ class controlGeneric(object):
 	def findArea(self, wavelength, xsize = 30, ysize = 30, xsteps = 40, ysteps = 40, plot = True, export = False):
 		### method to find sample edges. does two line scans in a cross over the sample at a single wavelength.
 		# clean up wavelengths input
-		if type(wavelength) is np.ndarray:
-			if wavelength.shape == (1,):
-				pass	#already good
-			elif wavelength.shape == ():
-				wavelength = np.array([wavelength])	#cast to (1,)
-			else:
-				print('TypeError: .findArea uses a single wavelength, cannot interpret an array of multiple values')
-		elif type(wavelength) is list:
-			if len(wavelength) == 0:
-				wavelength = np.array(wavelength)
-			else:
-				print('TypeError: .findArea uses a single wavelength, cannot interpret a list of multiple values')
-				return False
-		else:
-			wavelength = np.array([wavelength])	#assume we have a single int/float value here. if its a string we'll throw a normal error downstream
-		
+		wavelength = self._cleanWavelengthInput(wavelength)
+
+		if wavelength.shape[0] > 1:
+			print('Please use a single wavelength for findArea - aborting')
+			return False
 		
 		# self.stage.gotocenter() #go to center position, where sample is centered on integrating sphere port. Might need to remove this line later if inconvenient
 		x0, y0 = self.stage.position
@@ -130,7 +130,7 @@ class controlGeneric(object):
 		
 
 		self._goToWavelength(wavelength[0])
-		
+
 		self.stage.moveto(x = allx[0], y = y0)
 		self._lightOn()		
 		xdata = np.zeros((xsteps,))
@@ -154,36 +154,31 @@ class controlGeneric(object):
 		self._lightOff()
 		self.stage.moveto(x = x0, y = y0) #return to original position
 
-		# if export:
-			# self._save_findArea(x = allx, y = ally, wavelength = wavelength, reflectance_x = xdata, reflectance_y = ydata)
-
+		center = [None, None]
+		size = [None, None]
 		if plot:
 			fig, ax = plt.subplots(2,1)
-			ax[0].plot(allx, xdata)
+			# ax[0].plot(allx, xdata)
+			center[0], size[0] = self._findEdges(allx, xdata, ax = ax[0])
 			ax[0].set_xlabel('X Position (mm)')
-			ax[0].set_ylabel('Reflectance at {0:d} nm'.format(wavelength[0]))
+			ax[0].set_ylabel('Reflectance at {0} nm'.format(wavelength[0]))
 			ax[0].set_title('X Scan')
 
-			ax[1].plot(ally, ydata)
+			# ax[1].plot(ally, ydata)
+			center[1], size[1] = self._findEdges(ally, ydata, ax = ax[1])
 			ax[1].set_xlabel('Y Position (mm)')
-			ax[1].set_ylabel('Reflectance at {0:d} nm'.format(wavelength[0]))
+			ax[1].set_ylabel('Reflectance at {0} nm'.format(wavelength[0]))
 			ax[1].set_title('Y Scan')
 			plt.tight_layout()
 			plt.show()
-		# return the centroid, width/bounds if found
-		
-		# HERE add code to find sample area based on the variation of reflectance
+		# print + return the centroid, width/bounds if found (currently no sanity checking to see if bounds are realistic, rely on user to judge the plots for themselves)
+		print('Suggested scanArea parameters:\n\tx0 = {0}\n\ty0 = {1}\n\txsize = {2}\n\tysize = {3}\n'.format(center[0], center[1], size[0], size[1]))
+
+		return center, size
 
 	def scanArea(self, label, wavelengths, xsize, ysize, xsteps = 21, ysteps = 21, x0 = None, y0 = None, export = True):
 		# clean up wavelengths input
-		wavelengths = np.array(wavelengths)
-
-		if self.stage is None:
-			self.connectStage() # connect stage
-			self.stage.gohome()
-			self.stage.gotocenter()
-		if self.daq is None:
-			self.connect() # connect mono and daq
+		wavelengths = self._cleanWavelengthInput(wavelengths)
 
 		currentx, currenty = self.stage.position # return position
 		if x0 is None:
@@ -195,7 +190,10 @@ class controlGeneric(object):
 		ally = np.linspace(y0 - ysize/2, y0 + ysize/2, ysteps)
 
 		data = np.zeros((ysteps, xsteps, len(wavelengths)))
+		signal = np.zeros((ysteps, xsteps, len(wavelengths)))
+		reference = np.zeros((ysteps, xsteps, len(wavelengths)))
 		delay = np.zeros((ysteps, xsteps))
+
 		firstscan = True
 		lastscan = False
 		reverse= -1 # for snaking
@@ -215,48 +213,108 @@ class controlGeneric(object):
 					wlThread.join()
 					moveThread.join()
 
-					signal, reference = self._scanroutine(wavelengths = wavelengths, firstscan = firstscan, lastscan = lastscan)
-					data[yidx, xidx, :] = self._baselineCorrectionRoutine(wavelengths, signal, reference)
+
+					signal[yidx, xidx, :], reference[yidx, xidx, :] = self._scanroutine(wavelengths = wavelengths, firstscan = firstscan, lastscan = lastscan)
+					data[yidx, xidx, :] = self._baselineCorrectionRoutine(wavelengths, signal[yidx, xidx, :], reference[yidx, xidx, :])
 					delay[yidx, xidx] = time.time() - startTime #time in seconds since scan began
 				else: # go in the reverse direction
 					moveThread = threading.Thread(target = self.stage.moveto, args = (x, ally[ysteps-1-yidx]))
 					moveThread.start()
 					wlThread.join()
 					moveThread.join()
-
-					signal,reference = self._scanroutine(wavelengths = wavelengths, firstscan = firstscan, lastscan = lastscan)
-					data[ysteps-1-yidx, xidx, :]= self._baselineCorrectionRoutine(wavelengths, signal, reference) # baseline correction
+					signal[ysteps-1-yidx, xidx, :], reference[ysteps-1-yidx, xidx, :] = self._scanroutine(wavelengths = wavelengths, firstscan = firstscan, lastscan = lastscan)
+					data[ysteps-1-yidx, xidx, :]= self._baselineCorrectionRoutine(wavelengths, signal[ysteps-1-yidx, xidx, :], reference[ysteps-1-yidx, xidx, :]) # baseline correction
 					delay[ysteps-1-yidx, xidx] = time.time() - startTime #time in seconds since scan began
 				firstscan = False
 		self.stage.moveto(x = x0, y = y0)	#go back to map center position
 
 		if export:
-			# output = {
-			# 	'Label': label,
-			# 	'Date': datetime.date.today().strftime('%Y/%m/%d'),
-			# 	'Time': datetime.datetime.now().strftime('%H:%M:%S'),
-			# 	'X': allx.tolist(),
-			# 	'Y': ally.tolist(),
-			# 	'delay': delay.tolist()
-			# 	'Wavelengths': wavelengths.tolist(),
-			# 	'Reflectance': data.tolist()
-			# }
-			
 			# export as a hfile
-			self._save_scanArea(label = label, x = allx, y = ally, delay = delay, wavelengths = wavelengths, reflectance = data)
-			# export as a json file
-			# fpath = os.path.join(self.outputdir, label + '.json')
-			# with open(fpath, 'w') as f:
-			# 	json.dump(output, f)
+			self._save_scanArea(
+				label = label,
+				x = allx, 
+				y = ally, 
+				delay = delay, 
+				wavelengths = wavelengths, 
+				reflectance = data, 
+				signal = signal, 
+				reference = reference
+				)
+
+	def flyscanArea(self, label, wavelengths, xsize, ysize, xsteps = 21, ysteps = 21, x0 = None, y0 = None, export = True):
+		# clean up wavelengths input
+		wavelengths = self._cleanWavelengthInput(wavelengths)
+
+		currentx, currenty = self.stage.position # return position
+		if x0 is None:
+			x0 = currentx
+		if y0 is None:
+			y0 = currenty
+
+		allx = np.linspace(x0 - xsize/2, x0 + xsize/2, xsteps)
+		ally = np.linspace(y0 - ysize/2, y0 + ysize/2, ysteps)
+
+		data = np.zeros((ysteps, xsteps, len(wavelengths)))
+		delay = np.zeros((len(wavelengths), yidx))
+
+		firstscan = True
+		lastscan = False
+		reverse= -1 # for snaking
+		startTime = time.time()
+		for wlidx, wl in tqdm(enumerate(wavelengths), desc = 'Wavelength', total = wavelengths.shape[0], leave = False):
+			self.stage.moveto(x = allx[0], y = ally[0])	#move to starting position for each subsequent wavelength map
+			self._goToWavelength(wl)	#set the correct wavelength
+			for yidx, y in tqdm(enumerate(ally), desc = 'Flyscan Lines', total = ally.shape[0], leave = False):
+				self.stage.moveto(y = y)	#move to next line
+				if (yidx == ally.shape[0]) and (wlidx == wavelengths.shape[0]):
+					lastscan = True
+
+				reverse = reverse*(-1)
+				if reverse > 0: #go in the forward direction
+					linedata, linetime, linesignal, linereference = self._flyscanroutine(wavelength = wl, 
+						x0 = allx[0], 
+						x1 = allx[-1], 
+						numpts = allx.shape[0], 
+						firstscan = firstscan, 
+						lastscan = lastscan
+						)
+				else: # go in the reverse direction
+					linedata, linetime, linesignal, linereference = self._flyscanroutine(wavelength = wl, 
+						x0 = allx[0], 
+						x1 = allx[-1], 
+						numpts = allx.shape[0], 
+						firstscan = firstscan, 
+						lastscan = lastscan
+						)
+					linedata = np.flipud(linedata)
+				
+				data[yidx,:,wlidx] = linedata
+				delay[wlidx, yidx] = time.time() - startTime #time in seconds since scan began
+				firstscan = False
+
+		self.stage.moveto(x = x0, y = y0)	#go back to map center position
+
+		if export:
+			# export as a hfile
+			self._save_flyscanArea(label = label, 
+				x = allx, 
+				y = ally, 
+				delay = delay, 
+				wavelengths = wavelengths, 
+				reflectance = data
+				)
 
 	def timeSeries(self, label, wavelengths, duration, interval, export = True):
 		### records a reflectance spectrum for a given duration (seconds) at set intervals (seconds)
 		#	TODO: I don't think this will work for single wavelength inputs
 
 		# clean up wavelengths input
+
 		wavelengths = np.array(wavelengths)
 
 		reflectance = []
+		signal = []
+		reference = []
 		delay = []
 		startTime = time.time()
 		pbarPercent = 0
@@ -264,8 +322,10 @@ class controlGeneric(object):
 			while (time.time() - startTime) <= duration:
 				if (time.time()-startTime) >= (interval*len(delay)):	#time for the next scan
 					delay.append(time.time() - startTime)
-					signal, reference = self._scanroutine(wavelengths, lastscan = False)
-					reflectance.append(self._baselineCorrectionRoutine(wavelengths, signal, reference))
+					sig, ref = self._scanroutine(wavelengths, lastscan = False)
+					reflectance.append(self._baselineCorrectionRoutine(wavelengths, sig, ref))
+					signal.append(sig)
+					reference.append(ref)
 				else:	#if we have some time to wait between scans, close the shutter and go to the starting wavelength
 					self._lightOff()
 					self._goToWavelength(wavelength = wavelengths[0])
@@ -284,8 +344,20 @@ class controlGeneric(object):
 
 		reflectance = np.array(reflectance)
 		delay = np.array(delay)
+		signal = np.array(signal)
+		reference = np.array(reference)
+
 		if export:
-			self._save_timeSeries(label = label, wavelengths = wavelengths, reflectance = reflectance, delay = delay, duration = duration, interval = interval)
+			self._save_timeSeries(
+				label = label, 
+				wavelengths = wavelengths, 
+				reflectance = reflectance, 
+				delay = delay, 
+				duration = duration, 
+				interval = interval,
+				signal = signal,
+				reference = reference
+				)
 
 		# if plot:
 		# 	plt.plot(data['Wavelengths'],data['Reflectance'])
@@ -299,10 +371,8 @@ class controlGeneric(object):
 		self._goToWavelength(wavelengths[0])
 		if firstscan:
 			self._lightOn()
-
 		# Set the lockin sensitivity here (as the laser needs to be on at the wavelength of highest power, which is 1700 nm
 		# in the range 1700-2000 nm)
-
 
 		signal = np.zeros(wavelengths.shape)
 		ref = np.zeros(wavelengths.shape)
@@ -317,19 +387,121 @@ class controlGeneric(object):
 
 		return signal, ref
 
+	def _flyscanroutine(self, wavelength, x0, x1, numpts, firstscan = True, lastscan = True):
+		def clipTime(timeraw, data, rampTime):
+			tmax = max(timeraw) - rampTime
+			tmin = rampTime
+
+			return data[(timeraw>tmin) & (timeraw<tmax)]
+
+		rampDistance = 2	#distance traveled before the stage reaches constant speed
+		rampTime = 0.5		#time elapsed before the stage reaches constant speed
+		useFraction = 1	    #fraction of each time step to use. Valid values = 0.1 - 1, although very small values will likely hurt data quality. 1 = use entire time step, 0.5 = only use center 50% of timestep, etc.
+		# Spread out the line scan endpoints to account for acceleration runway
+		if x0 > x1:
+			x0 = x0 + rampDistance
+			x1 = x1 - rampDistance
+		else:
+			x0 = x0 - rampDistance
+			x1 = x1 + rampDistance
+
+		self.stage.moveto(x = x0)	#move to flyscan start position
+		if firstscan:
+			self._lightOn()
+
+		self.daq.startBG()	#start background acquisition
+		self.stage.moveto(x = x1)	#move to flyscan end position
+		timeraw, detectorData = self.daq.stopBG()	#stop and read data from background acquisition
+
+		signalraw = detectorData[:,0]
+		referenceraw = detectorData[:,1]
+
+		signal = clipTime(timeraw, signalraw, rampTime)
+		reference = clipTime(timeraw, referenceraw, rampTime)
+		time = clipTime(timeraw, timeraw, rampTime)
+		data = self._baselineCorrectionRoutine(wavelength, signal, reference)
+		
+		time = time - time.min()	#force time to start at 0
+		endtime = time.max()
+		timestep = endtime / numpts
+		dropTime = timestep * 0.5 * (1-useFraction)	#amount of time to drop from beginning/end of each timestep.
+		reflectance = np.zeros((numpts,))
+
+		for i in range(numpts):
+			tmin = timestep*i + dropTime
+			tmax = timestep*(i+1) - dropTime
+			ptData = data[(time > tmin)&(time < tmax)]
+			reflectance[i] = ptData.mean()
+		if lastscan:
+			self._lightOff()
+
+		return reflectance, timeraw, signalraw, referenceraw
+
 	def _baselineCorrectionRoutine(self, wavelengths, signal, reference):
 		if self.__baselineTaken == False:
 			raise ValueError("Take baseline first")
 
-		corrected = np.zeros(wavelengths.shape)
+		# corrected = np.zeros(wavelengths.shape)
+		numerator = np.zeros(wavelengths.shape)
+		denominator = np.zeros(wavelengths.shape)
 		for idx, wl in enumerate(wavelengths):
 			meas = signal[idx]/reference[idx]
 			bl_idx = np.where(self.__baseline['Wavelengths'] == wl)[0]
-			corrected[idx] = (meas-self.__baseline['Dark']) / (self.__baseline['Light'][bl_idx]-self.__baseline['Dark']) 
-
+			numerator[idx] = (signal[idx]-self.__baseline['DarkRaw']) / (self.__baseline['LightRaw'][bl_idx]-self.__baseline['DarkRaw'])
+			# denominator[idx] = (reference[idx]-self.__baseline['DarkRefRaw']) / (self.__baseline['LightRefRaw'][bl_idx]-self.__baseline['DarkRefRaw'])
+			denominator[idx] = 1
+			# corrected[idx] = (meas-self.__baseline['Dark']) / (self.__baseline['Light'][bl_idx]-self.__baseline['Dark']) 
+		corrected = numerator/denominator
+		
 		return corrected
 
+	def _findEdges(self, x,r, ax = None):
+		### Given stage positions x and reflectance values r from a line scan at a single wavelength, compute the edges and center of 
+		# the sample area using the first derivative. If given an axis handle, plots the line scan + suggested positions to this axis.
+		r1 = np.gradient(r)
+		# r2 = np.gradient(r1)
+		
+		x1 = x[np.where(r1==r1.max())]
+		x2 = x[np.where(r1==r1.min())]  
+		if x1 > x2:   #force x2 > x1 - initial order depends on whether reflectance is higher or lower on target area vs background
+			temp = x1
+			x1 = x2
+			x2 = temp    
+		center = np.mean([x1,x2])
+		rng = x2[0]-x1[0]
+		
+		if ax is not None:
+			ax.plot(x,r)
+			ylim0 = [x for x in plt.ylim()]
+			ax.plot([x1,x1], ylim0, color = 'r', linestyle = '--')
+			ax.plot([x2,x2], ylim0, color = 'r', linestyle = '--')
+			ax.plot([center, center], ylim0, color = 'r', linestyle = ':')
+			ylim0[1] += 0.15 * (ylim0[1]-ylim0[0])
+			plt.ylim(ylim0)
+			ax.text(0.5, 0.98,
+					'Center: {0:.3f}, Range: {1:.3f}'.format(center, rng),
+					verticalalignment = 'top', 
+					horizontalalignment = 'center',
+					transform = ax.transAxes,
+					fontsize = 16,
+		#             color = 'g'
+				   )
+		return center, rng
 
+	def _cleanWavelengthInput(self, wavelength):
+		# clean up wavelengths input
+		if type(wavelength) is np.ndarray:
+			if wavelength.shape == ():
+				wavelength = np.array([wavelength])	#cast to (1,)
+			else:
+				pass 	#should already be good
+		elif type(wavelength) is list:
+			wavelength = np.array(wavelength)
+		else:
+			wavelength = np.array([wavelength])	#assume we have a single int/float value here. if its a string we'll throw a normal error downstream
+	
+		return wavelength
+	
 	### Save methods to dump measurements to hdf5 file. Currently copied from PL code, need to fit this to the mapping data.
 	def _getSavePath(self, label):
 		### figure out the sample directory, name, total filepath
@@ -412,7 +584,7 @@ class controlGeneric(object):
 
 			return info, settings, baseline
 
-	def _save_scanPoint(self, label, wavelengths, reflectance):
+	def _save_scanPoint(self, label, wavelengths, reflectance, signal, reference):
 		
 		fpath = self._getSavePath(label = label)	#generate filepath for saving data
 
@@ -434,11 +606,17 @@ class controlGeneric(object):
 			temp = rawdata.create_dataset('reflectance', data = np.array(reflectance))
 			temp.attrs['description'] = 'Baseline-corrected reflectance measured. Stored as fraction (0-1), not percent!'
 
+			temp = rawdata.create_dataset('signalRaw', data = np.array(signal))
+			temp.attrs['description'] = 'Raw signal for integrating sphere detector. (V)'
+
+			temp = rawdata.create_dataset('referenceRaw', data = np.array(reference))
+			temp.attrs['description'] = 'Raw signal for reference detector. (V)'
+
 		print('Data saved to {0}'.format(fpath))	
 
 	# def _save_findArea(self, label, wavelength, reflectance):
 
-	def _save_scanArea(self, label, x, y, delay, wavelengths, reflectance):
+	def _save_scanArea(self, label, x, y, delay, wavelengths, reflectance, signal, reference):
 		
 		fpath = self._getSavePath(label = label)	#generate filepath for saving data
 
@@ -501,12 +679,86 @@ class controlGeneric(object):
 			temp = rawdata.create_dataset('reflectance', data = np.array(reflectance))
 			temp.attrs['description'] = 'Baseline-corrected reflectance measured. Stored as [y, x, wl]. Stored as fraction (0-1), not percent!'
 
+			temp = rawdata.create_dataset('signalRaw', data = np.array(signal))
+			temp.attrs['description'] = 'Raw signal for integrating sphere detector. (V)'
+
+			temp = rawdata.create_dataset('referenceRaw', data = np.array(reference))
+			temp.attrs['description'] = 'Raw signal for reference detector. (V)'
+
 			temp = rawdata.create_dataset('delay', data = np.array(delay))
 			temp.attrs['description'] = 'Time (seconds) that each scan was acquired at. Measured as seconds since first scan point.'			
 
 		print('Data saved to {0}'.format(fpath))		
 
-	def _save_timeSeries(self, label, wavelengths, reflectance, delay, duration, interval):
+	def _save_flyscanArea(self, label, x, y, delay, wavelengths, reflectance):
+		
+		fpath = self._getSavePath(label = label)	#generate filepath for saving data
+
+		with h5py.File(fpath, 'w') as f:
+			
+			info, settings, baseline = self._saveGeneralInformation(f, label = label)
+
+			## add scan type to info
+			temp = info.create_dataset('type', data = 'flyscanArea'.encode('utf-8'))
+			temp.attrs['description'] = 'Type of measurement held in this file.'		
+
+			## add scan parameters to settings
+			temp = settings.create_dataset('numx', data = np.array(x.shape[0]))
+			temp.attrs['description'] = 'Number of points scanned in x'			
+
+			temp = settings.create_dataset('numy', data = np.array(y.shape[0]))
+			temp.attrs['description'] = 'Number of points scanned in y'
+
+			temp = settings.create_dataset('rangex', data = np.array(np.abs(x[-1] - x[0])))
+			temp.attrs['description'] = 'Range scanned in x (mm)'
+
+			temp = settings.create_dataset('rangey', data = np.array(np.abs(y[-1] - y[0])))
+			temp.attrs['description'] = 'Range scanned in y (mm)'
+
+			# calculate step size. Calculates the average step size in x and y. If either axis has length 1 (ie line scan), only consider step size
+			# in the other axis. If both axes have length 0 (point scan, although not a realistic outcome for .scanArea()), leave stepsize as 0
+			countedaxes = 0
+			stepsize = 0
+			if x.shape[0] > 1:
+				stepsize = stepsize + np.abs(x[1] - x[0])
+				countedaxes = countedaxes + 1
+			if y.shape[0] > 1:
+				stepsize = stepsize + np.abs(y[1] - y[0])
+				countedaxes = countedaxes + 1
+			if countedaxes:
+				stepsize = stepsize / countedaxes
+
+			temp = settings.create_dataset('stepsize', data = np.array(stepsize))
+			temp.attrs['description'] = 'Average step size (mm) in x and y. If either axis has length 1 (ie line scan), only consider step size in the other axis. If both axes have length 0 (point scan, although not a realistic outcome for .scanArea()), leave stepsize as 0. Note that steps in x are divided out of a continuous line scan.'			
+
+			## measured data 
+			rawdata = f.create_group('/data')
+			rawdata.attrs['description'] = 'Data acquired during area scan.'
+
+			temp = rawdata.create_dataset('x', data = np.array(x))
+			temp.attrs['description'] = 'Absolute X coordinate (mm) per point. Note that points in x are divided out of a continous line scan.'
+
+			temp = rawdata.create_dataset('y', data = np.array(y))
+			temp.attrs['description'] = 'Absolute Y coordinate (mm) per point'
+
+			temp = rawdata.create_dataset('relx', data = np.array(x - np.min(x)))
+			temp.attrs['description'] = 'Relative X coordinate (mm) per point. Note that points in x are divided out of a continous line scan.'
+
+			temp = rawdata.create_dataset('rely', data = np.array(y - np.min(y)))
+			temp.attrs['description'] = 'Relative Y coordinate (mm) per point'						
+
+			temp = rawdata.create_dataset('wavelengths', data = np.array(wavelengths))
+			temp.attrs['description'] = 'Wavelengths (nm) at which sequential flyscan maps were performed.'
+
+			temp = rawdata.create_dataset('reflectance', data = np.array(reflectance))
+			temp.attrs['description'] = 'Baseline-corrected reflectance measured. Stored as [y, x, wl]. Stored as fraction (0-1), not percent!'
+
+			temp = rawdata.create_dataset('delay', data = np.array(delay))
+			temp.attrs['description'] = 'Time (seconds) that each line scan was acquired at. [wl, y]. Measured as seconds since first line scan.'			
+
+		print('Data saved to {0}'.format(fpath))
+
+	def _save_timeSeries(self, label, wavelengths, reflectance, delay, duration, interval, signal, reference):
 
 		fpath = self._getSavePath(label = label)	#generate filepath for saving data
 
@@ -534,12 +786,19 @@ class controlGeneric(object):
 
 			temp = rawdata.create_dataset('reflectance', data = np.array(reflectance))
 			temp.attrs['description'] = 'Baseline-corrected reflectance measured. Stored as [y, x, wl]. Stored as fraction (0-1), not percent!'
+			
+			temp = rawdata.create_dataset('signalRaw', data = np.array(signal))
+			temp.attrs['description'] = 'Raw signal for integrating sphere detector. (V)'
 
+			temp = rawdata.create_dataset('referenceRaw', data = np.array(reference))
+			temp.attrs['description'] = 'Raw signal for reference detector. (V)'
+			
 			temp = rawdata.create_dataset('delay', data = np.array(delay))
 			temp.attrs['description'] = 'Time (seconds) that each scan was acquired at. Measured as seconds since first scan point.'			
 
 		print('Data saved to {0}'.format(fpath))
 
+	
 	### Test Methods: should remove these and make a wrapper function to execute these commands instead of building it into the class
 	#
 	#	This method has been saved under /tests/scanStageModule as an example test. Only thing we need to do is install the frgmapper package
@@ -558,14 +817,14 @@ class controlGeneric(object):
 		self.takeScan("test",wave,True,False,False) # minimodule
 
 class controlMono(controlGeneric):
-
-	def __init__(self, dwelltime = 0.1):
+	def __init__(self, dwelltime = 0.25):
 		super().__init__(dwelltime = dwelltime)
 		self.__hardwareSetup = 'mono'		#distinguish whether saved data comes from the mono or nkt setup
 		self.stage = None
 		self.mono = None
 		self.daq = None
 		self.connect()
+		self.daq.useExtClock = False	#dont use external trigger to drive daq
 		plt.ion()	#make plots of results non-blocking
 
 	def connect(self):
@@ -579,6 +838,11 @@ class controlMono(controlGeneric):
 		self.stage = stage()
 		print("stage connected")
 
+	def disconnect(self):
+		self.mono.disconnect()
+		self.daq.disconnect()
+		self.stage.disable()
+		
 	### internal methods specific to mono hardware setup
 
 	def _goToWavelength(self, wavelength):
@@ -595,8 +859,7 @@ class controlMono(controlGeneric):
 		return True
 
 class controlNKT(controlGeneric):
-
-	def __init__(self, dwelltime = 0.1):
+	def __init__(self, dwelltime = 0.2):
 		super().__init__(dwelltime = dwelltime)
 		self.__hardwareSetup = 'nkt'		#distinguish whether saved data comes from the mono or nkt setup
 		self.stage = None
@@ -605,9 +868,10 @@ class controlNKT(controlGeneric):
 		self.daq = None
 		self.connect()
 		plt.ion()	#make plots of results non-blocking
+		self.daq.useExtClock = True	#use external Compact trigger to drive daq, match the laser pulse train
 
 	def connect(self):
-		#connect to nkt, stage, detector+daq hardware
+		#connect to mono, stage, detector+daq hardware
 		self.compact = compact()
 		print("compact connected")
 
@@ -620,35 +884,39 @@ class controlNKT(controlGeneric):
 		self.stage = stage()
 		print("stage connected")
 
+	def disconnect(self):
+		self.compact.disconnect()
+		self.select.disconnect()
+		self.daq.disconnect()
+		self.stage.disable()
+
 	### internal methods specific to nkt hardware setup
 
 	def _goToWavelength(self, wavelength):
 		if not self.select.rfOn:	#make sure the rf driver is on
 			self.select.on()
-		self.select.setAOTF(wavelength)
+
+		self.select.setSingleAOTF(wavelength)
 		return True
 
 	def _lightOn(self):
+		self.preCheck()	#checks shutters and interlock, gives user a chance to remedy before continuing
 		if not self.compact.emissionOn:
 			self.compact.on()
 		return True
-
+		
 	def _lightOff(self):
 		if self.compact.emissionOn:
 			self.compact.off()
 		return True
 		
-	def testspectra(self):
-		wave=np.linspace(1700,2000,151,dtype=int)
-		#mapobj=frgmapper.mapper.control()
-		#mapobj.takeBaseline(wave)
-		self.takeBaseline(wave)
-		
-		
-		basel=self._controlGeneric__baseline
-		plt.plot(basel['Wavelengths'],basel['LightRefRaw'])
-		plt.figure()
-		plt.plot(basel['Wavelengths'],basel['LightRaw'])
-		plt.legend(['sphere signal'])
-		plt.show()
-		pdb.set_trace()
+	def preCheck(self):
+		goodToGo = False
+
+		while not goodToGo:
+			if self.select.checkShutter() and self.compact.checkInterlock():
+				goodToGo = True
+			else:
+				input('Press Enter when issues have been resolved')
+
+		return goodToGo

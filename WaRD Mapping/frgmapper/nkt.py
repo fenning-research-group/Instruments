@@ -282,6 +282,10 @@ class select(object):
 	def checkShutter(self):
 		shutterStatus = True
 
+
+	def checkShutter(self):
+		shutterStatus = True
+
 		bits = self.getStatusBits()
 		if self.currentAOTF == 0:
 			if bits[8] == 0:	#IR shutter closed
@@ -538,3 +542,6 @@ class select(object):
 		bits2 = [int(x) for x in bin(value)[2:]]	#break number into bits
 		bits2 = [0] * (8-len(bits2)) + bits2	#pad with 0's for bits not needed to output int value
 		bits2.reverse()	#reverse bits into order matching register file description
+		bits = bits + bits2
+
+		return bits

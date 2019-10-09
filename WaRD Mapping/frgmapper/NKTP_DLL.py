@@ -1573,4 +1573,5 @@ def setCallbackPtrRegisterInfo(RegisterStatusCallback):
 #print("readData:",readData)
 
 
+
 #print(getOpenPorts())
