@@ -2,7 +2,8 @@ import ctypes
 from ctypes import c_ulonglong, cast
 from _ctypes import POINTER, addressof, sizeof
 from mcculw import ul
-from mcculw.enums import ScanOptions, FunctionType, Status, ChannelType, ULRange, InterfaceType
+from mcculw.enums import ScanOptions, FunctionType, Status, ChannelType, ULRange, \
+	InterfaceType, TriggerSource, TriggerSensitivity, TriggerEvent
 from mcculw.ul import ULError
 import numpy as np
 import time
@@ -116,49 +117,51 @@ class daq(object):
 		return True
 
 	def read(self):
-		totalCount = len(self.channels['Number']) * self.__countsPerChannel
+
+		num_chans = len(self.channels['Number']) + 1
+		totalCount =  num_chans * self.__countsPerChannel
 		memhandle = ul.scaled_win_buf_alloc(totalCount)
 		ctypesArray = ctypes.cast(memhandle, ctypes.POINTER(ctypes.c_double))
 		
 		if self.useExtClock:
 			# scan_options = ScanOptions.FOREGROUND | ScanOptions.SCALEDATA | ScanOptions.EXTCLOCK
-			scan_options = ScanOptions.FOREGROUND | ScanOptions.SCALEDATA | ScanOptions.EXTTRIGGER
+			scan_options = ScanOptions.FOREGROUND | ScanOptions.SCALEDATA | ScanOptions.EXTTRIGGER | ScanOptions.RETRIGMODE
 		else:
 			scan_options = ScanOptions.FOREGROUND | ScanOptions.SCALEDATA
+
 		ul.daq_set_trigger(
-                board_num = self.board_num, 
-                trig_source = TriggerSource.ANALOG_HW,
-                trig_sense = TriggerSensitivity.RISING_EDGE,
-                trig_chan = self.chan_list[0], 
-                chan_type = self.chan_type_list[0],
-                gain = self.gain_list[0],
-                level = 2, 
-                variance = 0, 
-                trig_event = TriggerEvent.START)
+				board_num = self.board_num, 
+				trig_source = TriggerSource.EXTTTL,
+				trig_sense = TriggerSensitivity.RISING_EDGE,
+				trig_chan = self.channels['Number'][1], 
+				chan_type = self.channels['Type'][1],
+				gain = self.channels['Gain'][1],
+				level = 2, 
+				variance = 0, 
+				trig_event = TriggerEvent.START
+				)
 
-		ul.daq_set_trigger(	
-                self.board_num, 
-                TriggerSource.COUNTER,
-                TriggerSensitivity.ABOVE_LEVEL,
-                self.chan_list[2], 
-                self.chan_type_list[2],
-                self.gain_list[2],
-                2, 
-                0, 
-                TriggerEvent.START)
 
-        # Set the stop trigger settings
-        ul.daq_set_trigger(
-            self.board_num, TriggerSource.COUNTER, TriggerSensitivity.ABOVE_LEVEL,
-            self.chan_list[2], self.chan_type_list[2], self.gain_list[2],
-            2, 0, TriggerEvent.START)
+		# Set the stop trigger settings
+		# Code doesn't run with this command - error = "Error 1015: Invalid trigger event specified"
+		ul.daq_set_trigger(
+				board_num = self.board_num, 
+				trig_source = TriggerSource.SCANCOUNT,
+				trig_sense = TriggerSensitivity.ABOVE_LEVEL,
+				trig_chan = self.channels['Number'][0], 
+				chan_type = self.channels['Type'][0],	#  not sure if these
+				gain = self.channels['Gain'][0],		#  arguments matter here
+				level = 2, 	#number of scans to stop after?
+				variance = 0,
+				trig_event = TriggerEvent.STOP
+				)
 
 		ul.daq_in_scan(
 			board_num = self.board_num,
 			chan_list = self.channels['Number'],
 			chan_type_list = self.channels['Type'],
 			gain_list = self.channels['Gain'],
-			chan_count = len(self.channels['Number']),
+			chan_count = num_chans,
 			rate = self.__rate,
 			pretrig_count = 0,
 			total_count = totalCount,
@@ -167,7 +170,7 @@ class daq(object):
 			)
 
 		data = {}
-		for ch in self.channels['Label']:
+		for ch in ['Trigger'] + self.channels['Label']:
 			data[ch] = {
 				'Raw':[],
 				'Mean': None,
@@ -176,11 +179,11 @@ class daq(object):
 
 		dataIndex = 0
 		for each in range(self.__countsPerChannel):
-			for ch in self.channels['Label']:
+			for ch in ['Trigger'] + self.channels['Label']:
 				data[ch]['Raw'].append(ctypesArray[dataIndex])
 				dataIndex += 1
 
-		for ch in self.channels['Label']:
+		for ch in ['Trigger'] + self.channels['Label']:
 			data[ch]['Mean'] = np.mean(data[ch]['Raw'])
 			data[ch]['Std'] = np.std(data[ch]['Raw'])
 
