@@ -13,6 +13,7 @@ from tqdm import tqdm
 import h5py
 import threading
 from .nkt import compact, select
+from .notifications import sendEmail
 
 root = 'C:\\Users\\PVGroup\\Desktop\\frgmapper'
 if not os.path.exists(root):
@@ -22,13 +23,15 @@ if not os.path.exists(datafolder):
 	os.mkdir(datafolder)
 
 class controlGeneric(object):
-	def __init__(self, dwelltime = 0.2):
+	def __init__(self, dwelltime = 0.2, recipient = None):
 		todaysDate = datetime.datetime.now().strftime('%Y%m%d')
 		self.outputdir = os.path.join(root, datafolder, todaysDate)
 		self.__hardwareSetup = 'mono'		#distinguish whether saved data comes from the mono or nkt setup
 		self.__dwelltime = dwelltime
 		self.__baselineTaken = False
 		self.__baseline = {}
+		self.recipient = recipient	#email address to send update emails to
+
 		plt.ion()	#make plots of results non-blocking
 
 	@property
@@ -174,7 +177,11 @@ class controlGeneric(object):
 
 		return center, size
 
-	def scanArea(self, label, wavelengths, xsize, ysize, xsteps = 21, ysteps = 21, x0 = None, y0 = None, export = True):
+	def scanArea(self, label, wavelengths, xsize, ysize, xsteps = 21, ysteps = 21, x0 = None, y0 = None, export = True, notify = False):
+		if notify and recipient is None:
+			print('To use notify, please set the .recipient property to the destination email address. No email will be sent for this scan.')
+			
+
 		# clean up wavelengths input
 		wavelengths = self._cleanWavelengthInput(wavelengths)
 
@@ -238,6 +245,14 @@ class controlGeneric(object):
 				signal = signal, 
 				reference = reference
 				)
+
+		if notify:
+			sendEmail(
+				recipient = recipient,
+				subject = 'scanArea Completed',
+				body = '{0} has finished scanning.'.format(label)
+				)
+
 
 	def flyscanArea(self, label, wavelengths, xsize, ysize, xsteps = 21, ysteps = 21, x0 = None, y0 = None, export = True):
 		# clean up wavelengths input
