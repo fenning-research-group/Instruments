@@ -3,23 +3,15 @@ from ctypes import c_ulonglong, cast
 from _ctypes import POINTER, addressof, sizeof
 from mcculw import ul
 from mcculw.enums import ScanOptions, FunctionType, Status, ChannelType, ULRange, \
-	InterfaceType, TriggerSource, TriggerSensitivity, TriggerEvent
+	InterfaceType, TriggerSource, TriggerSensitivity, TriggerEvent, InfoType, BoardInfo
 from mcculw.ul import ULError
 import numpy as np
 import time
 import os 
-
 from _ctypes import POINTER, addressof, sizeof
 from ctypes import c_double, cast
 import time
-
-from builtins import *  # @UnusedWildImport
-
-from mcculw import ul
-from mcculw.enums import ScanOptions, FunctionType, Status
-# from examples.console import util
-# from examples.props.ai import AnalogInputProps
-from mcculw.ul import ULError
+# from builtins import *  # @UnusedWildImport
 import threading
 
 board_num = 0
@@ -30,13 +22,14 @@ max_rate = 50e3
 
 class daq(object):
 
-	def __init__(self, channel_intSphere = 0, channel_ref = 2, rate = 21505, dwelltime = None, counts = 500, extclock = False):
+	def __init__(self, channel_intSphere = 0, channel_ref = 2, rate = 50000, dwelltime = None, counts = 500, extclock = False):
 		self.board_num = 0
 		# self.ai_range = ULRange.BIP5VOLTS
 		self.__rate = rate
 		self.__dwelltime = dwelltime
 		self.acquiringBG = False
 		self.useExtClock = extclock
+		self.countsPerTrigger = 1
 
 		# prioritize dwelltime argument when setting counts/rate. if none provided, use explicitly provided counts
 		if dwelltime is not None:
@@ -117,25 +110,36 @@ class daq(object):
 		return True
 
 	def read(self):
-
-		
 		
 		if self.useExtClock:
 			# scan_options = ScanOptions.FOREGROUND | ScanOptions.SCALEDATA | ScanOptions.EXTCLOCK
 			scan_options = ScanOptions.FOREGROUND | ScanOptions.SCALEDATA | ScanOptions.EXTTRIGGER | ScanOptions.RETRIGMODE
-			num_chans = len(self.channels['Number']) + 1
-			channelList = ['Trigger'] + self.channels['Label']
-			ul.daq_set_trigger(
-					board_num = self.board_num, 
-					trig_source = TriggerSource.EXTTTL,
-					trig_sense = TriggerSensitivity.RISING_EDGE,
-					trig_chan = self.channels['Number'][1], 
-					chan_type = self.channels['Type'][1],
-					gain = self.channels['Gain'][1],
-					level = 2, 
-					variance = 0, 
-					trig_event = TriggerEvent.START
-					)
+			# num_chans = len(self.channels['Number'])
+			# channelList = ['Trigger'] + self.channels['Label']
+			channelList = [x for x in self.channels['Label']]
+			channelList.append(channelList[1])
+			channelList[1] = 'Dummy'	#dummy channel A1, since we cycle from A0-A2 
+			num_chans = len(channelList)
+
+			ul.set_config(
+				info_type = InfoType.BOARDINFO,
+				board_num = self.board_num,
+				dev_num = 0,	#value here is ignored
+				config_item = BoardInfo.ADTRIGCOUNT,
+				config_val = self.countsPerTrigger	#number of samples to take per trigger
+				)
+
+			# ul.daq_set_trigger(
+			# 		board_num = self.board_num, 
+			# 		trig_source = TriggerSource.EXTTTL,
+			# 		trig_sense = TriggerSensitivity.FALLING_EDGE,
+			# 		trig_chan = self.channels['Number'][1], 
+			# 		chan_type = self.channels['Type'][1],
+			# 		gain = self.channels['Gain'][1],
+			# 		level = 2, 
+			# 		variance = 0, 
+			# 		trig_event = TriggerEvent.START
+			# 		)
 
 
 			# Set the stop trigger settings
@@ -153,26 +157,50 @@ class daq(object):
 			# 		)
 		else:
 			scan_options = ScanOptions.FOREGROUND | ScanOptions.SCALEDATA
-			num_chans = len(self.channels['Number'])
-			channelList = self.channels['Label']
+			ul.set_config(
+				info_type = InfoType.BOARDINFO,
+				board_num = self.board_num,
+				dev_num = 0,	#value here is ignored
+				config_item = BoardInfo.ADTRIGCOUNT,
+				config_val = 0	#number of samples to take per trigger. 0 = continuous triggering
+				)
+			channelList = [x for x in self.channels['Label']]
+			channelList.append(channelList[1])
+			channelList[1] = 'Dummy'	#dummy channel A1, since we cycle from A0-A2 
+			num_chans = len(channelList)
 
 		totalCount =  num_chans * self.__countsPerChannel
 		memhandle = ul.scaled_win_buf_alloc(totalCount)
 		ctypesArray = ctypes.cast(memhandle, ctypes.POINTER(ctypes.c_double))
 
-		ul.daq_in_scan(
-			board_num = self.board_num,
-			chan_list = self.channels['Number'],
-			chan_type_list = self.channels['Type'],
-			gain_list = self.channels['Gain'],
-			chan_count = num_chans,
-			rate = self.__rate,
-			pretrig_count = 0,
-			total_count = totalCount,
-			memhandle = memhandle,
+		# ul.a_load_queue(
+		# 	board_num = self.board_num,
+		# 	chan_list = self.channels['Number'],
+		# 	gain_list = self.channels['Gain'],
+		# 	count = num_chans
+		# 	)
+		ul.a_in_scan(
+        	board_num = self.board_num,
+        	low_chan = 0,
+        	high_chan = 2,
+        	num_points = totalCount,
+        	rate = self.__rate,
+        	ul_range = ULRange.BIP5VOLTS,
+        	memhandle = memhandle,
 			options = scan_options
 			)
-
+		# ul.daq_in_scan(
+		# 	board_num = self.board_num,
+		# 	chan_list = self.channels['Number'],
+		# 	chan_type_list = self.channels['Type'],
+		# 	gain_list = self.channels['Gain'],
+		# 	chan_count = num_chans,
+		# 	rate = self.__rate,
+		# 	pretrig_count = 0,
+		# 	total_count = totalCount,
+		# 	memhandle = memhandle,
+		# 	options = scan_options
+		# 	)
 		data = {}
 		for ch in channelList:
 			data[ch] = {
@@ -192,7 +220,6 @@ class daq(object):
 			data[ch]['Std'] = np.std(data[ch]['Raw'])
 
 		# data['Reference']['Mean'] = np.ones(data['Reference']['Mean'].shape)	#set reference detector readings to 1
-
 		ul.win_buf_free(memhandle)
 
 		return data
