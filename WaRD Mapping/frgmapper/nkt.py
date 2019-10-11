@@ -24,13 +24,13 @@ import time
 
 class compact(object):
 
-	def __init__(self, portName = 'COM13'):		# TODO: add compact port here as default
+	def __init__(self, portName = 'COM13', pulseFrequency = 21505):		# TODO: add compact port here as default
 		self.__handle = None	#will be overwritten upon connecting, set back to None upon disconnecting
 		self.triggerMode = None
 		self.triggerSetPoint = None
 		if self.connect(portName = portName):
-			self.setPower(powerLevel = 50) #default starting power level, 0-100 = 0-100% power
-			self.setPulseFrequency(pulseFrequency = 1000)	#default pulse frequency set to 1 kHz
+			# self.setPower(powerLevel = 50) #default starting power level, 0-100 = 0-100% power
+			self.setPulseFrequency(pulseFrequency = pulseFrequency)	#default pulse frequency set to 950 Hz
 			self.setTrigger(mode = 0)	#turn off external trigger mode
 
 		self.emissionOn = False
@@ -144,7 +144,7 @@ class compact(object):
 			print('Note: only positive 32-bit integer values allowed as frequency settings: increasing {0:d} to 1.'.format(pulseFrequency))
 			pulseFrequency = 1
 
-		result = nktdll.registerWriteU32(self.__handle, self.__address, 0x3E, pulseFrequency, -1)
+		result = nktdll.registerWriteU32(self.__handle, self.__address, 0x33, pulseFrequency, -1)
 		if result == 0:
 			self.pulseFrequency = pulseFrequency
 			return True
