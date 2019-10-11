@@ -103,7 +103,7 @@ class compact(object):
 		### takes U8 integer input to set laser power.
 		# Value = powerLevel %
 		if type(powerLevel) != int:
-			if type(powerlevel) == float:
+			if type(powerLevel) == float:
 				print('Note: only integer values 0-100 allowed as power settings: rounding float {0:f} to nearest int {1:d}').format(powerLevel, round(powerLevel))
 				powerLevel = round(powerLevel)	#can only pass U8 int, rounding off floats here
 			else:
@@ -226,7 +226,7 @@ class compact(object):
 
 class select(object):
 
-	def __init__(self, portName = 'COM13'):		# TODO: add select port here as default
+	def __init__(self, portName = 'COM13'):		
 		self.__handle = None	#will be overwritten upon connecting, set back to None upon disconnecting
 		self.__defaultWavelengths = [1700, 1750, 1800, 1850, 1900, 1902, 1950, 2000]	#default values to assign to unspecified wavelength selections
 		self._wavelengths = [None] * 8
@@ -236,7 +236,7 @@ class select(object):
 		self.__maxRange = (1100, 2000) #set the min/max wavelength range allowed by AOTF here
 		self.rfOn = None
 		self.currentAOTF = None
-		self.wlDelay = 0.01
+		self.wlDelay = 0.1	#need at least 100 ms for Select communication to execute. Important when changing wavelengths during scans
 		if self.connect():
 			self.off()	#turn off RF to allow AOTF selection
 			self.selectAOTF(1)	#set to IR AOTF. 
@@ -440,7 +440,7 @@ class select(object):
 		if amplitude is not None:
 			amplitude = int(a * 1000)
 		else:
-			amplitude = 1000
+			amplitude = 650	#~average optimum RF power for IR AOTF between 1700-2000 nm
 
 		if gain is not None:
 			gain = int(gain * 1000)
@@ -450,13 +450,13 @@ class select(object):
 		# set all the wavelengths, amplitudes, and gains
 		success = True
 
-	
-		result = nktdll.registerWriteU32(self.__handle, self.__address, 0x90, wavelength, -1)
-		if result == 0:
-			self._wavelengths[0] = wavelength
-		else:
-			print('Error encountered when trying to change wavelength for channel {0} to {1} nm:'.format(0, wavelength/1000), RegisterResultTypes(result))
-			success = False
+		if self._wavelengths[0] != wavelength:
+			result = nktdll.registerWriteU32(self.__handle, self.__address, 0x90, wavelength, -1)
+			if result == 0:
+				self._wavelengths[0] = wavelength
+			else:
+				print('Error encountered when trying to change wavelength for channel {0} to {1} nm:'.format(0, wavelength/1000), RegisterResultTypes(result))
+				success = False
 
 		# result = nktdll.registerWriteU16(self.__handle, self.__address, int('0xB{0}'.format(idx),16), a, -1)
 		if self._amplitudes[0] != amplitude:

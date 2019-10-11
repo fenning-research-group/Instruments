@@ -859,7 +859,7 @@ class controlMono(controlGeneric):
 
 class controlNKT(controlGeneric):
 
-	def __init__(self, dwelltime = 0.2):
+	def __init__(self, dwelltime = 0.1):
 		super().__init__(dwelltime = dwelltime)
 		self.__hardwareSetup = 'nkt'		#distinguish whether saved data comes from the mono or nkt setup
 		self.stage = None
@@ -905,8 +905,7 @@ class controlNKT(controlGeneric):
 		return True
 		
 	def _lightOff(self):
-		if self.compact.emissionOn:
-			self.compact.off()
+		self.compact.off()
 		return True
 
 	def preCheck(self):
