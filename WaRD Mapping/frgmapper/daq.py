@@ -29,7 +29,7 @@ class daq(object):
 		self.__dwelltime = dwelltime
 		self.acquiringBG = False
 		self.useExtClock = extclock
-		self.countsPerTrigger = 1
+		self.countsPerTrigger = 6
 
 		# prioritize dwelltime argument when setting counts/rate. if none provided, use explicitly provided counts
 		if dwelltime is not None:
@@ -210,11 +210,17 @@ class daq(object):
 				}
 
 		dataIndex = 0
+		skip = True
 		for each in range(self.__countsPerChannel):
 			for ch in channelList:
-				data[ch]['Raw'].append(ctypesArray[dataIndex])
+				if not skip:
+					data[ch]['Raw'].append(ctypesArray[dataIndex])
 				dataIndex += 1
-
+			if skip:
+				skip = False
+			else:
+				skip = True
+				
 		for ch in channelList:
 			data[ch]['Mean'] = np.mean(data[ch]['Raw'])
 			data[ch]['Std'] = np.std(data[ch]['Raw'])
