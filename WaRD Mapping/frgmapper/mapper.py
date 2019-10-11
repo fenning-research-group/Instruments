@@ -946,8 +946,8 @@ class controlNKT(controlGeneric):
 
 	def _lightOn(self):
 		self.preCheck()	#checks shutters and interlock, gives user a chance to remedy before continuing
-		if not self.compact.emissionOn:
-			self.compact.on()
+		# if not self.compact.emissionOn:
+		self.compact.on()
 		return True
 		
 	def _lightOff(self):
