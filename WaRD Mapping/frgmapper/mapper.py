@@ -66,8 +66,12 @@ class controlGeneric(object):
 		#light baseline
 		self.__baseline['Wavelengths'] = wavelengths
 		self.__baseline['LightRaw'], self.__baseline['LightRefRaw'], self.__baseline['Ratio'] = self._scanroutine(wavelengths)
-		self.__baseline['Light'] = np.divide(self.__baseline['LightRaw'], self.__baseline['LightRefRaw'])
-		
+		try:
+			self.__baseline['Light'] = np.divide(self.__baseline['LightRaw'], self.__baseline['LightRefRaw'])
+		except:
+			print(self.__baseline['LightRaw'])
+			print(self.__baseline['LightRefRaw'])
+
 		#dark baseline
 		# if not self.processPulseTrain:
 		storeddwelltime = self.__dwelltime
@@ -468,7 +472,7 @@ class controlGeneric(object):
 			numerator = np.zeros(wavelengths.shape)
 			denominator = np.zeros(wavelengths.shape)
 			for idx, wl in enumerate(wavelengths):
-				meas = signal[idx]/reference[idx]
+				# meas = signal[idx]/reference[idx]
 				bl_idx = np.where(self.__baseline['Wavelengths'] == wl)[0]
 				numerator[idx] = (signal[idx]) / (self.__baseline['LightRaw'][bl_idx])
 				denominator[idx] = (reference[idx]) / (self.__baseline['LightRefRaw'][bl_idx])
@@ -479,11 +483,11 @@ class controlGeneric(object):
 			numerator = np.zeros(wavelengths.shape)
 			denominator = np.zeros(wavelengths.shape)
 			for idx, wl in enumerate(wavelengths):
-				meas = signal[idx]/reference[idx]
+				# meas = signal[idx]/reference[idx]
 				bl_idx = np.where(self.__baseline['Wavelengths'] == wl)[0]
 				numerator[idx] = (signal[idx]-self.__baseline['DarkRaw']) / (self.__baseline['LightRaw'][bl_idx]-self.__baseline['DarkRaw'])
-				# denominator[idx] = (reference[idx]-self.__baseline['DarkRefRaw']) / (self.__baseline['LightRefRaw'][bl_idx]-self.__baseline['DarkRefRaw'])
-				denominator[idx] = 1
+				denominator[idx] = (reference[idx]-self.__baseline['DarkRefRaw']) / (self.__baseline['LightRefRaw'][bl_idx]-self.__baseline['DarkRefRaw'])
+				# denominator[idx] = 1
 				# corrected[idx] = (meas-self.__baseline['Dark']) / (self.__baseline['Light'][bl_idx]-self.__baseline['Dark']) 
 			corrected = numerator/denominator
 		
@@ -897,7 +901,7 @@ class controlMono(controlGeneric):
 
 class controlNKT(controlGeneric):
 
-	def __init__(self, dwelltime = 0.1):
+	def __init__(self, dwelltime = 1):
 		super().__init__(dwelltime = dwelltime)
 		self.__hardwareSetup = 'nkt'		#distinguish whether saved data comes from the mono or nkt setup
 		self.stage = None
@@ -906,13 +910,13 @@ class controlNKT(controlGeneric):
 		self.daq = None
 		self.connect()
 		self.daq.useExtClock = True	#use external Compact trigger to drive daq, match the laser pulse train
-		self.processPulseTrain = True
+		self.processPulseTrain = False
 		plt.ion()	#make plots of results non-blocking
 
 	def connect(self):
 		#connect to mono, stage, detector+daq hardware
 		self.compact = compact(
-			pulseFrequency = 1665
+			pulseFrequency = 21505
 			)
 		print("compact connected")
 
@@ -922,7 +926,7 @@ class controlNKT(controlGeneric):
 		self.daq = daq(
 			dwelltime = self.dwelltime,
 			rate = 50000,
-			countsPerTrigger = 30,
+			countsPerTrigger = 3,
 			countsPulseDuration = 20
 			)
 		print("daq connected")

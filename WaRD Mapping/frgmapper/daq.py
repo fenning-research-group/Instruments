@@ -211,10 +211,15 @@ class daq(object):
 				}
 
 		dataIndex = 0
+		skip = 0
 		for each in range(self.__countsPerChannel):
 			for ch in channelList:
-				data[ch]['Raw'].append(ctypesArray[dataIndex])
+				if skip:
+					data[ch]['Raw'].append(ctypesArray[dataIndex])
 				dataIndex += 1
+			skip = skip + 1
+			if skip >= self.countsPerTrigger:
+				skip = 0
 
 		for ch in channelList:
 			data[ch]['Mean'] = np.mean(data[ch]['Raw'])
