@@ -65,7 +65,7 @@ class controlGeneric(object):
 
 		#light baseline
 		self.__baseline['Wavelengths'] = wavelengths
-		self.__baseline['LightRaw'], self.__baseline['LightRefRaw'], self.__baseline['Ratio'] = self._scanroutine(wavelengths)
+		self.__baseline['LightRaw'], self.__baseline['LightRefRaw'], self.__baseline['Slope'] = self._scanroutine(wavelengths)
 		try:
 			self.__baseline['Light'] = np.divide(self.__baseline['LightRaw'], self.__baseline['LightRefRaw'])
 		except:
@@ -74,16 +74,21 @@ class controlGeneric(object):
 
 		#dark baseline
 		# if not self.processPulseTrain:
-		storeddwelltime = self.__dwelltime
-		storedUseExtClock = self.daq.useExtClock
-		self.dwelltime = 5	#take a long acquisition for the dark baseline, as it is a single point measurement
-		self.daq.useExtClock = False
-		out = self.daq.read()
-		self.dwelltime = storeddwelltime
-		self.daq.useExtClock = storedUseExtClock
+		# storeddwelltime = self.__dwelltime
+		# storedUseExtClock = self.daq.useExtClock
+		# self.dwelltime = 5	#take a long acquisition for the dark baseline, as it is a single point measurement
+		# self.daq.useExtClock = False
+		# out = self.daq.read()
+		# self.dwelltime = storeddwelltime
+		# self.daq.useExtClock = storedUseExtClock
 
-		self.__baseline['DarkRaw'] = out['IntSphere']['Mean']
-		self.__baseline['DarkRefRaw'] = out['Reference']['Mean']
+		# self.__baseline['DarkRaw'] = out['IntSphere']['Mean']
+		# self.__baseline['DarkRefRaw'] = out['Reference']['Mean']
+		# self.__baseline['Dark'] = self.__baseline['DarkRaw'] / self.__baseline['DarkRefRaw']
+
+		## Dummy values to avoid breaking the save routines
+		self.__baseline['DarkRaw'] = 1
+		self.__baseline['DarkRefRaw'] = 1
 		self.__baseline['Dark'] = self.__baseline['DarkRaw'] / self.__baseline['DarkRefRaw']
 
 		self.__baselineTaken = True
@@ -155,7 +160,8 @@ class controlGeneric(object):
 			out = self.daq.read()
 			signal = [out['IntSphere']['Mean']]
 			ref = [out['Reference']['Mean']]
-			xdata[idx] = self._baselineCorrectionRoutine(wavelengths = wavelength, signal = signal, reference = ref)
+			slope = np.polyfit(out['Reference']['Raw'], out['IntSphere']['Raw'], 1)[0]
+			xdata[idx] = self._baselineCorrectionRoutine(wavelengths = wavelength, signal = signal, reference = ref, slope = slope)
 		self._lightOff()
 
 		self.stage.moveto(x = x0, y = ally[0])
@@ -166,7 +172,8 @@ class controlGeneric(object):
 			out = self.daq.read()
 			signal = [out['IntSphere']['Mean']]
 			ref = [out['Reference']['Mean']]
-			ydata[idx]= self._baselineCorrectionRoutine(wavelengths = wavelength, signal = signal, reference = ref)
+			slope = np.polyfit(out['Reference']['Raw'], out['IntSphere']['Raw'], 1)[0]
+			ydata[idx]= self._baselineCorrectionRoutine(wavelengths = wavelength, signal = signal, reference = ref, slope = slope)
 		self._lightOff()
 		self.stage.moveto(x = x0, y = y0) #return to original position
 
@@ -229,8 +236,8 @@ class controlGeneric(object):
 					wlThread.join()
 					moveThread.join()
 
-					signal[yidx, xidx, :], reference[yidx, xidx, :], _= self._scanroutine(wavelengths = wavelengths, firstscan = firstscan, lastscan = lastscan)
-					data[yidx, xidx, :] = self._baselineCorrectionRoutine(wavelengths, signal[yidx, xidx, :], reference[yidx, xidx, :])
+					signal[yidx, xidx, :], reference[yidx, xidx, :], slope = self._scanroutine(wavelengths = wavelengths, firstscan = firstscan, lastscan = lastscan)
+					data[yidx, xidx, :] = self._baselineCorrectionRoutine(wavelengths, signal[yidx, xidx, :], reference[yidx, xidx, :], slope)
 					delay[yidx, xidx] = time.time() - startTime #time in seconds since scan began
 				else: # go in the reverse direction
 					moveThread = threading.Thread(target = self.stage.moveto, args = (x, ally[ysteps-1-yidx]))
@@ -238,8 +245,8 @@ class controlGeneric(object):
 					wlThread.join()
 					moveThread.join()
 
-					signal[ysteps-1-yidx, xidx, :], reference[ysteps-1-yidx, xidx, :], _ = self._scanroutine(wavelengths = wavelengths, firstscan = firstscan, lastscan = lastscan)
-					data[ysteps-1-yidx, xidx, :]= self._baselineCorrectionRoutine(wavelengths, signal[ysteps-1-yidx, xidx, :], reference[ysteps-1-yidx, xidx, :]) # baseline correction
+					signal[ysteps-1-yidx, xidx, :], reference[ysteps-1-yidx, xidx, :], slope = self._scanroutine(wavelengths = wavelengths, firstscan = firstscan, lastscan = lastscan)
+					data[ysteps-1-yidx, xidx, :] = self._baselineCorrectionRoutine(wavelengths, signal[ysteps-1-yidx, xidx, :], reference[ysteps-1-yidx, xidx, :], slope) # baseline correction
 					delay[ysteps-1-yidx, xidx] = time.time() - startTime #time in seconds since scan began
 				firstscan = False
 		self.stage.moveto(x = x0, y = y0)	#go back to map center position
@@ -391,7 +398,7 @@ class controlGeneric(object):
 
 		signal = np.zeros(wavelengths.shape)
 		ref = np.zeros(wavelengths.shape)
-		ratio = np.zeros(wavelengths.shape)
+		slope = np.zeros(wavelengths.shape)
 		for idx, wl in tqdm(enumerate(wavelengths), total = wavelengths.shape[0], desc = 'Scanning {0:.1f}-{1:.1f} nm'.format(wavelengths[0], wavelengths[-1]), leave = False):
 			self._goToWavelength(wl)
 			out = self.daq.read(processPulseTrain = self.processPulseTrain)
@@ -405,12 +412,12 @@ class controlGeneric(object):
 			else:
 				signal[idx] = out['IntSphere']['Mean']
 				ref[idx] = out['Reference']['Mean']
-				ratio = None
+				slope[idx] = np.polyfit(out['Reference']['Raw'], out['IntSphere']['Raw'], 1)[0]	#slope of intsphere voltage vs reference voltage
 		
 		if lastscan:
 			self._lightOff()
 
-		return signal, ref, ratio
+		return signal, ref, slope
 
 	def _flyscanroutine(self, wavelength, x0, x1, numpts, firstscan = True, lastscan = True):
 		def clipTime(timeraw, data, rampTime):
@@ -462,7 +469,7 @@ class controlGeneric(object):
 
 		return reflectance, timeraw, signalraw, referenceraw
 
-	def _baselineCorrectionRoutine(self, wavelengths, signal, reference, ratio = None):
+	def _baselineCorrectionRoutine(self, wavelengths, signal, reference, slope = None):
 		if self.__baselineTaken == False:
 			raise ValueError("Take baseline first")
 
@@ -483,14 +490,11 @@ class controlGeneric(object):
 			numerator = np.zeros(wavelengths.shape)
 			denominator = np.zeros(wavelengths.shape)
 			for idx, wl in enumerate(wavelengths):
-				# meas = signal[idx]/reference[idx]
 				bl_idx = np.where(self.__baseline['Wavelengths'] == wl)[0]
-				numerator[idx] = (signal[idx]-self.__baseline['DarkRaw']) / (self.__baseline['LightRaw'][bl_idx]-self.__baseline['DarkRaw'])
-				denominator[idx] = (reference[idx]-self.__baseline['DarkRefRaw']) / (self.__baseline['LightRefRaw'][bl_idx]-self.__baseline['DarkRefRaw'])
-				# denominator[idx] = 1
-				# corrected[idx] = (meas-self.__baseline['Dark']) / (self.__baseline['Light'][bl_idx]-self.__baseline['Dark']) 
+				numerator[idx] = slope[idx] / (self.__baseline['Slope'][bl_idx])
+				denominator[idx] = 1
 			corrected = numerator/denominator
-		
+
 		return corrected
 
 	def _findEdges(self, x,r, ax = None):
@@ -922,6 +926,7 @@ class controlNKT(controlGeneric):
 
 		self.select = select()
 		self.select.wlDelay = 0.2
+
 		print("select+rf driver connected")
 
 		self.daq = daq(
