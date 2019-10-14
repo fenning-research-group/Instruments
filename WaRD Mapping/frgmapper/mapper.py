@@ -229,7 +229,7 @@ class controlGeneric(object):
 					wlThread.join()
 					moveThread.join()
 
-					signal[yidx, xidx, :], reference[yidx, xidx, :] = self._scanroutine(wavelengths = wavelengths, firstscan = firstscan, lastscan = lastscan)
+					signal[yidx, xidx, :], reference[yidx, xidx, :], _= self._scanroutine(wavelengths = wavelengths, firstscan = firstscan, lastscan = lastscan)
 					data[yidx, xidx, :] = self._baselineCorrectionRoutine(wavelengths, signal[yidx, xidx, :], reference[yidx, xidx, :])
 					delay[yidx, xidx] = time.time() - startTime #time in seconds since scan began
 				else: # go in the reverse direction
@@ -238,7 +238,7 @@ class controlGeneric(object):
 					wlThread.join()
 					moveThread.join()
 
-					signal[ysteps-1-yidx, xidx, :], reference[ysteps-1-yidx, xidx, :] = self._scanroutine(wavelengths = wavelengths, firstscan = firstscan, lastscan = lastscan)
+					signal[ysteps-1-yidx, xidx, :], reference[ysteps-1-yidx, xidx, :], _ = self._scanroutine(wavelengths = wavelengths, firstscan = firstscan, lastscan = lastscan)
 					data[ysteps-1-yidx, xidx, :]= self._baselineCorrectionRoutine(wavelengths, signal[ysteps-1-yidx, xidx, :], reference[ysteps-1-yidx, xidx, :]) # baseline correction
 					delay[ysteps-1-yidx, xidx] = time.time() - startTime #time in seconds since scan began
 				firstscan = False
@@ -921,12 +921,13 @@ class controlNKT(controlGeneric):
 		print("compact connected")
 
 		self.select = select()
+		self.select.wlDelay = 0.2
 		print("select+rf driver connected")
 
 		self.daq = daq(
 			dwelltime = self.dwelltime,
 			rate = 50000,
-			countsPerTrigger = 3,
+			countsPerTrigger = 9,
 			countsPulseDuration = 20
 			)
 		print("daq connected")
