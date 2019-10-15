@@ -243,6 +243,7 @@ class controlGeneric(object):
 					delay[ysteps-1-yidx, xidx] = time.time() - startTime #time in seconds since scan began
 				firstscan = False
 		self.stage.moveto(x = x0, y = y0)	#go back to map center position
+		self._lightOff()
 
 		if export:
 			# export as a hfile

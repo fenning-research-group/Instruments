@@ -34,7 +34,7 @@ class compact(object):
 			self.setTrigger(mode = 0)	#turn off external trigger mode
 
 		self.emissionOn = False
-
+		self.lightWarmupTime = 5	#seconds to wait after laser is turned on for laser to stabilize. Without lockin, 3 seconds is sufficient. Higher to allow lockin to find the frequency
 	def connect(self, portName = 'COM13'):
 		nktdll.openPorts(portName, 1 ,1)
 		result, devList = nktdll.deviceGetAllTypes(portName)
@@ -71,20 +71,17 @@ class compact(object):
 		return interlockStatus
 
 	def on(self):
-		if not self.emissionOn:
-			if self.checkInterlock():
-				result = nktdll.registerWriteU8(self.__handle, self.__address, 0x30, 1, -1) # check whether 1 should be sent as an hexadecimal value. Might need to make a function to convert to hex values
-				if result == 0:
-					time.sleep(3)	#laser take a few seconds to fully turn on
-					self.emissionOn = True
-					return True
-				else:
-					print('Error encountered when trying to turn laser emission on:', RegisterResultTypes(result))
-					return False
-			else:	
+		if self.checkInterlock():
+			result = nktdll.registerWriteU8(self.__handle, self.__address, 0x30, 1, -1) # check whether 1 should be sent as an hexadecimal value. Might need to make a function to convert to hex values
+			if result == 0:
+				time.sleep(self.lightWarmupTime)	#laser take a few seconds to stabilize once turned on
+				self.emissionOn = True
+				return True
+			else:
+				print('Error encountered when trying to turn laser emission on:', RegisterResultTypes(result))
 				return False
-		else:
-			return True
+		else:	
+			return False
 
 	def off(self):
 		if self.emissionOn:
@@ -236,7 +233,7 @@ class select(object):
 		self.__maxRange = (1100, 2000) #set the min/max wavelength range allowed by AOTF here
 		self.rfOn = None
 		self.currentAOTF = None
-		self.wlDelay = 0.04	#need at least 100 ms for Select communication to execute. Important when changing wavelengths during scans
+		self.wlDelay = 0.04	#need at least 40 ms for Select communication to execute. Important when changing wavelengths during scans
 		if self.connect():
 			self.off()	#turn off RF to allow AOTF selection
 			self.selectAOTF(1)	#set to IR AOTF. 
