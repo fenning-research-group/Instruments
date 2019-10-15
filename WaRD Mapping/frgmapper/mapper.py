@@ -229,7 +229,7 @@ class controlGeneric(object):
 					wlThread.join()
 					moveThread.join()
 
-					signal[yidx, xidx, :], reference[yidx, xidx, :] = self._scanroutine(wavelengths = wavelengths, firstscan = firstscan, lastscan = lastscan)
+					signal[yidx, xidx, :], reference[yidx, xidx, :], _ = self._scanroutine(wavelengths = wavelengths, firstscan = firstscan, lastscan = lastscan)
 					data[yidx, xidx, :] = self._baselineCorrectionRoutine(wavelengths, signal[yidx, xidx, :], reference[yidx, xidx, :])
 					delay[yidx, xidx] = time.time() - startTime #time in seconds since scan began
 				else: # go in the reverse direction
@@ -238,7 +238,7 @@ class controlGeneric(object):
 					wlThread.join()
 					moveThread.join()
 
-					signal[ysteps-1-yidx, xidx, :], reference[ysteps-1-yidx, xidx, :] = self._scanroutine(wavelengths = wavelengths, firstscan = firstscan, lastscan = lastscan)
+					signal[ysteps-1-yidx, xidx, :], reference[ysteps-1-yidx, xidx, :], _ = self._scanroutine(wavelengths = wavelengths, firstscan = firstscan, lastscan = lastscan)
 					data[ysteps-1-yidx, xidx, :]= self._baselineCorrectionRoutine(wavelengths, signal[ysteps-1-yidx, xidx, :], reference[ysteps-1-yidx, xidx, :]) # baseline correction
 					delay[ysteps-1-yidx, xidx] = time.time() - startTime #time in seconds since scan began
 				firstscan = False
@@ -901,7 +901,7 @@ class controlMono(controlGeneric):
 
 class controlNKT(controlGeneric):
 
-	def __init__(self, dwelltime = 1):
+	def __init__(self, dwelltime = 0.46):
 		super().__init__(dwelltime = dwelltime)
 		self.__hardwareSetup = 'nkt'		#distinguish whether saved data comes from the mono or nkt setup
 		self.stage = None
@@ -909,7 +909,7 @@ class controlNKT(controlGeneric):
 		self.compact = None
 		self.daq = None
 		self.connect()
-		self.daq.useExtClock = True	#use external Compact trigger to drive daq, match the laser pulse train
+		self.daq.useExtClock = False	#use external Compact trigger to drive daq, match the laser pulse train
 		self.processPulseTrain = False
 		plt.ion()	#make plots of results non-blocking
 
@@ -921,6 +921,7 @@ class controlNKT(controlGeneric):
 		print("compact connected")
 
 		self.select = select()
+		self.select.setAOTF(1700, 0.6)
 		print("select+rf driver connected")
 
 		self.daq = daq(
