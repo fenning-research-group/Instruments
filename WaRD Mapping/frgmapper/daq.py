@@ -13,6 +13,7 @@ from ctypes import c_double, cast
 import time
 # from builtins import *  # @UnusedWildImport
 import threading
+from scipy import signal
 
 board_num = 0
 channel_intSphere = 0
@@ -31,7 +32,8 @@ class daq(object):
 		self.useExtClock = extclock
 		self.countsPerTrigger = countsPerTrigger
 		self.countsPulseDuration = countsPulseDuration
-
+		self.useFilter = False
+		self.criticalFrequency = 100
 		# prioritize dwelltime argument when setting counts/rate. if none provided, use explicitly provided counts
 		if dwelltime is not None:
 			self.__countsPerChannel = round(self.__dwelltime * self.__rate)   #counts per channel = rate (Hz) * dwelltime (s)
@@ -211,15 +213,10 @@ class daq(object):
 				}
 
 		dataIndex = 0
-		skip = 0
 		for each in range(self.__countsPerChannel):
 			for ch in channelList:
-				if skip:
-					data[ch]['Raw'].append(ctypesArray[dataIndex])
+				data[ch]['Raw'].append(ctypesArray[dataIndex])
 				dataIndex += 1
-			skip = skip + 1
-			if skip >= self.countsPerTrigger:
-				skip = 0
 
 		for ch in channelList:
 			data[ch]['Mean'] = np.mean(data[ch]['Raw'])
@@ -227,6 +224,9 @@ class daq(object):
 
 		# data['Reference']['Mean'] = np.ones(data['Reference']['Mean'].shape)	#set reference detector readings to 1
 		ul.win_buf_free(memhandle)
+
+		if self.useFilter:
+			data = self.filterSignal(data)
 
 		if processPulseTrain:
 			data = self.processPulseTrain(data)
@@ -257,6 +257,25 @@ class daq(object):
 				'StdDark': dark.std()
 			}
 
+		return data
+
+	def filterSignal(self, readData):
+		data = {}
+
+		for ch in self.channels['Label']:
+			if ch is 'IntSphere':
+				data[ch] = readData[ch]
+			else:
+				raw = readData[ch]['Raw']
+				b, a = signal.butter(3, self.criticalFrequency, fs = self.__rate)
+				filtered = signal.filtfilt(b, a, raw)[500:]
+
+				data[ch] = {
+					'Raw': raw,
+					'Filtered': filtered,
+					'Mean': filtered.mean(),
+					'Std': filtered.std()
+				}
 		return data
 
 	def startBG(self, filepath = "tempfile.dat"):
