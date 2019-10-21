@@ -17,6 +17,7 @@ import time
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from tqdm import tqdm
 import threading
+import pdb
 
 root = 'C:\\Users\\Operator\\Desktop\\frgPL'		#default folder to save data
 if not os.path.exists(root):
@@ -64,8 +65,8 @@ class control:
 		self.__dataBuffer = [] # buffer to hold data files during sequential measurements of single sample. Held until a batch export
 
 		# stage/positioning constants
-		self.__sampleposition = (52361, 41000)	#position where TEC stage is centered in camera FOV, um
-		self.__detectorposition = (67450, 102000)	#delta position between detector and sampleposition, um.
+		self.__sampleposition = (31000, 63500)	#position where TEC stage is centered in camera FOV, um
+		self.__detectorposition = (48500, 124500)	#delta position between detector and sampleposition, um.
 		self.__fov = (77000, 56000)	#dimensions of FOV, um
 
 		self.connect()
@@ -82,6 +83,7 @@ class control:
 	def connect(self):
 		self.camera = camera()		# connect to FLIR camera
 		self.kepco = kepco()		# connect to Kepco
+		self.kepco.set(voltage=0)   # set voltage to 0, seems to solve current compliance issues
 		self.laser = laser()		# Connect to OSTECH Laser
 		self.daq = daq()			# connect to NI-USB6000 DAQ
 		self.stage = stage(sampleposition = self.__sampleposition)		# connect to FRG stage
@@ -504,7 +506,7 @@ class control:
 
 		isc = -jsc * area / 1000 	#negative total current in amps, since kepco will be measuring total photocurrent as amps
 
-		laserpowers = np.linspace(0,0.8, 7)[1:]	#skip 0, lean on lower end to reduce incident power
+		laserpowers = np.linspace(0,1, 7)[1:]	#skip 0, lean on lower end to reduce incident power
 		self.kepco.set(voltage = 0)
 
 		laserjsc = np.zeros(len(laserpowers))
@@ -517,6 +519,8 @@ class control:
 			_,laserjsc[idx] = self.kepco.read(counts = 25)  
 		self.laser.off()
 
+		#pdb.set_trace()
+
 		pfit = np.polyfit(laserjsc, laserpowers, 2)
 		p = np.poly1d(pfit)	#polynomial fit object where x = measured jsc, y = laser power applied
 		
@@ -524,11 +528,16 @@ class control:
 		self._sampleOneSunSweep = [laserpowers, laserjsc]
 		self._sampleOneSunJsc = jsc
 
+		pdb.set_trace()
+
 		return p(isc), laserpowers, laserjsc	#return laser power to match target jsc
 
 	def calibrateSpot(self, numx = 21, numy = 21, rngx = None, rngy = None, laserpower = 0.5, export = True):
 		### maps an area around the sample FOV, finds the optical power at each point
+		print("calibration starting")
+
 		if not self.stage._homed:
+			print('Homing stage')
 			self.stage.gohome()
 		#default calibration area range = camera FOV
 		if rngx is None:
@@ -539,7 +548,6 @@ class control:
 		xpos = np.linspace(self.__detectorposition[0] - (rngx/2), self.__detectorposition[0] + (rngx/2), numx).astype(int)
 		ypos = np.linspace(self.__detectorposition[1] - (rngy/2), self.__detectorposition[1] + (rngy/2), numy).astype(int)
 		
-
 		self.laser.set(power = laserpower)
 		self._spotMap = np.zeros((numy, numx))
 		self._spotMapX = xpos
@@ -552,16 +560,16 @@ class control:
 
 		self.laser.on()
 		flip = 1
-		for m, x in enumerate(xpos):
+		for m, x in tqdm(enumerate(xpos), desc = 'X', total = len(xpos), leave = False):
 			flip = flip * -1
 			self.stage.moveto(x = x)
-			for n in range(len(ypos)):
+			for n in tqdm(range(len(ypos)), desc = 'Y', total = len(ypos), leave = False):
 				if flip > 0:		#use nn instead of n, accounts for snaking between lines
 					nn = len(ypos) - n - 1
 				else:
 					nn = n
 				self.stage.moveto(y = ypos[nn])
-				self._spotMap[nn,m] = self._getOpticalPower()
+				self._spotMap[nn,m] = self._getOpticalPower()/100 # suns
 		self.laser.off()
 
 		self.stage.moveto(x = self.__sampleposition[0], y = self.__sampleposition[1])	#return stage to camera FOV
@@ -679,9 +687,12 @@ class control:
 
 		# full factorial imaging across voltage (vmpp - voc) and illumination (0.2 - 1.0 suns). 25 images
 		allbiases = np.linspace(vmpp, voc, 5)		#range of voltages used for image generation
-		allsuns = np.linspace(0.2, 1, 5)			#range of suns (pl injection) used for image generation
+		allbiases = np.concatenate(([0], allbiases)) #add 0 bias to include a short-circuit PL image at each laser intensity
+		#allsuns = np.linspace(0.2, 1, 5)			#range of suns (pl injection) used for image generation
+		allsuns = np.linspace(0.2, 1, 5)	
 
 		self.setMeas(bias = 0, suns = 1, temperature = 23, note = 'PLIV - open circuit PL image')
+		self.kepco.set(current = 0)
 		self.takeMeas()
 
 		with tqdm(total = allbiases.shape[0] * allsuns.shape[0], desc = 'PLIV', leave = False) as pb:
@@ -694,6 +705,9 @@ class control:
 
 		self.laser.off()	#turn off the laser and kepco
 		self.kepco.off()
+
+		#self.save(samplename = 'Test_GG_Al_10_PLIV', note = '', reset = True) # remove this for a regular measurement with takePVRD2Meas
+
 
 	def takePVRD2Meas(self, samplename, note, vmpp, voc, jsc, area = 25.08, vstep = 0.005):
 		self.takeRseMeas(
@@ -709,9 +723,14 @@ class control:
 			area = area
 			)
 
-		self.setMeas(bias = -12, laserpower = 0, note = 'Reverse Bias EL')
+		self.setMeas(
+			bias = -12,
+			laserpower = 0,
+			note = 'Reverse Bias EL'
+			)
 		self.takeMeas()
 
+		#figure out the directory to save data to
 		storedOutputDir = self.outputDirectory
 		self.outputDirectory = os.path.join(root, 'PVRD2 Degradation Study')
 		if not os.path.exists(self.outputDirectory):

@@ -3,7 +3,7 @@
 import serial
 
 class laser:
-	def __init__(self, port = 'COM1'):
+	def __init__(self, port = 'COM13'):
 		self.__maxcurrent = 55000.0
 		self.__wavelength = 808
 		self.connect(port = port)	
@@ -14,7 +14,7 @@ class laser:
 		#self._z = None
 		#self._d = None
 
-	def connect(self, port = 'COM1'):
+	def connect(self, port = 'COM13'):
 		self.__handle = serial.Serial()
 		self.__handle.port = port
 		self.__handle.timeout = 2

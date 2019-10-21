@@ -7,7 +7,7 @@ import codecs
 class omega:
 
 
-	def __init__(self, port = 'COM12', address = 1):
+	def __init__(self, port = 'COM14', address = 1):
 		self.connect(port = port, address = address)	
 
 	@property
@@ -24,7 +24,7 @@ class omega:
 			return False
 
 
-	def connect(self, port = 'COM12', address = 1):
+	def connect(self, port, address = 1):
 		self.__handle = serial.Serial()
 		self.__handle.port = port
 		self.__handle.timeout = 2
