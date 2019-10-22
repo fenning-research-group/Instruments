@@ -12,7 +12,7 @@ class stage:
 		self._homed = False
 		self.samplePosition = sampleposition
 
-	def connect(self, port = 'COM8'):
+	def connect(self, port):
 		self.__handle = serial.Serial(port)
 		return True
 

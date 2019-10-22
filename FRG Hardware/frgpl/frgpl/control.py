@@ -6,16 +6,21 @@ import time
 import h5py
 import sys
 import matplotlib.pyplot as plt
-from camera import camera
-from stage import stage
-from kepco import kepco
-from daq import daq
-from laser import laser
-from tec import omega
+from frgpl.camera import camera
+from frgpl.stage import stage
+from frgpl.kepco import kepco
+from frgpl.daq import daq
+from frgpl.laser import laser
+from frgpl.tec import omega
 import datetime
 import time
 from mpl_toolkits.axes_grid1 import make_axes_locatable
-import tqdm
+from tqdm import tqdm
+import threading
+# import pdb
+import winsound
+
+soundpath='C:\\Users\\Operator\\Documents\\GitHub\\Instruments\\FRG Hardware\\frgpl\\frgpl\\tada.wav'
 
 root = 'C:\\Users\\Operator\\Desktop\\frgPL'		#default folder to save data
 if not os.path.exists(root):
@@ -23,14 +28,14 @@ if not os.path.exists(root):
 datafolder = os.path.join(root, 'Data')
 if not os.path.exists(datafolder):
 	os.mkdir(datafolder)
-# calibrationfolder = os.path.join(root, 'Calibration')
-# if not os.path.exists(calibrationfolder):
-# 	os.mkdir(calibrationfolder)
+calibrationfolder = os.path.join(root, 'Calibration')
+if not os.path.exists(calibrationfolder):
+	os.mkdir(calibrationfolder)
 
 
 class control:
 
-	def __init__(self, kepcoport = 'COM5',laserport = 'COM1'):
+	def __init__(self, kepcoport = 'COM5',laserport = 'COM1', spotmapnumber = None):
 		# hardware properties
 		self.kepcoport = kepcoport
 		self.laserport = laserport
@@ -42,9 +47,9 @@ class control:
 		self.bias = 0			#bias applied to sample
 		self.laserpower = 0	#current supplied to laser ###may replace this with n_suns, if calibration is enabled
 		self.saturationtime = 0.5	#delay between applying voltage/illumination and beginning measurement
-		self.numIV = 10		#number of IV measurements to average
+		self.numIV = 20		#number of IV measurements to average
 		self.numframes = 50	#number of image frames to average
-		self.__temperature = 23	#TEC stage temperature setpoint (C) during measurement
+		self.__temperature = 25	#TEC stage temperature setpoint (C) during measurement
 		self.temperatureTolerance = 0.2	#how close to the setpoint we need to be to take a measurement (C)
 		self.maxSoakTime = 60	# max soak time, in seconds, to wait for temperature to reach set point. If we reach this point, just go ahead with the measurement
 		self.note = ''
@@ -54,6 +59,7 @@ class control:
 		self._sampleOneSunSweep = None # fractional laser power vs photocurrent (Isc), fit to provide one-sun estimate
 		self.__previewFigure = None	#handle for matplotlib figure, used for previewing most recent image results
 		self.__previewAxes = [None, None]	# handle for matplotib axes, used to hold the image and colorbar
+		self.__backgroundImage = None
 
 		# data saving settings
 		todaysDate = datetime.datetime.now().strftime('%Y%m%d')
@@ -62,10 +68,12 @@ class control:
 		self.__dataBuffer = [] # buffer to hold data files during sequential measurements of single sample. Held until a batch export
 
 		# stage/positioning constants
-		self.__sampleposition = (52361, 41000)	#position where TEC stage is centered in camera FOV, um
-		self.__detectorposition = (67450, 102000)	#delta position between detector and sampleposition, um.
+		self.__sampleposition = (31000, 63500)	#position where TEC stage is centered in camera FOV, um
+		self.__detectorposition = (48500, 124500)	#delta position between detector and sampleposition, um.
 		self.__fov = (77000, 56000)	#dimensions of FOV, um
 
+		self.connect()
+		self.loadSpotCalibration(spotmapnumber)
 	@property
 	def temperature(self):
 		return self.__temperature
@@ -79,6 +87,7 @@ class control:
 	def connect(self):
 		self.camera = camera()		# connect to FLIR camera
 		self.kepco = kepco()		# connect to Kepco
+		self.kepco.set(voltage=0)   # set voltage to 0, seems to solve current compliance issues
 		self.laser = laser()		# Connect to OSTECH Laser
 		self.daq = daq()			# connect to NI-USB6000 DAQ
 		self.stage = stage(sampleposition = self.__sampleposition)		# connect to FRG stage
@@ -130,11 +139,17 @@ class control:
 					if (laserpower > 1) or (laserpower < 0):
 						maxsuns = 1/self._sampleOneSun
 						print('Error: {0} suns is out of range! Based on laser power and current sample, allowed suns range = 0 - {1}.'.format(suns, maxsuns))
-						return False
+						if laserpower > 1:
+							print('Setting to max laser power ({0} suns)'.format(maxsuns))
+							laserpower = 1
+						else:
+							print('Setting laser off')
+							laserpower = 0
+						# return False
 		if saturationtime is None:
 			saturationtime = self.saturationtime
 		if temperature is None:
-			temperature = self.temperature
+			temperature = self.__temperature
 		if numIV is None:
 			numIV = self.numIV
 		if numframes is None:
@@ -156,11 +171,20 @@ class control:
 			print('Error setting laser')
 			# return False
 
+
+		result = self.tec.setSetPoint(temperature)
+		if result:
+			self.__temperature = temperature
+		else:
+			print('Error setting TEC temperature')
+			# return False
+
+
 		self.numIV = numIV
 		self.numframes = numframes
 		self.note = note
 
-	def takeMeas(self, lastmeasurement = True, preview = True, imputeHotPixels = True):
+	def takeMeas(self, lastmeasurement = True, preview = True, imputeHotPixels = False):
 		### takes a measurement with settings stored in method (can be set with .setMeas()).
 		#	measurement settings + results are appended to .__dataBuffer
 		#
@@ -198,21 +222,21 @@ class control:
 				'v_meas':	v,
 				'i_meas':	i,
 				'image':	im,
+				'image_bgcorrected': im-im,
 				'irradiance_ref': irradiance, 
 				'temperature':	temperature,
 				'temperature_setpoint': self.temperature
 			}
 			self.__dataBuffer.append(meas)	
+			self.__backgroundImage = im  	#store background image for displaying preview
 
 			# restore scheduled measurement parameters + continue 	
-			self.laserpower = savedlaserpower
-			self.bias = savedbias
-			self.note = savednote
+			self.setMeas(bias = savedbias, laserpower = savedlaserpower, note = savednote)
 
 		if not self.__laserON and self.laserpower > 0:
 			self.laser.on()
 			self.__laserON = True
-		if not self.__kepcoON and self.bias is not 0:
+		if not self.__kepcoON: #and self.bias is not 0:
 			self.kepco.on()	#turn on the kepco source
 			self.__kepcoON = True
 
@@ -222,7 +246,7 @@ class control:
 		self._waitForTemperature()
 		measdatetime = datetime.datetime.now()
 		temperature = self.tec.getTemperature()
-		im, _, _ = self.camera.capture(frames = self.numframes, imputeHotPixels = False)
+		im, _, _ = self.camera.capture(frames = self.numframes, imputeHotPixels = imputeHotPixels)
 		v, i = self.kepco.read(counts = self.numIV)
 		irradiance = self._getOpticalPower()
 		temperature = (temperature + self.tec.getTemperature()) / 2	#average the temperature from just before and after the measurement. Typically averaging >1 second of time here.
@@ -248,6 +272,7 @@ class control:
 			'v_meas':	v,
 			'i_meas':	i,
 			'image':	im,
+			'image_bgcorrected': self._backgroundCorrection(im),
 			'irradiance_ref': irradiance,
 			'temperature': temperature,
 			'temperature_setpoint': self.temperature
@@ -255,7 +280,7 @@ class control:
 		self.__dataBuffer.append(meas)
 
 		if preview:
-			self.displayPreview(im, v, i)
+			self.displayPreview(self._backgroundCorrection(im), v, i)
 
 		return im, v, i
 
@@ -278,8 +303,11 @@ class control:
 		img_handle = self.__previewAxes[0].imshow(img)
 		self.__previewFigure.colorbar(img_handle, cax = self.__previewAxes[1])
 		self.__previewAxes[0].set_title('{0} V, {1} A, {2} Laser'.format(v, i, self.laserpower))
+		self.__previewFigure.canvas.draw()
+		self.__previewFigure.canvas.flush_events()
+		time.sleep(1e-4)		#pause allows plot to update during series of measurements 
 
-	def save(self, samplename = None, note = None, outputdirectory = None, reset = True):
+	def save(self, samplename = None, note = '', outputdirectory = None, reset = True):
 		if len(self.__dataBuffer) == 0:
 			print('Data buffer is empty - no data to save!')
 			return False
@@ -302,9 +330,9 @@ class control:
 		todaysDate = datetime.datetime.now().strftime('%Y%m%d')
 
 		if self.sampleName is not None:
-			fname = 'frgPL_{0:04d}_{1}_{2}.h5'.format(sampleNumber, todaysDate, self.sampleName)
+			fname = 'frgPL_{0}_{1:04d}_{2}.h5'.format(todaysDate, sampleNumber, self.sampleName)
 		else:
-			fname = 'frgPL_{0:04d}_{1}.h5'.format(sampleNumber, todaysDate)
+			fname = 'frgPL_{0}_{1:04d}.h5'.format(todaysDate, sampleNumber)
 			self.sampleName = ''
 
 		fpath = os.path.join(self.outputDirectory, fname)
@@ -354,7 +382,7 @@ class control:
 			temp = info.create_dataset('name', data = self.sampleName.encode('utf-8'))
 			temp.attrs['description'] = 'Sample name.'
 			
-			temp = info.create_dataset('notes', data = np.array([x.encode('utf-8') for x in data['note']]))
+			temp = info.create_dataset('notes', data = np.array(note.encode('utf-8')))
 			temp.attrs['description'] = 'Any notes describing each measurement.'
 
 			date = info.create_dataset('date', data = np.array([x.encode('utf-8') for x in data['date']]))
@@ -370,6 +398,9 @@ class control:
 
 			temp = settings.create_dataset('vbias', data = np.array(data['bias']))
 			temp.attrs['description'] = 'Nominal voltage bias set by Kepco during measurement.'
+
+			temp = settings.create_dataset('notes', data = np.array([x.encode('utf-8') for x in data['note']]))
+			temp.attrs['description'] = 'Any notes describing each measurement.'
 
 			temp = settings.create_dataset('laserpower', data = np.array(data['laserpower']))
 			temp.attrs['description'] = 'Fractional laser power during measurement. Calculated as normalized laser current (max current = 55 A). Laser is operated at steady state.'
@@ -403,10 +434,6 @@ class control:
 			# calibrations
 			calibrations = f.create_group('/calibrations')
 			calibrations.attrs['description'] = 'Instrument calibrations to be used for data analysis.'
-
-			temp = calibrations.create_dataset('fov', data = np.array(data['cameraFOV']))
-			temp.attrs['description'] = 'Camera field of view dimensions, in microns.'
-
 
 			temp = settings.create_dataset('samplepos', data = np.array(self.__sampleposition))
 			temp.attrs['description'] = 'Stage position (um)[x,y] where sample is centered in camera field of view'
@@ -444,6 +471,9 @@ class control:
 			temp = rawdata.create_dataset('image', data = np.array(data['image']), chunks = True, compression = 'gzip')
 			temp.attrs['description'] = 'Raw images acquired for each measurement.'
 
+			temp = rawdata.create_dataset('image_bgc', data = np.array(data['image_bgcorrected']), chunks = True, compression = 'gzip')
+			temp.attrs['description'] = 'Background-subtracted images acquired for each measurement.'
+
 			temp = rawdata.create_dataset('v', data = np.array(data['v_meas']))
 			temp.attrs['description'] = 'Voltage measured during measurement'
 
@@ -462,6 +492,7 @@ class control:
 			self._sampleOneSunSweep = None
 			self._sampleOneSunJsc = None
 			self.samplename = None
+			self.__backgroundImage = None
 
 			print('Note: sample name and one sun calibration results have been reset to None')
 		
@@ -477,34 +508,43 @@ class control:
 			print('Please provide jsc in units of mA/cm^2, and area in units of cm^2')
 			return False
 
-		isc = -jsc * area 	#negative total current, since kepco will be measuring total photocurrent
+		isc = -jsc * area / 1000 	#negative total current in amps, since kepco will be measuring total photocurrent as amps
 
-		laserpowers = np.linspace(0,0.8, 7)[1:]	#skip 0, lean on lower end to reduce incident power
+		laserpowers = np.linspace(0,1, 7)[1:]	#skip 0, lean on lower end to reduce incident power
 		self.kepco.set(voltage = 0)
 
 		laserjsc = np.zeros(len(laserpowers))
 
 		self.laser.set(power = laserpowers[0])		#set to first power before turning on laser
 		self.laser.on()
+		self.kepco.on()
 		for idx, power in enumerate(laserpowers):
 			self.laser.set(power = power)
 			time.sleep(self.saturationtime)
 			_,laserjsc[idx] = self.kepco.read(counts = 25)  
 		self.laser.off()
+		self.kepco.off()
+
+		#pdb.set_trace()
 
 		pfit = np.polyfit(laserjsc, laserpowers, 2)
 		p = np.poly1d(pfit)	#polynomial fit object where x = measured jsc, y = laser power applied
 		
 		self._sampleOneSun = p(isc)
-		self._sampleOneSunSweep = [laserpowers, laser]
+		self._sampleOneSunSweep = [laserpowers, laserjsc]
 		self._sampleOneSunJsc = jsc
+
+		# pdb.set_trace()
 
 		return p(isc), laserpowers, laserjsc	#return laser power to match target jsc
 
-	def calibrateSpot(self, numx = 21, numy = 21, rngx = None, rngy = None, laserpower = 0.5):
+	def calibrateSpot(self, numx = 21, numy = 21, rngx = None, rngy = None, laserpower = 0.5, export = True):
 		### maps an area around the sample FOV, finds the optical power at each point
+		print("calibration starting")
+
 		if not self.stage._homed:
-			self._stage.gohome()
+			print('Homing stage')
+			self.stage.gohome()
 		#default calibration area range = camera FOV
 		if rngx is None:
 			rngx = self.__fov[0]
@@ -514,9 +554,8 @@ class control:
 		xpos = np.linspace(self.__detectorposition[0] - (rngx/2), self.__detectorposition[0] + (rngx/2), numx).astype(int)
 		ypos = np.linspace(self.__detectorposition[1] - (rngy/2), self.__detectorposition[1] + (rngy/2), numy).astype(int)
 		
-
 		self.laser.set(power = laserpower)
-		self._spotMap = np.zeros((numx, numy))
+		self._spotMap = np.zeros((numy, numx))
 		self._spotMapX = xpos
 		self._spotMapY = ypos
 		
@@ -527,19 +566,109 @@ class control:
 
 		self.laser.on()
 		flip = 1
-		for m, x in enumerate(xpos):
+		for m, x in tqdm(enumerate(xpos), desc = 'X', total = len(xpos), leave = False):
 			flip = flip * -1
 			self.stage.moveto(x = x)
-			for n in range(len(ypos)):
+			for n in tqdm(range(len(ypos)), desc = 'Y', total = len(ypos), leave = False):
 				if flip > 0:		#use nn instead of n, accounts for snaking between lines
 					nn = len(ypos) - n - 1
 				else:
 					nn = n
 				self.stage.moveto(y = ypos[nn])
-				self._spotMap[nn,m] = self._getOpticalPower()
+				self._spotMap[nn,m] = self._getOpticalPower()/100 # suns
 		self.laser.off()
 
 		self.stage.moveto(x = self.__sampleposition[0], y = self.__sampleposition[1])	#return stage to camera FOV
+
+		if export:
+			self.saveSpotCalibration(note = 'Autosaved by calibrateSpot')
+
+	def saveSpotCalibration(self, note = ''):
+		fids = os.listdir(calibrationfolder)
+		sampleNumber = 1
+		for fid in fids:
+			if 'frgPL_spotCalibration' in fid:
+				sampleNumber = sampleNumber + 1
+
+		todaysDate = datetime.datetime.now().strftime('%Y%m%d')
+		todaysTime = datetime.datetime.now().strftime('%H:%M:%S')
+		fname = 'frgPL_spotCalibration_{0}_{1:04d}.h5'.format(todaysDate, sampleNumber)
+		fpath = os.path.join(calibrationfolder, fname)
+
+		## write h5 file
+
+		with h5py.File(fpath, 'w') as f:
+			# sample info
+			info = f.create_group('/info')
+			info.attrs['description'] = 'Metadata describing sample, datetime, etc.'
+			
+			# temp = info.create_dataset('name', data = self.sampleName.encode('utf-8'))
+			# temp.attrs['description'] = 'Sample name.'
+			
+			temp = info.create_dataset('notes', data = note.encode())
+			temp.attrs['description'] = 'Any notes describing each measurement.'
+
+			temp = info.create_dataset('date', data = todaysDate.encode())
+			temp.attrs['description'] = 'Measurement date.'
+			
+			temp = info.create_dataset('time', data =  todaysTime.encode())
+			temp.attrs['description'] = 'Measurement time of day.'
+
+
+			# calibrations
+			calibrations = f.create_group('/calibrations')
+			calibrations.attrs['description'] = 'Instrument calibrations to be used for data analysis.'
+
+			temp = calibrations.create_dataset('samplepos', data = np.array(self.__sampleposition))
+			temp.attrs['description'] = 'Stage position (um)[x,y] where sample is centered in camera field of view'
+
+			temp = calibrations.create_dataset('detectorpos', data = np.array(self.__detectorposition))
+			temp.attrs['description'] = 'Stage position (um) [x,y] where photodetector is centered in camera field of view'
+
+			temp = calibrations.create_dataset('camerafov', data = np.array(self.__fov))
+			temp.attrs['description'] = 'Camera field of view (um) [x,y]'
+
+			temp = calibrations.create_dataset('spot', data = np.array(self._spotMap))
+			temp.attrs['description'] = 'Map [y, x] of incident optical power across camera FOV, can be used to normalize PL images. Laser power set to 0.5 during spot mapping.'
+
+			temp = calibrations.create_dataset('spotx', data = np.array(self._spotMapX))
+			temp.attrs['description'] = 'X positions (um) for map of incident optical power across camera FOV, can be used to normalize PL images.'
+
+			temp = calibrations.create_dataset('spoty', data = np.array(self._spotMapY))
+			temp.attrs['description'] = 'Y positions (um) for map of incident optical power across camera FOV, can be used to normalize PL images.'
+
+		print('Data saved to {0}'.format(fpath))	
+
+	def loadSpotCalibration(self, calibrationnumber = None):
+		fids = os.listdir(calibrationfolder)
+		calnum = []
+		for fid in fids:
+			if 'frgPL_spotCalibration' in fid:
+				calnum.append(int(fid.split('_')[3].split('.')[0]))
+			else:
+				calnum.append(0)
+
+		if len(calnum) == 0:
+			print('Could not find any calibration files! No spotmap loaded')
+			return False
+
+		calfile = fids[calnum.index(max(calnum))]	#default to most recent calibration
+		
+		if calibrationnumber is not None:
+			try:
+				calfile = fids[calnum.index(calibrationnumber)]
+			except:
+				print('Could not find calibration {0}: defaulting to most recent calibration {1}'.format(calibrationnumber, max(calnum)))
+		fpath = os.path.join(calibrationfolder, calfile)
+		## write h5 file
+
+		with h5py.File(fpath, 'r') as f:
+			self._spotMap = f['calibrations']['spot'][:]
+			self._spotMapX = f['calibrations']['spotx'][:]
+			self._spotMapT = f['calibrations']['spoty'][:]
+
+		print('Loaded calibration {0} from {1}.'.format(calnum[fids.index(calfile)], fpath))
+		return True
 
 	### group measurement methods
 
@@ -549,12 +678,15 @@ class control:
 		while biases[-1] < voc:
 			biases.append(biases[-1] + vstep)
 
-		for bias in tqdm(biases[:-1], desc = 'Rse EL', total = len(biases), leave = False):	#measure all but last with lastmeasurement = True (doesnt turn kepco off between measurements). Last measurement is normal
-			self.setMeas(bias = bias, laserpower = 0, note = 'part of Rse measurement series')
-			self.takeMeas(lastmeasurement = False)
+		with tqdm(total = len(biases), desc = 'Rse EL', leave = False) as pb:
+			for bias in biases[0:-1]:	#measure all but last with lastmeasurement = True (doesnt turn kepco off between measurements). Last measurement is normal
+				self.setMeas(bias = bias, laserpower = 0, note = 'part of Rse measurement series')
+				self.takeMeas(lastmeasurement = False)
+				pb.update(1)
 
-		self.setMeas(bias = biases[-1], laserpower = 0, note = 'part of Rse measurement series')
-		self.takeMeas(lastmeasurement = True)		
+			self.setMeas(bias = biases[-1], laserpower = 0, note = 'part of Rse measurement series')
+			self.takeMeas(lastmeasurement = True)		
+			pb.update(1)
 
 	def takePLIVMeas(self, vmpp, voc, jsc, area):
 		### Takes images at varied bias and illumination for PLIV fitting of cell parameters
@@ -564,22 +696,28 @@ class control:
 			self.findOneSun(jsc = jsc, area = area)		# calibrate laser power to one-sun injection by matching jsc from solar simulator measurement
 
 		# full factorial imaging across voltage (vmpp - voc) and illumination (0.2 - 1.0 suns). 25 images
-		allbiases = np.linspace(vmpp, voc, 5)		#range of voltages used for image generation
-		allsuns = np.linspace(0.2, 1, 5)			#range of suns (pl injection) used for image generation
+		allbiases = np.append(0,np.linspace(vmpp, voc, 5))		#range of voltages used for image generation (including short-circuit image at each intensity)
+		#allbiases = np.concatenate(([0], allbiases)) #add 0 bias to include a short-circuit PL image at each laser intensity
+		#allsuns = np.linspace(0.2, 1, 5)			#range of suns (pl injection) used for image generation
+		allsuns = np.linspace(0.2, 1, 5)	
 
 		self.setMeas(bias = 0, suns = 1, temperature = 23, note = 'PLIV - open circuit PL image')
+		self.kepco.set(current = 0)
 		self.takeMeas()
 
-		with tqdm(allbiases.shape[0] * allsuns.shape[0], desc = 'PLIV', leave = False) as pb:
+		with tqdm(total = allbiases.shape[0] * allsuns.shape[0], desc = 'PLIV', leave = False) as pb:
 			for suns in allsuns:
 				for bias in allbiases:
-					self.setMeas(bias = bias, suns = suns, temperature = 23, lastmeasurement = False, note = 'PLIV')
-					self.takeMeas()
+					self.setMeas(bias = bias, suns = suns, temperature = 25, note = 'PLIV')
+					self.takeMeas(lastmeasurement = False)
 					pb.update(1)
 
 
 		self.laser.off()	#turn off the laser and kepco
 		self.kepco.off()
+
+		#self.save(samplename = 'Test_GG_Al_10_PLIV', note = '', reset = True) # remove this for a regular measurement with takePVRD2Meas
+
 
 	def takePVRD2Meas(self, samplename, note, vmpp, voc, jsc, area = 25.08, vstep = 0.005):
 		self.takeRseMeas(
@@ -595,9 +733,14 @@ class control:
 			area = area
 			)
 
-		self.setMeas(bias = -12, laserpower = 0, note = 'Reverse Bias EL')
+		self.setMeas(
+			bias = -12,
+			laserpower = 0,
+			note = 'Reverse Bias EL'
+			)
 		self.takeMeas()
 
+		#figure out the directory to save data to
 		storedOutputDir = self.outputDirectory
 		self.outputDirectory = os.path.join(root, 'PVRD2 Degradation Study')
 		if not os.path.exists(self.outputDirectory):
@@ -609,7 +752,9 @@ class control:
 
 		self.save(samplename = samplename, note = note, reset = True)
 
-		self.outputDirectory = storedOutputDir		
+		self.outputDirectory = storedOutputDir
+
+		winsound.PlaySound(soundpath,winsound.SND_FILENAME)		
 
 	### helper methods
 	def _waitForTemperature(self):
@@ -637,6 +782,10 @@ class control:
 
 		return power
 
+	def _backgroundCorrection(self, img):
+		img = img - self.__backgroundImage
+		img[img<0] = 0
 
+		return img
 	#def normalizePL(self):
 	### used laser spot power map to normalize PL counts to incident optical power
