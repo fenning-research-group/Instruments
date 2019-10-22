@@ -13,6 +13,7 @@ from ctypes import c_double, cast
 import time
 # from builtins import *  # @UnusedWildImport
 import threading
+from scipy import signal
 
 board_num = 0
 channel_intSphere = 0
@@ -22,15 +23,17 @@ max_rate = 50e3
 
 class daq(object):
 
-	def __init__(self, channel_intSphere = 0, channel_ref = 2, rate = 50000, dwelltime = None, counts = 500, extclock = False):
+	def __init__(self, channel_intSphere = 0, channel_ref = 2, rate = 50000, dwelltime = None, counts = 2500, extclock = False, countsPerTrigger = 35, countsPulseDuration = 15):
 		self.board_num = 0
 		# self.ai_range = ULRange.BIP5VOLTS
 		self.__rate = rate
 		self.__dwelltime = dwelltime
 		self.acquiringBG = False
 		self.useExtClock = extclock
-		self.countsPerTrigger = 1
-
+		self.countsPerTrigger = countsPerTrigger
+		self.countsPulseDuration = countsPulseDuration
+		self.useFilter = False
+		self.criticalFrequency = 100
 		# prioritize dwelltime argument when setting counts/rate. if none provided, use explicitly provided counts
 		if dwelltime is not None:
 			self.__countsPerChannel = round(self.__dwelltime * self.__rate)   #counts per channel = rate (Hz) * dwelltime (s)
@@ -109,11 +112,11 @@ class daq(object):
 		ul.release_daq_device(self.board_num)
 		return True
 
-	def read(self):
+	def read(self, processPulseTrain = False):
 		
 		if self.useExtClock:
 			# scan_options = ScanOptions.FOREGROUND | ScanOptions.SCALEDATA | ScanOptions.EXTCLOCK
-			scan_options = ScanOptions.FOREGROUND | ScanOptions.SCALEDATA | ScanOptions.EXTTRIGGER | ScanOptions.RETRIGMODE
+			scan_options = ScanOptions.FOREGROUND | ScanOptions.SCALEDATA | ScanOptions.EXTTRIGGER # | ScanOptions.RETRIGMODE
 			# num_chans = len(self.channels['Number'])
 			# channelList = ['Trigger'] + self.channels['Label']
 			channelList = [x for x in self.channels['Label']]
@@ -121,13 +124,13 @@ class daq(object):
 			channelList[1] = 'Dummy'	#dummy channel A1, since we cycle from A0-A2 
 			num_chans = len(channelList)
 
-			ul.set_config(
-				info_type = InfoType.BOARDINFO,
-				board_num = self.board_num,
-				dev_num = 0,	#value here is ignored
-				config_item = BoardInfo.ADTRIGCOUNT,
-				config_val = self.countsPerTrigger	#number of samples to take per trigger
-				)
+			# ul.set_config(
+			# 	info_type = InfoType.BOARDINFO,
+			# 	board_num = self.board_num,
+			# 	dev_num = 0,	#value here is ignored
+			# 	config_item = BoardInfo.ADTRIGCOUNT,
+			# 	config_val = self.countsPerTrigger * num_chans	#number of samples to take per trigger. This is total number of samples, ie 150 samples over 3 channels = 50 samples per channel
+			# 	)
 
 			# ul.daq_set_trigger(
 			# 		board_num = self.board_num, 
@@ -222,6 +225,57 @@ class daq(object):
 		# data['Reference']['Mean'] = np.ones(data['Reference']['Mean'].shape)	#set reference detector readings to 1
 		ul.win_buf_free(memhandle)
 
+		if self.useFilter:
+			data = self.filterSignal(data)
+
+		if processPulseTrain:
+			data = self.processPulseTrain(data)
+
+		return data
+
+	def processPulseTrain(self, readData):
+		data = {}
+
+		for ch in self.channels['Label']:
+			numPulses = int(len(readData[ch]['Raw']) / self.countsPerTrigger)
+			ill = np.zeros((numPulses,))
+			dark = np.zeros((numPulses,))
+
+			for i in range(numPulses):
+				startIdx = (i-1) *self.countsPerTrigger
+				endIdx = (i*self.countsPerTrigger) - 1 
+				ill[i] = np.max(readData[ch]['Raw'][startIdx:endIdx])	#get the second measurement from this pulse (peak value)
+				dark[i] = np.mean(readData[ch]['Raw'][startIdx+self.countsPulseDuration:endIdx])		#15 is currently hardcoded for 50 cts per pulse, basically want to catch the portion of signal after pulse has completed
+				
+			data[ch] = {
+				'Raw': readData[ch]['Raw'],
+				'AllIlluminated': ill,
+				'MeanIlluminated': ill.mean(),
+				'StdIlluminated': ill.std(),
+				'AllDark': dark,
+				'MeanDark': dark.mean(),
+				'StdDark': dark.std()
+			}
+
+		return data
+
+	def filterSignal(self, readData):
+		data = {}
+
+		for ch in self.channels['Label']:
+			if ch is 'IntSphere':
+				data[ch] = readData[ch]
+			else:
+				raw = readData[ch]['Raw']
+				b, a = signal.butter(3, self.criticalFrequency, fs = self.__rate)
+				filtered = signal.filtfilt(b, a, raw)[500:]
+
+				data[ch] = {
+					'Raw': raw,
+					'Filtered': filtered,
+					'Mean': filtered.mean(),
+					'Std': filtered.std()
+				}
 		return data
 
 	def startBG(self, filepath = "tempfile.dat"):
