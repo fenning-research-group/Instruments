@@ -38,7 +38,7 @@ class omega:
 		self.__end = b'\r\n'	#end bit <etx>
 
 		#read current setpoint
-		self.__setpoint = self.getSetPoint()
+		# self.__setpoint = self.getSetPoint()
 		# self.__setpoint = None
 
 		return True
@@ -58,7 +58,7 @@ class omega:
 		self.__handle.write(payload)
 		response = self.__handle.readline()
 
-		data = int(response[9:-4], 16) * 0.1	#response given in 0.1 C
+		data = int(response[7:-4], 16) * 0.1	#response given in 0.1 C
 
 		return round(data, 2)	#only give two decimals, rounding error gives ~8 decimal places of 0's sometimes
 
@@ -73,7 +73,7 @@ class omega:
 		self.__handle.write(payload)
 		response = self.__handle.readline()
 
-		data = int(response[9:-4], 16) * 0.1	#response given in 0.1 C
+		data = int(response[7:-4], 16) * 0.1	#response given in 0.1 C
 
 		return data		
 
