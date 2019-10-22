@@ -116,7 +116,7 @@ class daq(object):
 		
 		if self.useExtClock:
 			# scan_options = ScanOptions.FOREGROUND | ScanOptions.SCALEDATA | ScanOptions.EXTCLOCK
-			scan_options = ScanOptions.FOREGROUND | ScanOptions.SCALEDATA | ScanOptions.EXTTRIGGER | ScanOptions.RETRIGMODE
+			scan_options = ScanOptions.FOREGROUND | ScanOptions.SCALEDATA | ScanOptions.EXTTRIGGER # | ScanOptions.RETRIGMODE
 			# num_chans = len(self.channels['Number'])
 			# channelList = ['Trigger'] + self.channels['Label']
 			channelList = [x for x in self.channels['Label']]
@@ -124,13 +124,13 @@ class daq(object):
 			channelList[1] = 'Dummy'	#dummy channel A1, since we cycle from A0-A2 
 			num_chans = len(channelList)
 
-			ul.set_config(
-				info_type = InfoType.BOARDINFO,
-				board_num = self.board_num,
-				dev_num = 0,	#value here is ignored
-				config_item = BoardInfo.ADTRIGCOUNT,
-				config_val = self.countsPerTrigger * num_chans	#number of samples to take per trigger. This is total number of samples, ie 150 samples over 3 channels = 50 samples per channel
-				)
+			# ul.set_config(
+			# 	info_type = InfoType.BOARDINFO,
+			# 	board_num = self.board_num,
+			# 	dev_num = 0,	#value here is ignored
+			# 	config_item = BoardInfo.ADTRIGCOUNT,
+			# 	config_val = self.countsPerTrigger * num_chans	#number of samples to take per trigger. This is total number of samples, ie 150 samples over 3 channels = 50 samples per channel
+			# 	)
 
 			# ul.daq_set_trigger(
 			# 		board_num = self.board_num, 
