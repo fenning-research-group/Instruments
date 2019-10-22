@@ -21,6 +21,19 @@ datafolder = os.path.join(root, 'Data')
 if not os.path.exists(datafolder):
 	os.mkdir(datafolder)
 
+### Settings for different PDA10DT Bandwidths:
+
+# 1k: 
+#		daq.countsPulseDuration = 50
+#		daq.countsPerTrigger = 100
+#		compact.setPulseFrequency(495)
+#
+# 10k:
+#		daq.countsPulseDuration = 20
+#		daq.countsPerTrigger = 30
+#		compact.setPulseFrequency(1665)
+
+
 class controlGeneric(object):
 	def __init__(self, dwelltime = 0.2):
 		todaysDate = datetime.datetime.now().strftime('%Y%m%d')
@@ -52,10 +65,15 @@ class controlGeneric(object):
 
 		#light baseline
 		self.__baseline['Wavelengths'] = wavelengths
-		self.__baseline['LightRaw'], self.__baseline['LightRefRaw'] = self._scanroutine(wavelengths)
-		self.__baseline['Light'] = np.divide(self.__baseline['LightRaw'], self.__baseline['LightRefRaw'])
-		
+		self.__baseline['LightRaw'], self.__baseline['LightRefRaw'], self.__baseline['Ratio'] = self._scanroutine(wavelengths)
+		try:
+			self.__baseline['Light'] = np.divide(self.__baseline['LightRaw'], self.__baseline['LightRefRaw'])
+		except:
+			print(self.__baseline['LightRaw'])
+			print(self.__baseline['LightRefRaw'])
+
 		#dark baseline
+		# if not self.processPulseTrain:
 		storeddwelltime = self.__dwelltime
 		storedUseExtClock = self.daq.useExtClock
 		self.dwelltime = 5	#take a long acquisition for the dark baseline, as it is a single point measurement
@@ -67,15 +85,15 @@ class controlGeneric(object):
 		self.__baseline['DarkRaw'] = out['IntSphere']['Mean']
 		self.__baseline['DarkRefRaw'] = out['Reference']['Mean']
 		self.__baseline['Dark'] = self.__baseline['DarkRaw'] / self.__baseline['DarkRefRaw']
-		
+
 		self.__baselineTaken = True
 
 	def scanPoint(self, label, wavelengths, plot = True, export = True):
 		# clean up wavelengths input
 		wavelengths = self._cleanWavelengthInput(wavelengths)
 
-		signal, reference = self._scanroutine(wavelengths)
-		reflectance = self._baselineCorrectionRoutine(wavelengths, signal, reference)
+		signal, reference, ratio = self._scanroutine(wavelengths)
+		reflectance = self._baselineCorrectionRoutine(wavelengths, signal, reference, ratio)
 
 		data = {
 			'Label': label,
@@ -211,7 +229,7 @@ class controlGeneric(object):
 					wlThread.join()
 					moveThread.join()
 
-					signal[yidx, xidx, :], reference[yidx, xidx, :] = self._scanroutine(wavelengths = wavelengths, firstscan = firstscan, lastscan = lastscan)
+					signal[yidx, xidx, :], reference[yidx, xidx, :], _ = self._scanroutine(wavelengths = wavelengths, firstscan = firstscan, lastscan = lastscan)
 					data[yidx, xidx, :] = self._baselineCorrectionRoutine(wavelengths, signal[yidx, xidx, :], reference[yidx, xidx, :])
 					delay[yidx, xidx] = time.time() - startTime #time in seconds since scan began
 				else: # go in the reverse direction
@@ -220,11 +238,12 @@ class controlGeneric(object):
 					wlThread.join()
 					moveThread.join()
 
-					signal[ysteps-1-yidx, xidx, :], reference[ysteps-1-yidx, xidx, :] = self._scanroutine(wavelengths = wavelengths, firstscan = firstscan, lastscan = lastscan)
+					signal[ysteps-1-yidx, xidx, :], reference[ysteps-1-yidx, xidx, :], _ = self._scanroutine(wavelengths = wavelengths, firstscan = firstscan, lastscan = lastscan)
 					data[ysteps-1-yidx, xidx, :]= self._baselineCorrectionRoutine(wavelengths, signal[ysteps-1-yidx, xidx, :], reference[ysteps-1-yidx, xidx, :]) # baseline correction
 					delay[ysteps-1-yidx, xidx] = time.time() - startTime #time in seconds since scan began
 				firstscan = False
 		self.stage.moveto(x = x0, y = y0)	#go back to map center position
+		self._lightOff()
 
 		if export:
 			# export as a hfile
@@ -373,16 +392,26 @@ class controlGeneric(object):
 
 		signal = np.zeros(wavelengths.shape)
 		ref = np.zeros(wavelengths.shape)
+		ratio = np.zeros(wavelengths.shape)
 		for idx, wl in tqdm(enumerate(wavelengths), total = wavelengths.shape[0], desc = 'Scanning {0:.1f}-{1:.1f} nm'.format(wavelengths[0], wavelengths[-1]), leave = False):
 			self._goToWavelength(wl)
-			out = self.daq.read()
-			signal[idx] = out['IntSphere']['Mean']
-			ref[idx] = out['Reference']['Mean']
+			out = self.daq.read(processPulseTrain = self.processPulseTrain)
+			if self.processPulseTrain:
+				signal[idx] = out['IntSphere']['MeanIlluminated'] - out['IntSphere']['MeanDark']
+				ref[idx] = out['Reference']['MeanIlluminated'] - out['Reference']['MeanDark']
+
+				allSignal = out['IntSphere']['AllIlluminated'] - out['IntSphere']['AllDark']
+				allRef = out['Reference']['AllIlluminated'] - out['Reference']['AllDark']
+				ratio[idx] = np.mean(np.divide(allSignal, allRef))
+			else:
+				signal[idx] = out['IntSphere']['Mean']
+				ref[idx] = out['Reference']['Mean']
+				ratio = None
 		
 		if lastscan:
 			self._lightOff()
 
-		return signal, ref
+		return signal, ref, ratio
 
 	def _flyscanroutine(self, wavelength, x0, x1, numpts, firstscan = True, lastscan = True):
 		def clipTime(timeraw, data, rampTime):
@@ -434,21 +463,34 @@ class controlGeneric(object):
 
 		return reflectance, timeraw, signalraw, referenceraw
 
-	def _baselineCorrectionRoutine(self, wavelengths, signal, reference):
+	def _baselineCorrectionRoutine(self, wavelengths, signal, reference, ratio = None):
 		if self.__baselineTaken == False:
 			raise ValueError("Take baseline first")
 
 		# corrected = np.zeros(wavelengths.shape)
-		numerator = np.zeros(wavelengths.shape)
-		denominator = np.zeros(wavelengths.shape)
-		for idx, wl in enumerate(wavelengths):
-			meas = signal[idx]/reference[idx]
-			bl_idx = np.where(self.__baseline['Wavelengths'] == wl)[0]
-			numerator[idx] = (signal[idx]-self.__baseline['DarkRaw']) / (self.__baseline['LightRaw'][bl_idx]-self.__baseline['DarkRaw'])
-			# denominator[idx] = (reference[idx]-self.__baseline['DarkRefRaw']) / (self.__baseline['LightRefRaw'][bl_idx]-self.__baseline['DarkRefRaw'])
-			denominator[idx] = 1
-			# corrected[idx] = (meas-self.__baseline['Dark']) / (self.__baseline['Light'][bl_idx]-self.__baseline['Dark']) 
-		corrected = numerator/denominator
+		if self.processPulseTrain:
+			# corrected = np.divide(ratio, self.__baseline['Ratio'])
+			numerator = np.zeros(wavelengths.shape)
+			denominator = np.zeros(wavelengths.shape)
+			for idx, wl in enumerate(wavelengths):
+				# meas = signal[idx]/reference[idx]
+				bl_idx = np.where(self.__baseline['Wavelengths'] == wl)[0]
+				numerator[idx] = (signal[idx]) / (self.__baseline['LightRaw'][bl_idx])
+				denominator[idx] = (reference[idx]) / (self.__baseline['LightRefRaw'][bl_idx])
+				# denominator[idx] = 1
+				# corrected[idx] = (meas-self.__baseline['Dark']) / (self.__baseline['Light'][bl_idx]-self.__baseline['Dark']) 
+			corrected = numerator/denominator
+		else:
+			numerator = np.zeros(wavelengths.shape)
+			denominator = np.zeros(wavelengths.shape)
+			for idx, wl in enumerate(wavelengths):
+				# meas = signal[idx]/reference[idx]
+				bl_idx = np.where(self.__baseline['Wavelengths'] == wl)[0]
+				numerator[idx] = (signal[idx]-self.__baseline['DarkRaw']) / (self.__baseline['LightRaw'][bl_idx]-self.__baseline['DarkRaw'])
+				denominator[idx] = (reference[idx]-self.__baseline['DarkRefRaw']) / (self.__baseline['LightRefRaw'][bl_idx]-self.__baseline['DarkRefRaw'])
+				# denominator[idx] = 1
+				# corrected[idx] = (meas-self.__baseline['Dark']) / (self.__baseline['Light'][bl_idx]-self.__baseline['Dark']) 
+			corrected = numerator/denominator
 		
 		return corrected
 
@@ -824,6 +866,7 @@ class controlMono(controlGeneric):
 		self.daq = None
 		self.connect()
 		self.daq.useExtClock = False	#dont use external trigger to drive daq
+		self.processPulseTrain = False
 		plt.ion()	#make plots of results non-blocking
 
 	def connect(self):
@@ -859,7 +902,7 @@ class controlMono(controlGeneric):
 
 class controlNKT(controlGeneric):
 
-	def __init__(self, dwelltime = 0.2):
+	def __init__(self, dwelltime = 0.46):
 		super().__init__(dwelltime = dwelltime)
 		self.__hardwareSetup = 'nkt'		#distinguish whether saved data comes from the mono or nkt setup
 		self.stage = None
@@ -867,18 +910,27 @@ class controlNKT(controlGeneric):
 		self.compact = None
 		self.daq = None
 		self.connect()
-		self.daq.useExtClock = True	#use external Compact trigger to drive daq, match the laser pulse train
+		self.daq.useExtClock = False	#use external Compact trigger to drive daq, match the laser pulse train
+		self.processPulseTrain = False
 		plt.ion()	#make plots of results non-blocking
 
 	def connect(self):
 		#connect to mono, stage, detector+daq hardware
-		self.compact = compact()
+		self.compact = compact(
+			pulseFrequency = 21505
+			)
 		print("compact connected")
 
 		self.select = select()
+		self.select.setAOTF(1700, 0.6)
 		print("select+rf driver connected")
 
-		self.daq = daq(dwelltime = self.dwelltime)
+		self.daq = daq(
+			dwelltime = self.dwelltime,
+			rate = 50000,
+			countsPerTrigger = 3,
+			countsPulseDuration = 20
+			)
 		print("daq connected")
 
 		self.stage = stage()
@@ -900,13 +952,12 @@ class controlNKT(controlGeneric):
 
 	def _lightOn(self):
 		self.preCheck()	#checks shutters and interlock, gives user a chance to remedy before continuing
-		if not self.compact.emissionOn:
-			self.compact.on()
+		# if not self.compact.emissionOn:
+		self.compact.on()
 		return True
 		
 	def _lightOff(self):
-		if self.compact.emissionOn:
-			self.compact.off()
+		self.compact.off()
 		return True
 
 	def preCheck(self):

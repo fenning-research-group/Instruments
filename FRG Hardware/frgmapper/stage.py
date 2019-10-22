@@ -76,7 +76,7 @@ class stage(object):
 		if not self.premove():
 			return False
 		
-		self.moveto(x = 77, y = 97) 	#position where sample is roughly centered on int sphere port 2019-09-19
+		self.moveto(x = 68.5, y = 97.5) 	#position where sample is roughly centered on int sphere port 2019-10-14
 
 		self.postmove()
 		return True
