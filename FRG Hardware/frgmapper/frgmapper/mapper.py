@@ -14,7 +14,7 @@ import h5py
 import threading
 from .nkt import compact, select
 
-root = 'C:\\Users\\PVGroup\\Desktop\\frgmapper'
+root = 'D:\\frgmapper'
 if not os.path.exists(root):
 	os.mkdir(root)
 datafolder = os.path.join(root, 'Data')
@@ -902,7 +902,7 @@ class controlMono(controlGeneric):
 
 class controlNKT(controlGeneric):
 
-	def __init__(self, dwelltime = 0.46):
+	def __init__(self, dwelltime = 0.2):
 		super().__init__(dwelltime = dwelltime)
 		self.__hardwareSetup = 'nkt'		#distinguish whether saved data comes from the mono or nkt setup
 		self.stage = None
