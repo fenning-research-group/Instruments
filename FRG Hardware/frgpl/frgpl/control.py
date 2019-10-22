@@ -35,7 +35,7 @@ if not os.path.exists(calibrationfolder):
 
 class control:
 
-	def __init__(self, kepcoport = 'COM5',laserport = 'COM1'):
+	def __init__(self, kepcoport = 'COM5',laserport = 'COM1', spotmapnumber = None):
 		# hardware properties
 		self.kepcoport = kepcoport
 		self.laserport = laserport
@@ -73,6 +73,7 @@ class control:
 		self.__fov = (77000, 56000)	#dimensions of FOV, um
 
 		self.connect()
+		self.loadSpotCalibration(spotmapnumber)
 	@property
 	def temperature(self):
 		return self.__temperature
@@ -647,11 +648,15 @@ class control:
 			else:
 				calnum.append(0)
 
+		if len(calnum) == 0:
+			print('Could not find any calibration files! No spotmap loaded')
+			return False
+
 		calfile = fids[calnum.index(max(calnum))]	#default to most recent calibration
 		
 		if calibrationnumber is not None:
 			try:
-				calfile = fids[calnum.index(max(calibrationnumber))]
+				calfile = fids[calnum.index(calibrationnumber)]
 			except:
 				print('Could not find calibration {0}: defaulting to most recent calibration {1}'.format(calibrationnumber, max(calnum)))
 		fpath = os.path.join(calibrationfolder, calfile)
@@ -662,7 +667,7 @@ class control:
 			self._spotMapX = f['calibrations']['spotx'][:]
 			self._spotMapT = f['calibrations']['spoty'][:]
 
-		print('Loaded calibration {0} from {1}.'.format(calibrationnumber, fpath))
+		print('Loaded calibration {0} from {1}.'.format(calnum[fids.index(calfile)], fpath))
 		return True
 
 	### group measurement methods
