@@ -68,11 +68,13 @@ class kepco:
 			if self.__mode is not 'VOLT':
 				self.__handle.write('FUNC:MODE VOLT\n'.encode())
 				self.__mode = 'VOLT'
+				self.__handle.write('CURR {0:d}\n'.format(self.__maxcurrent).encode())
 			self.__handle.write('VOLT {0:0.4f}\n'.format(voltage).encode())
 		elif current is not None:
 			if self.__mode is not 'CURR':
 				self.__handle.write('FUNC:MODE CURR\n'.encode())
 				self.__mode = 'CURR'
+				self.__handle.write('VOLT {0:d}\n'.format(self.__maxvoltage).encode())
 			self.__handle.write('CURR {0:0.4f}\n'.format(current).encode())
 		return True
 

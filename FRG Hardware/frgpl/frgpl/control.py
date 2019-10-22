@@ -17,7 +17,10 @@ import time
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from tqdm import tqdm
 import threading
-import pdb
+# import pdb
+import winsound
+
+soundpath='C:\\Users\\Operator\\Documents\\GitHub\\Instruments\\FRG Hardware\\frgpl\\frgpl\\tada.wav'
 
 root = 'C:\\Users\\Operator\\Desktop\\frgPL'		#default folder to save data
 if not os.path.exists(root):
@@ -45,7 +48,7 @@ class control:
 		self.laserpower = 0	#current supplied to laser ###may replace this with n_suns, if calibration is enabled
 		self.saturationtime = 0.5	#delay between applying voltage/illumination and beginning measurement
 		self.numIV = 20		#number of IV measurements to average
-		self.numframes = 100	#number of image frames to average
+		self.numframes = 50	#number of image frames to average
 		self.__temperature = 25	#TEC stage temperature setpoint (C) during measurement
 		self.temperatureTolerance = 0.2	#how close to the setpoint we need to be to take a measurement (C)
 		self.maxSoakTime = 60	# max soak time, in seconds, to wait for temperature to reach set point. If we reach this point, just go ahead with the measurement
@@ -232,7 +235,7 @@ class control:
 		if not self.__laserON and self.laserpower > 0:
 			self.laser.on()
 			self.__laserON = True
-		if not self.__kepcoON and self.bias is not 0:
+		if not self.__kepcoON: #and self.bias is not 0:
 			self.kepco.on()	#turn on the kepco source
 			self.__kepcoON = True
 
@@ -513,11 +516,13 @@ class control:
 
 		self.laser.set(power = laserpowers[0])		#set to first power before turning on laser
 		self.laser.on()
+		self.kepco.on()
 		for idx, power in enumerate(laserpowers):
 			self.laser.set(power = power)
 			time.sleep(self.saturationtime)
 			_,laserjsc[idx] = self.kepco.read(counts = 25)  
 		self.laser.off()
+		self.kepco.off()
 
 		#pdb.set_trace()
 
@@ -528,7 +533,7 @@ class control:
 		self._sampleOneSunSweep = [laserpowers, laserjsc]
 		self._sampleOneSunJsc = jsc
 
-		pdb.set_trace()
+		# pdb.set_trace()
 
 		return p(isc), laserpowers, laserjsc	#return laser power to match target jsc
 
@@ -686,8 +691,8 @@ class control:
 			self.findOneSun(jsc = jsc, area = area)		# calibrate laser power to one-sun injection by matching jsc from solar simulator measurement
 
 		# full factorial imaging across voltage (vmpp - voc) and illumination (0.2 - 1.0 suns). 25 images
-		allbiases = np.linspace(vmpp, voc, 5)		#range of voltages used for image generation
-		allbiases = np.concatenate(([0], allbiases)) #add 0 bias to include a short-circuit PL image at each laser intensity
+		allbiases = np.append(0,np.linspace(vmpp, voc, 5))		#range of voltages used for image generation (including short-circuit image at each intensity)
+		#allbiases = np.concatenate(([0], allbiases)) #add 0 bias to include a short-circuit PL image at each laser intensity
 		#allsuns = np.linspace(0.2, 1, 5)			#range of suns (pl injection) used for image generation
 		allsuns = np.linspace(0.2, 1, 5)	
 
@@ -742,7 +747,9 @@ class control:
 
 		self.save(samplename = samplename, note = note, reset = True)
 
-		self.outputDirectory = storedOutputDir		
+		self.outputDirectory = storedOutputDir
+
+		winsound.PlaySound(soundpath,winsound.SND_FILENAME)		
 
 	### helper methods
 	def _waitForTemperature(self):
