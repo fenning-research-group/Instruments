@@ -233,7 +233,7 @@ class select(object):
 		self.__maxRange = (1100, 2000) #set the min/max wavelength range allowed by AOTF here
 		self.rfOn = None
 		self.currentAOTF = None
-		self.wlDelay = 0.04	#need at least 40 ms for Select communication to execute. Important when changing wavelengths during scans
+		self.wlDelay = 0.1	#need at least 40 ms for Select communication to execute. Important when changing wavelengths during scans
 		if self.connect():
 			self.off()	#turn off RF to allow AOTF selection
 			self.selectAOTF(1)	#set to IR AOTF. 
