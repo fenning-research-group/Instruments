@@ -5,6 +5,7 @@ frgpl/control.py
 frgpl/daq.py
 frgpl/kepco.py
 frgpl/laser.py
+frgpl/processing.py
 frgpl/stage.py
 frgpl/tec.py
 frgpl.egg-info/PKG-INFO
