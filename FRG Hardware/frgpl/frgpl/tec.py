@@ -3,6 +3,7 @@
 import serial
 import numpy as np
 import codecs
+import time
 
 class omega:
 
@@ -87,8 +88,8 @@ class omega:
 			)
 		self.__handle.write(payload)
 		response = self.__handle.readline()
-
-		if response == payload:
+		# time.sleep(0.2)
+		if self.getSetPoint()*10 == setpoint:	
 			return True
 			self.__setpoint = setpoint
 		else:

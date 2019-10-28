@@ -674,8 +674,8 @@ class control:
 
 	def takeRseMeas(self, vmpp, voc, vstep = 0.005):
 		# generate list of biases spanning from vmpp to at least voc, with intervals of vstep
-		biases = [vmpp]
-		while biases[-1] < voc:
+		biases = [vmpp + (voc-vmpp)/2]
+		while biases[-1] < voc + 0.07:		#go to 70 mV (about 10% of starting Voc) higher voltage than Voc, better fitting/calibration constant is linear
 			biases.append(biases[-1] + vstep)
 
 		with tqdm(total = len(biases), desc = 'Rse EL', leave = False) as pb:
@@ -701,7 +701,7 @@ class control:
 		#allsuns = np.linspace(0.2, 1, 5)			#range of suns (pl injection) used for image generation
 		allsuns = np.linspace(0.2, 1, 5)	
 
-		self.setMeas(bias = 0, suns = 1, temperature = 23, note = 'PLIV - open circuit PL image')
+		self.setMeas(bias = 0, suns = 1, temperature = 25, note = 'PLIV - open circuit PL image')
 		self.kepco.set(current = 0)
 		self.takeMeas()
 
