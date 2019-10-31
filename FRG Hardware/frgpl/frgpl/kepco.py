@@ -13,7 +13,6 @@ class kepco:
 		self.__on = False
 		self.connect(port = port)	
 
-
 	def connect(self, port = 'COM12'):
 		self.__handle = serial.Serial(port,timeout=8)
 		self.__handle.write('SYST:REM ON\n'.encode())
@@ -79,6 +78,8 @@ class kepco:
 		return True
 
 	def read(self, counts = 10):
+		maxAttempts = 5
+
 		current = np.zeros((counts,1))
 		voltage = np.zeros((counts,1))
 
@@ -101,17 +102,26 @@ class kepco:
 
 
 		for idx in range(counts):
-			self.__handle.write('MEAS:VOLT?\n'.encode())
-			raw = self.__handle.readline()
-			voltage[idx] = clean(raw)
+			attempts = 0
+			success = False
+			while attempts < maxAttempts and not success:
+				try:
+					self.__handle.write('MEAS:VOLT?\n'.encode())
+					raw = self.__handle.readline()
+					voltage[idx] = clean(raw)
 
-			self.__handle.write('MEAS:CURR?\n'.encode())
-	
-			raw = self.__handle.readline()
-			current[idx] = clean(raw)
+					self.__handle.write('MEAS:CURR?\n'.encode())
+			
+					raw = self.__handle.readline()
+					current[idx] = clean(raw)
+
+					success = True
+				except:
+					attempts = attempts + 1
 
 			vmeas = round(np.mean(voltage), 5)
 			imeas = round(np.mean(current), 5)
+
 		return vmeas, imeas
 
 
