@@ -1,6 +1,7 @@
 ## module for communication with OSTech laser controller
 
 import serial
+import time
 
 class laser:
 	def __init__(self, port = 'COM13'):
@@ -26,7 +27,21 @@ class laser:
 		return True
 
 	def checkInterlock(self):
-		return True
+		interlockStatus = False
+
+		while interlockStatus == False:
+			self.__handle.flushInput()
+			self.__handle.write('GS\r'.encode())
+			time.sleep(0.01)
+			for i in range(self.__handle.in_waiting):
+				line = self.__handle.read()	#read but only keep the last hex sent
+			binary = bin(line[-1])
+			interlockStatus = bool(int(binary[-1]))	#first bit = 1 if interlock is satisfied, otherwise = 0
+
+			if not interlockStatus:
+				input('Interlock is not satisfied - check that the door is closed.\nPress Enter to check again.')		
+
+		return interlockStatus
 
 	def on(self):
 		self.checkInterlock()	
@@ -35,6 +50,7 @@ class laser:
 
 	def off(self):
 		self.__handle.write('LS\r'.encode())
+		self.__handle.readline()
 		return True
 
 	def set(self, power):
