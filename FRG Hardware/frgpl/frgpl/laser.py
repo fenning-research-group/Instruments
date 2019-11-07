@@ -33,11 +33,10 @@ class laser:
 			self.__handle.flushInput()
 			self.__handle.write('GS\r'.encode())
 			time.sleep(0.01)
-			for i in range(self.__handle.in_waiting):
-				line = self.__handle.read()	#read but only keep the last hex sent
-			binary = bin(line[-1])
-			interlockStatus = bool(int(binary[-1]))	#first bit = 1 if interlock is satisfied, otherwise = 0
-
+			line = self.__handle.readline().decode('utf-8')
+			status = line.split('\r')[-2].split(' ')[-1]
+			if int(status) % 2 == 1:
+				interlockStatus = True
 			if not interlockStatus:
 				input('Interlock is not satisfied - check that the door is closed.\nPress Enter to check again.')		
 
@@ -46,6 +45,8 @@ class laser:
 	def on(self):
 		self.checkInterlock()	
 		self.__handle.write('LR\r'.encode())
+		line = self.__handle.readline().decode('utf-8')
+
 		return True
 
 	def off(self):

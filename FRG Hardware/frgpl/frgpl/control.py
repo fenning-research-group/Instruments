@@ -17,7 +17,7 @@ import time
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from tqdm import tqdm
 import threading
-# import pdb
+import pdb
 import winsound
 
 soundpath='C:\\Users\\Operator\\Documents\\GitHub\\Instruments\\FRG Hardware\\frgpl\\frgpl\\tada.wav'
