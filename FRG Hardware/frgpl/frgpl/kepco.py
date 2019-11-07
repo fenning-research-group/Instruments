@@ -14,7 +14,7 @@ class kepco:
 		self.connect(port = port)	
 
 
-	def connect(self, port):
+	def connect(self, port = 'COM12'):
 		self.__handle = serial.Serial(port,timeout=8)
 		self.__handle.write('SYST:REM ON\n'.encode())
 		self.__handle.write('VOLT:RANG {0:.2f}\n'.format(self.__maxvoltage).encode())

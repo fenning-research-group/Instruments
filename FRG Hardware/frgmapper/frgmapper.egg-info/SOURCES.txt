@@ -6,6 +6,7 @@ frgmapper/mapper.py
 frgmapper/mono.py
 frgmapper/nkt.py
 frgmapper/nkttest.py
+frgmapper/processing.py
 frgmapper/stage.py
 frgmapper.egg-info/PKG-INFO
 frgmapper.egg-info/SOURCES.txt
