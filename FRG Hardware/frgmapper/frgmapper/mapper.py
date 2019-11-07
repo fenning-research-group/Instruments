@@ -339,8 +339,8 @@ class controlGeneric(object):
 			while (time.time() - startTime) <= duration:
 				if (time.time()-startTime) >= (interval*len(delay)):	#time for the next scan
 					delay.append(time.time() - startTime)
-					sig, ref = self._scanroutine(wavelengths, lastscan = False)
-					reflectance.append(self._baselineCorrectionRoutine(wavelengths, sig, ref))
+					sig, ref, ratio = self._scanroutine(wavelengths, lastscan = False)
+					reflectance.append(self._baselineCorrectionRoutine(wavelengths, sig, ref, ratio))
 					signal.append(sig)
 					reference.append(ref)
 				else:	#if we have some time to wait between scans, close the shutter and go to the starting wavelength
