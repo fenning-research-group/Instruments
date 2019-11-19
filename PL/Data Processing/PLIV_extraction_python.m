@@ -6,7 +6,7 @@
 % add to path folders containing general processing functions
 %addpath('G:\My Drive\Scripts\Utilities');
 %addpath('G:\My Drive\Scripts\Utilities\export_fig');
-%addpath('G:\My Drive\PVRD2 WaRM\Experiments\FLIR PL-EL Setup\Matlab');
+%addpath('G:\My Drive\PVRD2 WaRM\Experiments\'FLIR PL-EL Setup\Matlab');
 %addpath('G:\My Drive\Scripts\Colormaps');
 
 % Constants
@@ -14,22 +14,45 @@ k=1.38e-23; % J/K
 qC=1.6022e-19; % C
 T=298.14; % K
 VT=k*T/qC;
-cellarea=(2*2.52^2)*1e-4; % Cell area (m²)
+cellarea=((2*2.54)^2)*1e-4; % Cell area (m²) (actually the cell width is 47 mm).
 
 % folder='G:\Shared drives\FenningLab2\groupMembers\Guillaume\PLIVtest_newsetup';
-folder='C:\Users\Guillaume\Documents\#UCSD\2_PVRD2_water_degradation\Results\PLIV_tests\GG_Al_10_test_10-17-2019';
+folder='C:\Users\Guillaume\Documents\#UCSD\2_PVRD2_water_degradation\Results\PLIV_tests\test_fulldata';
 % file='frgPL_20191009_0002_Test_GG_Al_10_PLIV.h5';
-file='frgPL_20191017_0001_Test_GG_Al_10_PLIV_old_diffuser_new_filter.h5';
-
+% file='frgPL_20191031_0002_GB8.h5';
+% file='frgPL_20191030_0002_GB11.h5';
+% file='frgPL_20191023_0002_GB11.h5'; % The file 'frgPL_20191031_0006_GB5.h5' has exploitable data (laser was on)
+file='frgPL_20191107_0005_GB16.h5';
 filepath=fullfile(folder,file);
 
 %% Load data
-% %{
+%{
 meascurr=h5read(filepath,'/data/i'); % Measured current
 measvolt=h5read(filepath,'/data/v'); % Measured voltage
 maps=h5read(filepath,'/data/image_bgc'); % PL maps after background correction
 intensity=h5read(filepath,'/settings/suns'); % Intensity data obtained from the calibration based on measure Jsc
 set_voltage=h5read(filepath,'/settings/vbias') ; % Voltage set for each measurement
+%}
+
+%% Load data
+% %{
+notes = h5read(filepath, '/settings/notes');
+idx = contains(notes, 'PLIV');  %filter measurements taken for PLIV
+
+meascurr=h5read(filepath,'/data/i'); % Measured current
+meascurr = meascurr(idx);
+
+measvolt=h5read(filepath,'/data/v'); % Measured voltage
+measvolt = measvolt(idx);
+
+maps=h5read(filepath,'/data/image_bgc'); % PL maps after background correction
+maps = maps(:,:,idx);
+
+intensity=h5read(filepath,'/settings/suns'); % Intensity data obtained from the calibration based on measure Jsc
+intensity = intensity(idx);
+
+set_voltage=h5read(filepath,'/settings/vbias') ; % Voltage set for each measurement
+set_voltage = set_voltage(idx);
 
 %{
 % To look at the raw data
@@ -69,6 +92,8 @@ J02=zeros(size(lumstruc(1).image_bgc));
 Voc1sun=zeros(size(lumstruc(1).image_bgc));
 Jmpp1sun=zeros(size(lumstruc(1).image_bgc));
 Vmpp1sun=zeros(size(lumstruc(1).image_bgc));
+FF1sun=zeros(size(lumstruc(1).image_bgc));
+nu1sun=zeros(size(lumstruc(1).image_bgc));
 C=zeros(size(lumstruc(1).image_bgc));
 % The images are found as lumstruc.PLIV(i).image.mean;
 
@@ -76,97 +101,123 @@ C=zeros(size(lumstruc(1).image_bgc));
 % GB2=PLIVmatrix(GB2);
 [M,N,lumstruc]=PLIVmatrix_python(lumstruc,cellarea); % Need to add arguments here to select which images to use
 
-%% Calculate parameter maps
-% plotPLIV_intensities(GB2,folder,'GB2');
-%plotPLIV_intensities(GG8,folder,'GG8');
+%% Indices of interesting IV curve points
 
-%{
-% Plot all net images being used
-for j=1:3:length(GB2)
-    for i=1:length(GB2(j).PLIV)
-        figure(j);
-        subplot(2,5,i);
-        imagesc(GB2(j).PLIV(i).netimage);
-        titletxt=sprintf('V = %s',num2str(GB2(j).PLIV(i).bias.voltagemeas));
-        title(titletxt);
-        colorbar
-    end
-    imagetitletxt=sprintf('Jsc-corrected images for I= %s A',num2str(GB2(j).lasercurrent));
-    sgtitle(imagetitletxt);
-end
-%}
-
-
-% Find image at 1 sun and Vmpp conditions.
-% Note that the 3rd PLIV point is at Vmpp -- for instance
-% lumstruc(3).voltage if there are no EL measurements in the file.
-mpp1sun=0;
+% Find index at 1 sun and Vmpp conditions.
+mpp1sun_ind=0;
 for ii=1:L
-    if(lumstruc(ii).intensity==1 && lumstruc(ii).voltage==lumstruc(3).voltage) % NOTE: to change if there is EL data in the h5py file (number of EL maps + 3 instead of 3)
-        mpp1sun=ii; % Point at 1 sun and at max power point voltage
+    if(lumstruc(ii).intensity==1 && lumstruc(ii).set_voltage==lumstruc(3).set_voltage) % The first Vmpp value is in line 3 (but usually not at 1 sun)
+        mpp1sun_ind=ii; % Point at 1 sun and at max power point voltage
     end    
 end
-
 % Display warning if the 1 sun max power point was not found
-if(mpp1sun==0)
+if(mpp1sun_ind==0)
     warn_str=['No 1 sun max power point conditions found, using instead'...
-        'conditions at 1 sun and short-circuit'];
+        'conditions at 1 sun and Voc'];
     warning(warn_str);
-    mpp1sun=2; % Corresponds to data at 1 sun and 0 V (NOTE: to change if there is EL data in the h5py file: number of EL maps + 2 instead of 2)
+    mpp1sun_ind=1; % Corresponds to data at 1 sun and Voc
 end
 
+% Find index at 1 sun and short-circuit conditions
+clear ii;
+sc1sun_ind=0;
+for ii=1:L
+    if(lumstruc(ii).intensity==1 && lumstruc(ii).set_voltage==0)
+        sc1sun_ind=ii; % Point at 1 sun and at max power point voltage
+    end    
+end
+% Display warning if the 1 sun max power point was not found
+if(sc1sun_ind==0)
+    warn_str=['No 1 sun short-circuit conditions found, using instead'...
+        'the second index (check that it is at short-circuit).'];
+    warning(warn_str);
+    sc1sun_ind=2; % Should correspond to short-circuit conditions, the intensity will depends on data acquisition settings.
+end
 
+voc1sun_ind=1; % Voc measurement at 1 sun is in the first row of lumstruc
+Pin1sun=1e3; % Incidnet 1-sun power (W/m2)
+
+%% Correct Voc image at 1 sun
+% Voc image at 1 sun
+lumstruc(1).netimage=lumstruc(i).image_bgc-lumstruc(sc1sun_ind).image_bgc; % corrected with Jsc image at 1 sun
+
+%% Extract mapped solar cell parameters
 for p=1:size(M,1) % For all pixel columns
     for q=1:size(M,2) % For all pixel lines
         % X{p,q}=M{p,q}\N{p,q};
         X{p,q}=linsolve(M{p,q},N{p,q});
         Rs(p,q)=X{p,q}(2); % The Rs value is in the second element of vector X
         C(p,q)=exp(X{p,q}(1)/VT);
-%         J01(p,q)=-X{p,q}(3)*C(p,q)/Rs(p,q);
-%         J02(p,q)=-X{p,q}(4)*sqrt(C(p,q))/Rs(p,q);
-%         Voc1sun(p,q)= VT*log((GG8(4).PLIV(8).image.mean(p,q)-GG8(4).PLIV(2).image.mean(p,q))/C(p,q));
-%         % Local voltage Vxy for the measurements close to 1 sun (0.905 A
-%         current). Based on the measurement from % and to open circuit
-        Vmpp1sun(p,q)=VT*log(lumstruc(mpp1sun).netimage(p,q)/C(p,q)); % V % lumstruc(3) contains data at maximum powerpoint and 1 sun (WRONG!!!)
-%         Jmpp1sun(p,q)=-J01(p,q)*(exp(Vmpp1sun(p,q)/VT)-1)-J02(p,q)*(exp(Vmpp1sun(p,q)/(2*VT))-1)+GG8(4).PLIV(2).bias.currentmeas/area; % A/m²
+        J01(p,q)=-X{p,q}(3)*C(p,q)/Rs(p,q);
+        J02(p,q)=-X{p,q}(4)*sqrt(C(p,q))/Rs(p,q);
+        Voc1sun(p,q)= VT*log(lumstruc(voc1sun_ind).netimage(p,q)/C(p,q)); 
+        Vmpp1sun(p,q)=VT*log(lumstruc(mpp1sun_ind).netimage(p,q)/C(p,q)); % V %
+        Jmpp1sun(p,q)=-J01(p,q)*(exp(Vmpp1sun(p,q)/VT)-1)-J02(p,q)*(exp(Vmpp1sun(p,q)/(2*VT))-1)+lumstruc(sc1sun_ind).current/cellarea; % A/m²
+        FF1sun(p,q)=lumstruc(mpp1sun_ind).voltage*Jmpp1sun(p,q)*cellarea/(lumstruc(sc1sun_ind).current*Voc1sun(p,q))*100; % FF=Vmpp*Jmpp,xy/(Jsc*Voc,xy) where Jmpp,xy and Voc,xy are maps and Vmpp and Jsc are scalars.
+%         nu1sun(p,q)=FF1sun(p,q)*lumstruc(sc1sun_ind).current*lumstruc(voc1sun_ind).voltage/(Pin1sun*cellarea); % 1 sun efficiency map
+        nu1sun(p,q)=FF1sun(p,q)*lumstruc(sc1sun_ind).current*Voc1sun(200,200)/(Pin1sun*cellarea); % 1 sun efficiency map. Use a Voc point from the map as the Voc data in lumstruc is wrong for some reason
     end
 end
 
-% Replace all complex values by NaN
-Rs_real=Rs;
-Rs_real(imag(Rs_real)~=0)=NaN;
+% Plot output parameters in a subplot
+fig4by4=figure('Position',[30 800 1200 900]);
+subplot(2,2,1);
+% Plot Voc map at 1 sun
+[figVoc,hVoc,Voc1sun]=plotmap(Voc1sun);
+ylabel(hVoc,'1 sun Voc (V)');
+caxis([0.5,0.8]);
 
-% Final series resistance in Ohm-cm²
-Rs_final=-Rs_real*1e4;
+subplot(2,2,2);
+% Plot fill factor map at 1 sun
+[figFF,hFF,FF1sun]=plotmap(FF1sun);
+ylabel(hFF,'1 sun FF (%)');
+caxis([20, 100]);
 
+subplot(2,2,3);
+% Plot efficiency map at 1 sun
+[figNu,hNu,nu1sun]=plotmap(nu1sun);
+ylabel(hNu,'Efficiency at 1 sun (%)');
+caxis([0, 30]);
+
+subplot(2,2,4);
+% Plot series resistance
+Rs_cm2=-Rs*1e4; % Final series resistance in Ohm-cm²
+[figRs,hRs,Rs_cm2]=plotmap(Rs_cm2);
+caxis([0 10]);
+ylabel(hRs, 'Rs (Ohm-cm^2)');
+caxis([0, 10]);
+
+savefig(fig4by4,fullfile(folder,file(1:end-3)+"_outputfig"));
+
+% Plot Vmpp
+Vmpp1sun_real=Vmpp1sun;
+Vmpp1sun_real(imag(Vmpp1sun_real)~=0)=NaN;
+Vmppfig=figure;
+imagesc(Vmpp1sun_real); % V
+% set(gca,'ColorScale','log');
+caxis([0.5 0.8])
+hVmpp=colorbar;
+ylabel(hVmpp, '1 sun Vmpp (V)')
+set(gca,'FontSize',16);
+savefig(Vmppfig,fullfile(folder,file(1:end-3)+"_1sunVmpp"));
+
+% C
+C_real=C;
+C_real(imag(C)~=0)=NaN;
+
+Cfig=figure;
+imagesc(C_real); % A/cm²
+% set(gca,'ColorScale','log');
+% caxis([1e-10 1e-6])
+% caxis([1e-9, 7e-9])
+set(gca,'ColorScale','log');
+caxis([1e-8 1e-7])
+hC=colorbar;
+ylabel(hC, 'C');
+set(gca,'FontSize',16);
+savefig(Cfig,fullfile(folder,file(1:end-3)+"_Plconst"));
 
 % Process and plot images
-
-%{
-% Select cell area (for GG1 eight weeks) and calculate equivalent
-% resistance assuming only parallel resistances (in reality this is not the
-case so the calculated resistance would not be correct, there is also sheet
-resistance)
-
-Rinv=0; % Rinv contains the sum of the inverse of all resistances
-pstart=109; 
-pend=554;
-qstart=29;
-qend=496;
-Rs_cellarea=zeros(qend-qsart,pend-pstart);
-for p=pstart:pend
-    for q=qstart:qend
-        if(~isnan(Rs_final(q,p)) && Rs_final(q,p)~=0)
-            Rinv=Rinv+1/Rs_final(q,p);
-            Rs_cellarea(q-28,p-108)=Rs_final(q,p);
-        else
-            fprintf('NaN or 0 found for indices line %d col %d\n',p,q);
-        end
-    end
-end
-
-Req=1/Rinv;
-%}
 
 % Calculate the average series resistance
 %{
@@ -202,37 +253,6 @@ title('Cell area only');
 display(Req); % Ohm-cm²;
 %}
 
-
-% plot Rs and other parameters
-figure
-imagesc(Rs_final);
-hRs=colorbar;
-caxis([0 10]);
-ylabel(hRs, 'Rs (Ohm-cm^2)')
-set(gca,'FontSize',18)
-
-% Plot Vmpp
-Vmpp1sun_real=Vmpp1sun;
-Vmpp1sun_real(imag(Vmpp1sun_real)~=0)=NaN;
-
-figure;
-imagesc(Vmpp1sun_real); % V
-% set(gca,'ColorScale','log');
-caxis([0.5 0.8])
-hVmpp=colorbar;
-ylabel(hVmpp, '1 sun Vmpp (V)')
-
-% C
-C_real=C;
-C_real(imag(C)~=0)=NaN;
-
-figure;
-imagesc(C_real); % A/cm²
-set(gca,'ColorScale','log');
-% caxis([1e-10 1e-6])
-caxis([1e-9, 7e-9])
-hC=colorbar;
-ylabel(hC, 'C')
 %{
 % J01
 J01_real=J01;
@@ -289,3 +309,33 @@ compl_ind(i,2)=floor(Rs_complex_logical(i)/512)+1; % column number corresponding
 compl_ind(i,1)=(Rs_complex_logical(i)/512-compl_ind(i,2)+1)*512; % row number corresponding to index i
 end
 % %}
+
+% save data in h5 file (correct this as only the J02map is currently saved
+% using the following code)
+h5name=fullfile(folder,file(1:end-3)+"_fitted.h5");
+hdf5write(h5name,'/CMap',C);
+hdf5write(h5name,'/RsMap',Rs);
+hdf5write(h5name,'/FF1sunMap',FF1sun);
+hdf5write(h5name,'/Vmpp1sunMap',Vmpp1sun);
+hdf5write(h5name,'/Voc1sunMap',Voc1sun);
+hdf5write(h5name,'/nu1sunMap',nu1sun);
+hdf5write(h5name,'/J01Map',J01);
+hdf5write(h5name,'/J02Map',J02);
+
+% Save data in .mat file
+Matname=fullfile(folder,file(1:end-3)+"_fitted.mat");
+save(Matname,'lumstruc','C','Rs','FF1sun','Vmpp1sun','Voc1sun','nu1sun','J01','J02');
+
+% Function to plot real part of the maps
+% Returns figure and colorbar handles
+function [fig,h,A_real]=plotmap(A)
+fig=0;
+A_real=A;
+A_real(imag(A_real)~=0)=NaN;
+%fig=figure;
+imagesc(A_real); % V
+h=colorbar;
+set(gca,'FontSize',18);
+end
+
+
