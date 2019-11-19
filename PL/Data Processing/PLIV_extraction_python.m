@@ -86,7 +86,7 @@ end
 % Solution vector
 X=cell(size(lumstruc(1).image_bgc)); % Size of the first map
 % Calculated parameters
-Rs=zeros(size(lumstruc(1).image_bgc));
+Rs_raw=zeros(size(lumstruc(1).image_bgc));
 J01=zeros(size(lumstruc(1).image_bgc));
 J02=zeros(size(lumstruc(1).image_bgc));
 Voc1sun=zeros(size(lumstruc(1).image_bgc));
@@ -146,7 +146,7 @@ for p=1:size(M,1) % For all pixel columns
     for q=1:size(M,2) % For all pixel lines
         % X{p,q}=M{p,q}\N{p,q};
         X{p,q}=linsolve(M{p,q},N{p,q});
-        Rs(p,q)=X{p,q}(2); % The Rs value is in the second element of vector X
+        Rs_raw(p,q)=X{p,q}(2); % The Rs value is in the second element of vector X
         C(p,q)=exp(X{p,q}(1)/VT);
         J01(p,q)=-X{p,q}(3)*C(p,q)/Rs(p,q);
         J02(p,q)=-X{p,q}(4)*sqrt(C(p,q))/Rs(p,q);
@@ -181,7 +181,7 @@ caxis([0, 30]);
 
 subplot(2,2,4);
 % Plot series resistance
-Rs_cm2=-Rs*1e4; % Final series resistance in Ohm-cm²
+Rs_cm2=-Rs_raw*1e4; % Final series resistance in Ohm-cm²
 [figRs,hRs,Rs_cm2]=plotmap(Rs_cm2);
 caxis([0 10]);
 ylabel(hRs, 'Rs (Ohm-cm^2)');
