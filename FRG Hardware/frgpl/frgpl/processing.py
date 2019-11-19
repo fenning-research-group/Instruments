@@ -20,11 +20,21 @@ def fitRsEL(file, area = 25, plot = False):
 		return img - bg
 
 	## load data
-
 	with h5py.File(file, 'r') as f:
 		title = f['info']['name'][()].decode('utf-8')
 		notes = f['settings']['notes'][()]
 		idx = [b'Rse' in x for x in notes]
+		
+		#throw away the first five points, give a more linear calibration constant fit.
+		points_to_exclude = 5
+		exclude = 0
+		for i in range(len(idx)):
+			if idx[i] == True:
+				idx[i] == False
+			if exclude >= points_to_exclude:
+				break
+
+
 		fov = f['settings']['camerafov'][()]/10000	#camera FOV, converted from um to cm
 		vmeas = f['data']['v'][()][idx]
 		jmeas = f['data']['i'][()][idx] / area

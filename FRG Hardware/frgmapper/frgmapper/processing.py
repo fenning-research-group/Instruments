@@ -3,7 +3,11 @@ import h5py
 import os
 import numpy as np
 from matplotlib_scalebar.scalebar import ScaleBar
-
+from frgtools.ward import *
+import cmocean
+import imreg_dft as ird
+from skimage.filters import gaussian
+from scipy import ndimage as nd
 
 def fitThreePointWaRD(file, celltype, plot = False):
 	if str.lower(celltype) in ['albsf', 'al-bsf']:
@@ -62,6 +66,16 @@ def fitThreePointWaRD(file, celltype, plot = False):
 	## Avg Reflectance Fitting
 	avgRef = np.mean(ref, axis = 2)
 
+	# h2o_reg_imputed = RegisterToDummy(
+	# 		ImputeWater(h2o, avgRef > avgRef.mean()*1.2),
+	# 		avgRef
+	# 	)
+
+	h2o_reg_imputed = RegisterToDummy(
+			h2o,
+			avgRef
+		)
+
 	## write fits to h5 file
 	def fillDataset(d, name, data, description):
 		if name in d.keys():
@@ -82,7 +96,7 @@ def fitThreePointWaRD(file, celltype, plot = False):
 		fillDataset(d['fits'], 'wl_ref', wl_ref, 'Wavelength used as reference absorbance point.')
 		fillDataset(d['fits'], 'poly', [p1, p2], 'Polynomial fit coefficients used to convert absorbances to water content. From highest to lowest order.')
 		fillDataset(d['fits'], 'avgref', avgRef, 'Average reflectance at each point')
-
+		fillDataset(d['fits'], 'water_reg', h2o_reg_imputed, 'Water map after registration to dummy mask + imputing to replace finger regions')
 	## Plotting
 	if plot:
 		fig, ax = plt.subplots(1,2, figsize = (10, 8))
@@ -121,3 +135,103 @@ def fitThreePointWaRD(file, celltype, plot = False):
 		ax[1].add_artist(scalebar)
 		plt.tight_layout()
 		plt.show()
+
+def FullSpectrumFit(wavelengths, reflectance, plot = False):
+	eva_peak = 1730
+	eva_tolerance = 5
+	h2o_peak = 1902
+	h20_tolerance = 5
+
+	if np.mean(reflectance) > 1:
+		reflectance = reflectance / 100
+
+	absSpectrum = -np.log(reflectance)
+	absPeaks, absBaseline = _RemoveBaseline(absSpectrum)
+
+	eva_idx = np.argmin(np.abs(wavelengths - eva_peak))
+	eva_abs = np.max(absPeaks[eva_idx-5 : eva_idx+5])
+	eva_idx_used = np.where(absPeaks == eva_abs)[0][0]
+
+	h2o_idx = np.argmin(np.abs(wavelengths - h2o_peak))
+	h2o_abs = np.max(absPeaks[h2o_idx-5 : h2o_idx+5])
+	h2o_idx_used = np.where(absPeaks == h2o_abs)[0][0]
+
+	h2o_ratio = h2o_abs/eva_abs
+	h2o_meas = (h2o_ratio - 0.002153)/.03491 #from mini module calibration curve 2019-04-09, no data with condensation risk
+
+	if plot:
+		fig, ax = plt.subplots(1,2, figsize = (8,3))
+
+		ax[0].plot(wavelengths, absSpectrum, label = 'Raw')
+		ax[0].plot(wavelengths, absBaseline, label = 'Baseline')
+		ax[0].legend()
+		ax[0].set_xlabel('Wavelengths (nm)')
+		ax[0].set_ylabel('Absorbance (AU)')
+
+		ax[1].plot(wavelengths, absPeaks, label = 'Corrected')
+		ax[1].plot(np.ones((2,)) * wavelengths[eva_idx_used], [0, eva_abs], label = 'EVA Peak', linestyle = '--')
+		ax[1].plot(np.ones((2,)) * wavelengths[h2o_idx_used], [0, h2o_abs], label = 'Water Peak', linestyle = '--')
+		ax[1].legend()
+		ax[1].set_xlabel('Wavelengths (nm)')
+		ax[1].set_ylabel('Baseline-Removed Absorbance (AU)')
+
+		plt.tight_layout()
+		plt.show()
+
+	return h2o_meas
+
+def ImputeWater(data, invalid = None):
+	"""
+	Replace the value of invalid 'data' cells (indicated by 'invalid') 
+	by the value of the nearest valid data cell
+
+	Input:
+		data:    numpy array of any dimension
+		invalid: a binary array of same shape as 'data'. True cells set where data
+				 value should be replaced.
+				 If None (default), use: invalid  = np.isnan(data)
+
+	Output: 
+		Return a filled array. 
+	"""
+	#import numpy as np
+	#import scipy.ndimage as nd
+
+	if invalid is None: invalid = np.isnan(data)
+
+	ind = nd.distance_transform_edt(invalid, return_distances=False, return_indices=True)
+	return data[tuple(ind)]	
+
+def RegisterToDummy(start, start_ref = None):
+	#scale dummy mask with busbar oriented upper horizontal.
+
+	dummy = np.zeros(start.shape)
+	border = [int(np.round(x*2/53)) for x in start.shape]
+	busbar = int(np.round(start.shape[0]*23/53))
+	dummy[border[0]:-border[0], border[1]:-border[1]] = 0.05
+	dummy[busbar:busbar+border[0],:] = 1
+
+	if start_ref is None:
+		start_ref = start
+		
+	start_gauss = gaussian(start_ref, sigma = 0.5)
+	result = ird.similarity(
+		dummy,
+		start_gauss,
+		numiter = 30,
+		constraints = {
+			'angle': [0, 360],
+			'tx': [0, 2],
+			'ty': [0, 2],
+			'scale': [1, 0.02]
+		}
+	)
+	
+	start_reg = ird.transform_img(
+		start,
+		tvec = result['tvec'].round(4),
+		angle = result['angle'],
+		scale = result['scale']
+	)
+	
+	return start_reg
