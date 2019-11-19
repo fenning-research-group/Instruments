@@ -87,14 +87,14 @@ end
 X=cell(size(lumstruc(1).image_bgc)); % Size of the first map
 % Calculated parameters
 Rs_raw=zeros(size(lumstruc(1).image_bgc));
-J01=zeros(size(lumstruc(1).image_bgc));
-J02=zeros(size(lumstruc(1).image_bgc));
-Voc1sun=zeros(size(lumstruc(1).image_bgc));
-Jmpp1sun=zeros(size(lumstruc(1).image_bgc));
-Vmpp1sun=zeros(size(lumstruc(1).image_bgc));
-FF1sun=zeros(size(lumstruc(1).image_bgc));
-nu1sun=zeros(size(lumstruc(1).image_bgc));
-C=zeros(size(lumstruc(1).image_bgc));
+J01_raw=zeros(size(lumstruc(1).image_bgc));
+J02_raw=zeros(size(lumstruc(1).image_bgc));
+Voc1sun_raw=zeros(size(lumstruc(1).image_bgc));
+Jmpp1sun_raw=zeros(size(lumstruc(1).image_bgc));
+Vmpp1sun_raw=zeros(size(lumstruc(1).image_bgc));
+FF1sun_raw=zeros(size(lumstruc(1).image_bgc));
+nu1sun_raw=zeros(size(lumstruc(1).image_bgc));
+C_raw=zeros(size(lumstruc(1).image_bgc));
 % The images are found as lumstruc.PLIV(i).image.mean;
 
 % Calculate resistance
@@ -147,15 +147,15 @@ for p=1:size(M,1) % For all pixel columns
         % X{p,q}=M{p,q}\N{p,q};
         X{p,q}=linsolve(M{p,q},N{p,q});
         Rs_raw(p,q)=X{p,q}(2); % The Rs value is in the second element of vector X
-        C(p,q)=exp(X{p,q}(1)/VT);
-        J01(p,q)=-X{p,q}(3)*C(p,q)/Rs(p,q);
-        J02(p,q)=-X{p,q}(4)*sqrt(C(p,q))/Rs(p,q);
-        Voc1sun(p,q)= VT*log(lumstruc(voc1sun_ind).netimage(p,q)/C(p,q)); 
-        Vmpp1sun(p,q)=VT*log(lumstruc(mpp1sun_ind).netimage(p,q)/C(p,q)); % V %
-        Jmpp1sun(p,q)=-J01(p,q)*(exp(Vmpp1sun(p,q)/VT)-1)-J02(p,q)*(exp(Vmpp1sun(p,q)/(2*VT))-1)+lumstruc(sc1sun_ind).current/cellarea; % A/m²
-        FF1sun(p,q)=lumstruc(mpp1sun_ind).voltage*Jmpp1sun(p,q)*cellarea/(lumstruc(sc1sun_ind).current*Voc1sun(p,q))*100; % FF=Vmpp*Jmpp,xy/(Jsc*Voc,xy) where Jmpp,xy and Voc,xy are maps and Vmpp and Jsc are scalars.
+        C_raw(p,q)=exp(X{p,q}(1)/VT);
+        J01_raw(p,q)=-X{p,q}(3)*C(p,q)/Rs(p,q);
+        J02_raw(p,q)=-X{p,q}(4)*sqrt(C(p,q))/Rs(p,q);
+        Voc1sun_raw(p,q)= VT*log(lumstruc(voc1sun_ind).netimage(p,q)/C(p,q)); 
+        Vmpp1sun_raw(p,q)=VT*log(lumstruc(mpp1sun_ind).netimage(p,q)/C(p,q)); % V %
+        Jmpp1sun_raw(p,q)=-J01(p,q)*(exp(Vmpp1sun(p,q)/VT)-1)-J02(p,q)*(exp(Vmpp1sun(p,q)/(2*VT))-1)+lumstruc(sc1sun_ind).current/cellarea; % A/m²
+        FF1sun_raw(p,q)=lumstruc(mpp1sun_ind).voltage*Jmpp1sun(p,q)*cellarea/(lumstruc(sc1sun_ind).current*Voc1sun(p,q))*100; % FF=Vmpp*Jmpp,xy/(Jsc*Voc,xy) where Jmpp,xy and Voc,xy are maps and Vmpp and Jsc are scalars.
 %         nu1sun(p,q)=FF1sun(p,q)*lumstruc(sc1sun_ind).current*lumstruc(voc1sun_ind).voltage/(Pin1sun*cellarea); % 1 sun efficiency map
-        nu1sun(p,q)=FF1sun(p,q)*lumstruc(sc1sun_ind).current*Voc1sun(200,200)/(Pin1sun*cellarea); % 1 sun efficiency map. Use a Voc point from the map as the Voc data in lumstruc is wrong for some reason
+        nu1sun_raw(p,q)=FF1sun(p,q)*lumstruc(sc1sun_ind).current*Voc1sun(200,200)/(Pin1sun*cellarea); % 1 sun efficiency map. Use a Voc point from the map as the Voc data in lumstruc is wrong for some reason
     end
 end
 
@@ -163,26 +163,26 @@ end
 fig4by4=figure('Position',[30 800 1200 900]);
 subplot(2,2,1);
 % Plot Voc map at 1 sun
-[figVoc,hVoc,Voc1sun]=plotmap(Voc1sun);
+[figVoc,hVoc,Voc1sun]=plotmap(Voc1sun_raw);
 ylabel(hVoc,'1 sun Voc (V)');
 caxis([0.5,0.8]);
 
 subplot(2,2,2);
 % Plot fill factor map at 1 sun
-[figFF,hFF,FF1sun]=plotmap(FF1sun);
+[figFF,hFF,FF1sun]=plotmap(FF1sun_raw);
 ylabel(hFF,'1 sun FF (%)');
 caxis([20, 100]);
 
 subplot(2,2,3);
 % Plot efficiency map at 1 sun
-[figNu,hNu,nu1sun]=plotmap(nu1sun);
+[figNu,hNu,nu1sun]=plotmap(nu1sun_raw);
 ylabel(hNu,'Efficiency at 1 sun (%)');
 caxis([0, 30]);
 
 subplot(2,2,4);
 % Plot series resistance
-Rs_cm2=-Rs_raw*1e4; % Final series resistance in Ohm-cm²
-[figRs,hRs,Rs_cm2]=plotmap(Rs_cm2);
+Rs_cm2_raw=-Rs_raw*1e4; % Final series resistance in Ohm-cm²
+[figRs,hRs,Rs_cm2]=plotmap(Rs_cm2_raw);
 caxis([0 10]);
 ylabel(hRs, 'Rs (Ohm-cm^2)');
 caxis([0, 10]);
@@ -190,10 +190,10 @@ caxis([0, 10]);
 savefig(fig4by4,fullfile(folder,file(1:end-3)+"_outputfig"));
 
 % Plot Vmpp
-Vmpp1sun_real=Vmpp1sun;
-Vmpp1sun_real(imag(Vmpp1sun_real)~=0)=NaN;
+Vmpp1sun=Vmpp1sun_raw;
+Vmpp1sun(imag(Vmpp1sun)~=0)=NaN;
 Vmppfig=figure;
-imagesc(Vmpp1sun_real); % V
+imagesc(Vmpp1sun); % V
 % set(gca,'ColorScale','log');
 caxis([0.5 0.8])
 hVmpp=colorbar;
@@ -202,11 +202,11 @@ set(gca,'FontSize',16);
 savefig(Vmppfig,fullfile(folder,file(1:end-3)+"_1sunVmpp"));
 
 % C
-C_real=C;
-C_real(imag(C)~=0)=NaN;
+C=C_raw;
+C(imag(C)~=0)=NaN;
 
 Cfig=figure;
-imagesc(C_real); % A/cm²
+imagesc(C); % A/cm²
 % set(gca,'ColorScale','log');
 % caxis([1e-10 1e-6])
 % caxis([1e-9, 7e-9])
@@ -310,11 +310,11 @@ compl_ind(i,1)=(Rs_complex_logical(i)/512-compl_ind(i,2)+1)*512; % row number co
 end
 % %}
 
-% save data in h5 file (correct this as only the J02map is currently saved
-% using the following code)
+% save data in h5 file
+%(correct this as only the J02map is currently saved using the following code)
 h5name=fullfile(folder,file(1:end-3)+"_fitted.h5");
 hdf5write(h5name,'/CMap',C);
-hdf5write(h5name,'/RsMap',Rs);
+hdf5write(h5name,'/RsMap',Rs_cm2);
 hdf5write(h5name,'/FF1sunMap',FF1sun);
 hdf5write(h5name,'/Vmpp1sunMap',Vmpp1sun);
 hdf5write(h5name,'/Voc1sunMap',Voc1sun);
@@ -324,7 +324,7 @@ hdf5write(h5name,'/J02Map',J02);
 
 % Save data in .mat file
 Matname=fullfile(folder,file(1:end-3)+"_fitted.mat");
-save(Matname,'lumstruc','C','Rs','FF1sun','Vmpp1sun','Voc1sun','nu1sun','J01','J02');
+save(Matname,'lumstruc','C','Rs_cm2','FF1sun','Vmpp1sun','Voc1sun','nu1sun','J01','J02');
 
 % Function to plot real part of the maps
 % Returns figure and colorbar handles
