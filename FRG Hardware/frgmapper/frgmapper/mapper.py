@@ -383,9 +383,9 @@ class controlGeneric(object):
 		# 	plt.title(label)
 		# 	plt.show()
 	
-	def scanAreaWaRD(self, label, wavelengths, xsize = 52, ysize = 52, xsteps = 53, ysteps = 53, x0 = None, y0 = None, position = None, export = True):
-		x0s = [31, 114, 114, 31]	## UPDATE PROPER LOCATIONS
-		y0s = [1,2,3,4]
+	def scanAreaWaRD(self, label, wavelengths, wavelengths_full = None, xsize = 52, ysize = 52, xsteps = 53, ysteps = 53, x0 = None, y0 = None, position = None, export = True):
+		x0s = [31, 104, 104, 31]	## UPDATE PROPER LOCATIONS
+		y0s = [117,117,57.5,57.5]
 
 		fullScanCoordinates = [		#spiral pattern to sample pts at varying distance from map center
 			[2,28],
@@ -411,7 +411,10 @@ class controlGeneric(object):
 				y0 = currenty
 
 		wavelengths = self._cleanWavelengthInput(wavelengths)
-		wavelengths_full = np.linspace(1700, 2000, 151).astype(int)
+		if wavelengths_full is not None:
+			wavelengths_full = self._cleanWavelengthInput(wavelengths_full)
+		else:
+			wavelengths_full = np.linspace(1700, 2000, 151).astype(int)
 
 		allx = np.linspace(x0 - xsize/2, x0 + xsize/2, xsteps)
 		ally = np.linspace(y0 - ysize/2, y0 + ysize/2, ysteps)
@@ -421,12 +424,12 @@ class controlGeneric(object):
 		reference = np.zeros((ysteps, xsteps, len(wavelengths)))
 		delay = np.zeros((ysteps, xsteps))
 
-		data_full = np.zeros(len(fullScanCoordinates), len(wavelengths_full))
-		signal_full = np.zeros(len(fullScanCoordinates), len(wavelengths_full))
-		reference_full = np.zeros(len(fullScanCoordinates), len(wavelengths_full))
-		delay_full = np.zeros(len(fullScanCoordinates))
-		x_full = np.zeros(len(fullScanCoordinates))
-		y_full = np.zeros(len(fullScanCoordinates))
+		data_full = np.zeros((len(fullScanCoordinates), len(wavelengths_full)))
+		signal_full = np.zeros((len(fullScanCoordinates), len(wavelengths_full)))
+		reference_full = np.zeros((len(fullScanCoordinates), len(wavelengths_full)))
+		delay_full = np.zeros((len(fullScanCoordinates),))
+		x_full = np.zeros((len(fullScanCoordinates),))
+		y_full = np.zeros((len(fullScanCoordinates),))
 
 		fullScanIdx = 0
 
@@ -466,6 +469,9 @@ class controlGeneric(object):
 					y_full[fullScanIdx] = ally[yyidx]
 
 					fullScanIdx = fullScanIdx + 1
+					
+			if fullScanIdx > 0:
+				break
 
 		self.stage.moveto(x = x0, y = y0)	#go back to map center position
 		self._lightOff()
