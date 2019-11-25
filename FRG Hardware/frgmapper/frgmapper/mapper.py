@@ -472,9 +472,6 @@ class controlGeneric(object):
 					y_full[fullScanIdx] = ally[yyidx]
 
 					fullScanIdx = fullScanIdx + 1
-					
-			if fullScanIdx > 0:
-				break
 
 		self.stage.moveto(x = x0, y = y0)	#go back to map center position
 		self._lightOff()
