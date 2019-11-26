@@ -17,12 +17,13 @@ VT=k*T/qC;
 cellarea=((2*2.54)^2)*1e-4; % Cell area (m²) (actually the cell width is 47 mm).
 
 % folder='G:\Shared drives\FenningLab2\groupMembers\Guillaume\PLIVtest_newsetup';
-folder='C:\Users\Guillaume\Documents\#UCSD\2_PVRD2_water_degradation\Results\PLIV_tests\test_fulldata';
+% folder='C:\Users\Guillaume\Documents\#UCSD\2_PVRD2_water_degradation\Results\PLIV_tests\test_fulldata';
+folder='G:\My Drive\PVRD2 WaRM\Experiments\Damp Heat Cell Degradation Testing\Round 2\Data\PL, EL, PLIV\20191120';
 % file='frgPL_20191009_0002_Test_GG_Al_10_PLIV.h5';
 % file='frgPL_20191031_0002_GB8.h5';
 % file='frgPL_20191030_0002_GB11.h5';
 % file='frgPL_20191023_0002_GB11.h5'; % The file 'frgPL_20191031_0006_GB5.h5' has exploitable data (laser was on)
-file='frgPL_20191107_0005_GB16.h5';
+file='frgPL_20191120_0001_GB11.h5';
 filepath=fullfile(folder,file);
 
 %% Load data
