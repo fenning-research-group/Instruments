@@ -7,12 +7,12 @@ import h5py
 def buildDataframe(filepath):
 	with h5py.File(filepath, 'r') as f:
 		data = {
-			'notes': f['info']['notes'][:],
-			'laserpower': f['settings']['laserpower'][:],
-			'suns': f['settings']['suns'][:],
-			'v': f['data']['v'][:],
-			'i': f['data']['i'][:],    
-			'temp': f['data']['temp'][:],
+			'notes': f['info']['notes'][()],
+			'laserpower': f['settings']['laserpower'][()],
+			'suns': f['settings']['suns'][()],
+			'v': f['data']['v'][()],
+			'i': f['data']['i'][()],    
+			'temp': f['data']['temp'][()],
 			'img': [f['data']['image'][x,:,:] for x in range(f['data']['image'].shape[0])]
 		}
 		
@@ -22,12 +22,12 @@ def buildDataframe(filepath):
 def listMeas(filepath):
 	with h5py.File(filepath, 'r') as f:
 		data = {
-			'notes': f['info']['notes'][:],
-			'laserpower': f['settings']['laserpower'][:],
-			'suns': f['settings']['suns'][:],
-			'v': f['data']['v'][:],
-			'i': f['data']['i'][:],    
-			'temp': f['data']['temp'][:],
+			'notes': f['settings']['notes'][()],
+			'laserpower': f['settings']['laserpower'][()],
+			'suns': f['settings']['suns'][()],
+			'v': f['data']['v'][()],
+			'i': f['data']['i'][()],    
+			'temp': f['data']['temp'][()],
 			'img': [f['data']['image'][x,:,:] for x in range(f['data']['image'].shape[0])]
 		}
 
@@ -43,7 +43,7 @@ def plotMeas(filepath, index):
 		t = round(f['data']['temp'][index], 2)
 		suns = round(f['settings']['suns'][index], 2)
 		laserpower = round(f['settings']['laserpower'][index], 2)
-		fov = f['settings']['camerafov'][:]/1000 #camera FOV, converted from um to cm
+		fov = f['settings']['camerafov'][()]/1000 #camera FOV, converted from um to cm
 		title = f['info']['name'][()].decode('utf-8')
 
 	if suns == 0 and laserpower != 0:
