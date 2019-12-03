@@ -129,6 +129,87 @@ class controlGeneric(object):
 			plt.title(label)
 			plt.show()
 
+	def scanLine(self, label, wavelengths, axis, p0, size, steps, plot = True, export = True):
+		# clean up wavelengths input
+		wavelengths = self._cleanWavelengthInput(wavelengths)
+
+		if str.lower(axis) == 'x':
+			axis = 'x'
+		elif str.lower(axis) = 'y':
+			axis = 'y'
+		else:
+			print('Error: axis must equal \'x\' or \'y\': user provided {0}'.format(axis))
+			return
+
+		x0, y0 = self.stage.position # return position
+		if p0 is None:
+			if axis = 'x':
+				p0 = x0
+			else:
+				p0 = y0
+
+		allpts = np.linspace(p0 - size/2, p0 + size/2, steps)
+		
+		data = np.zeros((steps, len(wavelengths)))
+		signal = np.zeros((steps, len(wavelengths)))
+		reference = np.zeros((steps, len(wavelengths)))
+		delay = np.zeros((steps,))
+
+		firstscan = True
+		lastscan = False
+		startTime = time.time()
+		for idx, p in tqdm(enumerate(allpts), desc = 'Scanning {0}'.format(axis), total = steps, leave = False):
+			if idx == steps-1
+				lastScan = True
+
+			if axis == 'x':
+				moveThread = threading.Thread(target = self.stage.moveto, args = (p, y0))
+			else:
+				moveThread = threading.Thread(target = self.stage.moveto, args = (x0, p))
+			moveThread.start()
+			wlThread = threading.Thread(target = self._goToWavelength, args = (wavelengths[0],))
+			wlThread.start()
+			moveThread.join()
+			wlThread.join()
+
+			signal[idx, :], reference[idx, :], _ = self._scanroutine(wavelengths = wavelengths, firstscan = firstscan, lastscan = lastscan)
+			data[idx, :] = self._baselineCorrectionRoutine(wavelengths, signal[idx, :], reference[idx, :])
+			delay[idx] = time.time() - startTime #time in seconds since scan began
+
+			firstscan = False
+
+		self.stage.moveto(x = x0, y = y0)	#go back to map center position
+		self._lightOff()
+
+		if axis == 'x':
+			xval = allpts
+			yval = y0
+		else:
+			xval = x0,
+			yval = allpts
+
+		if export:
+			# export as a hfile
+			self._save_scanLine(
+				label = label,
+				x = xval, 
+				y = yval,
+				axis = axis, 
+				delay = delay, 
+				wavelengths = wavelengths, 
+				reflectance = data, 
+				signal = signal, 
+				reference = reference
+				)
+		if plot:
+			fig, ax = plt.subplots(1,1)
+			ax.plot(allpts, data.mean(axis = 1))
+
+			ax.set_xlabel('{0} (mm)'.format(axis))
+			ax.set_ylabel('Reflectance (%)')
+			ax.set_title('{0}'.format(label))
+			plt.show()
+
 	def findArea(self, wavelength, xsize = 30, ysize = 30, xsteps = 40, ysteps = 40, plot = True, export = False):
 		### method to find sample edges. does two line scans in a cross over the sample at a single wavelength.
 		# clean up wavelengths input
@@ -730,6 +811,82 @@ class controlGeneric(object):
 
 		print('Data saved to {0}'.format(fpath))		
 
+	def _save_scanLine(self, label, x, y, axis, delay, wavelengths, reflectance, signal, reference):
+		fpath = self._getSavePath(label = label)	#generate filepath for saving data
+
+		with h5py.File(fpath, 'w') as f:
+			
+			info, settings, baseline = self._saveGeneralInformation(f, label = label)
+
+			## add scan type to info
+			temp = info.create_dataset('type', data = 'scanLine'.encode('utf-8'))
+			temp.attrs['description'] = 'Type of measurement held in this file.'		
+
+			## add scan parameters to settings
+			temp = settings.create_dataset('numx', data = np.array(x.shape[0]))
+			temp.attrs['description'] = 'Number of points scanned in x'			
+
+			temp = settings.create_dataset('numy', data = np.array(y.shape[0]))
+			temp.attrs['description'] = 'Number of points scanned in y'
+
+			temp = settings.create_dataset('axis', data = axis.encode('utf-8'))
+			temp.attrs['description'] = 'Axis scanned (x or y)'
+
+			temp = settings.create_dataset('rangex', data = np.array(np.abs(x[-1] - x[0])))
+			temp.attrs['description'] = 'Range scanned in x (mm)'
+
+			temp = settings.create_dataset('rangey', data = np.array(np.abs(y[-1] - y[0])))
+			temp.attrs['description'] = 'Range scanned in y (mm)'
+
+			# calculate step size. Calculates the average step size in x and y. If either axis has length 1 (ie line scan), only consider step size
+			# in the other axis. If both axes have length 0 (point scan, although not a realistic outcome for .scanArea()), leave stepsize as 0
+			countedaxes = 0
+			stepsize = 0
+			if x.shape[0] > 1:
+				stepsize = stepsize + np.abs(x[1] - x[0])
+				countedaxes = countedaxes + 1
+			if y.shape[0] > 1:
+				stepsize = stepsize + np.abs(y[1] - y[0])
+				countedaxes = countedaxes + 1
+			if countedaxes:
+				stepsize = stepsize / countedaxes
+
+			temp = settings.create_dataset('stepsize', data = np.array(stepsize))
+			temp.attrs['description'] = 'Step size (mm) in line scan.'			
+
+			## measured data 
+			rawdata = f.create_group('/data')
+			rawdata.attrs['description'] = 'Data acquired during area scan.'
+
+			temp = rawdata.create_dataset('x', data = np.array(x))
+			temp.attrs['description'] = 'Absolute X coordinate (mm) per point'
+
+			temp = rawdata.create_dataset('y', data = np.array(y))
+			temp.attrs['description'] = 'Absolute Y coordinate (mm) per point'
+
+			temp = rawdata.create_dataset('relx', data = np.array(x - np.min(x)))
+			temp.attrs['description'] = 'Relative X coordinate (mm) per point'
+
+			temp = rawdata.create_dataset('rely', data = np.array(y - np.min(y)))
+			temp.attrs['description'] = 'Relative Y coordinate (mm) per point'						
+
+			temp = rawdata.create_dataset('wavelengths', data = np.array(wavelengths))
+			temp.attrs['description'] = 'Wavelengths (nm) scanned per point.'
+
+			temp = rawdata.create_dataset('reflectance', data = np.array(reflectance))
+			temp.attrs['description'] = 'Baseline-corrected reflectance measured. Stored as [y, x, wl]. Stored as fraction (0-1), not percent!'
+
+			temp = rawdata.create_dataset('signalRaw', data = np.array(signal))
+			temp.attrs['description'] = 'Raw signal for integrating sphere detector. (V)'
+
+			temp = rawdata.create_dataset('referenceRaw', data = np.array(reference))
+			temp.attrs['description'] = 'Raw signal for reference detector. (V)'
+
+			temp = rawdata.create_dataset('delay', data = np.array(delay))
+			temp.attrs['description'] = 'Time (seconds) that each scan was acquired at. Measured as seconds since first scan point.'			
+
+		print('Data saved to {0}'.format(fpath))	
+	
 	def _save_flyscanArea(self, label, x, y, delay, wavelengths, reflectance):
 		
 		fpath = self._getSavePath(label = label)	#generate filepath for saving data
