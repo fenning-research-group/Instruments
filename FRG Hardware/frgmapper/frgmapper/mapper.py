@@ -735,82 +735,6 @@ class controlGeneric(object):
 
 		print('Data saved to {0}'.format(fpath))	
 
-	# def _save_findArea(self, label, wavelength, reflectance):
-
-	def _save_scanArea(self, label, x, y, delay, wavelengths, reflectance, signal, reference):
-		
-		fpath = self._getSavePath(label = label)	#generate filepath for saving data
-
-		with h5py.File(fpath, 'w') as f:
-			
-			info, settings, baseline = self._saveGeneralInformation(f, label = label)
-
-			## add scan type to info
-			temp = info.create_dataset('type', data = 'scanArea'.encode('utf-8'))
-			temp.attrs['description'] = 'Type of measurement held in this file.'		
-
-			## add scan parameters to settings
-			temp = settings.create_dataset('numx', data = np.array(x.shape[0]))
-			temp.attrs['description'] = 'Number of points scanned in x'			
-
-			temp = settings.create_dataset('numy', data = np.array(y.shape[0]))
-			temp.attrs['description'] = 'Number of points scanned in y'
-
-			temp = settings.create_dataset('rangex', data = np.array(np.abs(x[-1] - x[0])))
-			temp.attrs['description'] = 'Range scanned in x (mm)'
-
-			temp = settings.create_dataset('rangey', data = np.array(np.abs(y[-1] - y[0])))
-			temp.attrs['description'] = 'Range scanned in y (mm)'
-
-			# calculate step size. Calculates the average step size in x and y. If either axis has length 1 (ie line scan), only consider step size
-			# in the other axis. If both axes have length 0 (point scan, although not a realistic outcome for .scanArea()), leave stepsize as 0
-			countedaxes = 0
-			stepsize = 0
-			if x.shape[0] > 1:
-				stepsize = stepsize + np.abs(x[1] - x[0])
-				countedaxes = countedaxes + 1
-			if y.shape[0] > 1:
-				stepsize = stepsize + np.abs(y[1] - y[0])
-				countedaxes = countedaxes + 1
-			if countedaxes:
-				stepsize = stepsize / countedaxes
-
-			temp = settings.create_dataset('stepsize', data = np.array(stepsize))
-			temp.attrs['description'] = 'Average step size (mm) in x and y. If either axis has length 1 (ie line scan), only consider step size in the other axis. If both axes have length 0 (point scan, although not a realistic outcome for .scanArea()), leave stepsize as 0 '			
-
-			## measured data 
-			rawdata = f.create_group('/data')
-			rawdata.attrs['description'] = 'Data acquired during area scan.'
-
-			temp = rawdata.create_dataset('x', data = np.array(x))
-			temp.attrs['description'] = 'Absolute X coordinate (mm) per point'
-
-			temp = rawdata.create_dataset('y', data = np.array(y))
-			temp.attrs['description'] = 'Absolute Y coordinate (mm) per point'
-
-			temp = rawdata.create_dataset('relx', data = np.array(x - np.min(x)))
-			temp.attrs['description'] = 'Relative X coordinate (mm) per point'
-
-			temp = rawdata.create_dataset('rely', data = np.array(y - np.min(y)))
-			temp.attrs['description'] = 'Relative Y coordinate (mm) per point'						
-
-			temp = rawdata.create_dataset('wavelengths', data = np.array(wavelengths))
-			temp.attrs['description'] = 'Wavelengths (nm) scanned per point.'
-
-			temp = rawdata.create_dataset('reflectance', data = np.array(reflectance))
-			temp.attrs['description'] = 'Baseline-corrected reflectance measured. Stored as [y, x, wl]. Stored as fraction (0-1), not percent!'
-
-			temp = rawdata.create_dataset('signalRaw', data = np.array(signal))
-			temp.attrs['description'] = 'Raw signal for integrating sphere detector. (V)'
-
-			temp = rawdata.create_dataset('referenceRaw', data = np.array(reference))
-			temp.attrs['description'] = 'Raw signal for reference detector. (V)'
-
-			temp = rawdata.create_dataset('delay', data = np.array(delay))
-			temp.attrs['description'] = 'Time (seconds) that each scan was acquired at. Measured as seconds since first scan point.'			
-
-		print('Data saved to {0}'.format(fpath))		
-
 	def _save_scanLine(self, label, x, y, axis, delay, wavelengths, reflectance, signal, reference):
 		fpath = self._getSavePath(label = label)	#generate filepath for saving data
 
@@ -887,6 +811,82 @@ class controlGeneric(object):
 
 		print('Data saved to {0}'.format(fpath))	
 	
+	# def _save_findArea(self, label, wavelength, reflectance):
+
+	def _save_scanArea(self, label, x, y, delay, wavelengths, reflectance, signal, reference):
+		
+		fpath = self._getSavePath(label = label)	#generate filepath for saving data
+
+		with h5py.File(fpath, 'w') as f:
+			
+			info, settings, baseline = self._saveGeneralInformation(f, label = label)
+
+			## add scan type to info
+			temp = info.create_dataset('type', data = 'scanArea'.encode('utf-8'))
+			temp.attrs['description'] = 'Type of measurement held in this file.'		
+
+			## add scan parameters to settings
+			temp = settings.create_dataset('numx', data = np.array(x.shape[0]))
+			temp.attrs['description'] = 'Number of points scanned in x'			
+
+			temp = settings.create_dataset('numy', data = np.array(y.shape[0]))
+			temp.attrs['description'] = 'Number of points scanned in y'
+
+			temp = settings.create_dataset('rangex', data = np.array(np.abs(x[-1] - x[0])))
+			temp.attrs['description'] = 'Range scanned in x (mm)'
+
+			temp = settings.create_dataset('rangey', data = np.array(np.abs(y[-1] - y[0])))
+			temp.attrs['description'] = 'Range scanned in y (mm)'
+
+			# calculate step size. Calculates the average step size in x and y. If either axis has length 1 (ie line scan), only consider step size
+			# in the other axis. If both axes have length 0 (point scan, although not a realistic outcome for .scanArea()), leave stepsize as 0
+			countedaxes = 0
+			stepsize = 0
+			if x.shape[0] > 1:
+				stepsize = stepsize + np.abs(x[1] - x[0])
+				countedaxes = countedaxes + 1
+			if y.shape[0] > 1:
+				stepsize = stepsize + np.abs(y[1] - y[0])
+				countedaxes = countedaxes + 1
+			if countedaxes:
+				stepsize = stepsize / countedaxes
+
+			temp = settings.create_dataset('stepsize', data = np.array(stepsize))
+			temp.attrs['description'] = 'Average step size (mm) in x and y. If either axis has length 1 (ie line scan), only consider step size in the other axis. If both axes have length 0 (point scan, although not a realistic outcome for .scanArea()), leave stepsize as 0 '			
+
+			## measured data 
+			rawdata = f.create_group('/data')
+			rawdata.attrs['description'] = 'Data acquired during area scan.'
+
+			temp = rawdata.create_dataset('x', data = np.array(x))
+			temp.attrs['description'] = 'Absolute X coordinate (mm) per point'
+
+			temp = rawdata.create_dataset('y', data = np.array(y))
+			temp.attrs['description'] = 'Absolute Y coordinate (mm) per point'
+
+			temp = rawdata.create_dataset('relx', data = np.array(x - np.min(x)))
+			temp.attrs['description'] = 'Relative X coordinate (mm) per point'
+
+			temp = rawdata.create_dataset('rely', data = np.array(y - np.min(y)))
+			temp.attrs['description'] = 'Relative Y coordinate (mm) per point'						
+
+			temp = rawdata.create_dataset('wavelengths', data = np.array(wavelengths))
+			temp.attrs['description'] = 'Wavelengths (nm) scanned per point.'
+
+			temp = rawdata.create_dataset('reflectance', data = np.array(reflectance))
+			temp.attrs['description'] = 'Baseline-corrected reflectance measured. Stored as [y, x, wl]. Stored as fraction (0-1), not percent!'
+
+			temp = rawdata.create_dataset('signalRaw', data = np.array(signal))
+			temp.attrs['description'] = 'Raw signal for integrating sphere detector. (V)'
+
+			temp = rawdata.create_dataset('referenceRaw', data = np.array(reference))
+			temp.attrs['description'] = 'Raw signal for reference detector. (V)'
+
+			temp = rawdata.create_dataset('delay', data = np.array(delay))
+			temp.attrs['description'] = 'Time (seconds) that each scan was acquired at. Measured as seconds since first scan point.'			
+
+		print('Data saved to {0}'.format(fpath))		
+
 	def _save_flyscanArea(self, label, x, y, delay, wavelengths, reflectance):
 		
 		fpath = self._getSavePath(label = label)	#generate filepath for saving data
