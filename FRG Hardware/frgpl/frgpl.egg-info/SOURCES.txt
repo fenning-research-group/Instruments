@@ -8,6 +8,7 @@ frgpl/laser.py
 frgpl/processing.py
 frgpl/stage.py
 frgpl/tec.py
+frgpl/viewing.py
 frgpl.egg-info/PKG-INFO
 frgpl.egg-info/SOURCES.txt
 frgpl.egg-info/dependency_links.txt

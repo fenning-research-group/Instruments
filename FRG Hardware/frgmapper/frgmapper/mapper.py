@@ -464,6 +464,180 @@ class controlGeneric(object):
 		# 	plt.title(label)
 		# 	plt.show()
 	
+	def scanAreaWaRD(self, label, wavelengths, wavelengths_full = None, xsize = 52, ysize = 52, xsteps = 53, ysteps = 53, x0 = None, y0 = None, position = None, export = True):
+		x0s = [31, 104, 104, 31]	## UPDATE PROPER LOCATIONS
+		y0s = [117,117,57.5,57.5]
+
+		fullScanCoordinates = [		#spiral pattern to sample pts at varying distance from map center
+			[2,28],
+			[15,2],
+			[19,14],
+			[19,28],
+			[23,43],
+			[26,26],
+			[28,23],
+			[36,30],
+			[41,12],
+			[49,31]
+		]
+
+		if position is not None:
+			if position < 1 or position > 4:
+				print('Error: Position must hold a value from 1-4. User provided {0}. Scanning centered at current stage position'.format(position))
+			else:
+				x0 = x0s[position-1]
+				y0 = y0s[position-1]
+
+		currentx, currenty = self.stage.position # return position
+		if x0 is None:
+			x0 = currentx
+		if y0 is None:
+			y0 = currenty
+
+		wavelengths = self._cleanWavelengthInput(wavelengths)
+		if wavelengths_full is not None:
+			wavelengths_full = self._cleanWavelengthInput(wavelengths_full)
+		else:
+			wavelengths_full = np.linspace(1700, 2000, 151).astype(int)
+
+		allx = np.linspace(x0 - xsize/2, x0 + xsize/2, xsteps)
+		ally = np.linspace(y0 - ysize/2, y0 + ysize/2, ysteps)
+
+		data = np.zeros((ysteps, xsteps, len(wavelengths)))
+		signal = np.zeros((ysteps, xsteps, len(wavelengths)))
+		reference = np.zeros((ysteps, xsteps, len(wavelengths)))
+		delay = np.zeros((ysteps, xsteps))
+
+		data_full = np.zeros((len(fullScanCoordinates), len(wavelengths_full)))
+		signal_full = np.zeros((len(fullScanCoordinates), len(wavelengths_full)))
+		reference_full = np.zeros((len(fullScanCoordinates), len(wavelengths_full)))
+		delay_full = np.zeros((len(fullScanCoordinates),))
+		x_full = np.zeros((len(fullScanCoordinates),))
+		y_full = np.zeros((len(fullScanCoordinates),))
+
+		fullScanIdx = 0
+
+		firstscan = True
+		lastscan = False
+		reverse= -1 # for snaking
+		startTime = time.time()
+		for xidx, x in tqdm(enumerate(allx), desc = 'Scanning X', total = allx.shape[0], leave = False):
+			reverse=reverse*(-1)
+			for yidx, y in tqdm(enumerate(ally), desc = 'Scanning Y', total = ally.shape[0], leave = False):
+				if xidx == xsteps-1 and yidx == ysteps-1:
+					lastScan = True
+				# Condition to map in a snake pattern rather than coming back to first x point
+				wlThread = threading.Thread(target = self._goToWavelength, args = (wavelengths[0],))
+				wlThread.start()
+
+				if reverse > 0: #go in the forward direction
+					yyidx = yidx
+				else:			# go in reverse direction
+					yyidx = ysteps-1-yidx
+
+				moveThread = threading.Thread(target = self.stage.moveto, args = (x, ally[yyidx]))
+				moveThread.start()
+				wlThread.join()
+				moveThread.join()
+
+				signal[yyidx, xidx, :], reference[yyidx, xidx, :], _ = self._scanroutine(wavelengths = wavelengths, firstscan = firstscan, lastscan = lastscan)
+				data[yyidx, xidx, :] = self._baselineCorrectionRoutine(wavelengths, signal[yyidx, xidx, :], reference[yyidx, xidx, :])
+				delay[yyidx, xidx] = time.time() - startTime #time in seconds since scan began
+				firstscan = False
+
+				if [yyidx, xidx] in fullScanCoordinates:	#we've reached a coordinate to perform a full spectrum WaRD scan
+					signal_full[fullScanIdx, :], reference_full[fullScanIdx, :], _ = self._scanroutine(wavelengths = wavelengths_full, firstscan = firstscan, lastscan = lastscan)
+					data_full[fullScanIdx, :] = self._baselineCorrectionRoutine(wavelengths_full, signal_full[fullScanIdx, :], reference_full[fullScanIdx, :])
+					delay_full[fullScanIdx] = time.time() - startTime
+					x_full[fullScanIdx] = x
+					y_full[fullScanIdx] = ally[yyidx]
+
+					fullScanIdx = fullScanIdx + 1
+
+		self.stage.moveto(x = x0, y = y0)	#go back to map center position
+		self._lightOff()
+
+		if export:
+			# export as a hfile
+			self._save_scanAreaWaRD(
+				label = label,
+				x = allx, 
+				y = ally, 
+				delay = delay, 
+				wavelengths = wavelengths, 
+				reflectance = data, 
+				signal = signal, 
+				reference = reference,
+				x_full = x_full,
+				y_full = y_full,
+				delay_full = delay_full,
+				wavelengths_full = wavelengths_full,
+				reflectance_full = data_full,
+				signal_full = signal_full,
+				reference_full = reference_full
+				)
+
+	def scanLBIC(self, label, wavelengths, xsize, ysize, xsteps, ysteps, x0 = None, y0 = None, export = True):
+		# clean up wavelengths input
+		wavelengths = self._cleanWavelengthInput(wavelengths)
+
+		currentx, currenty = self.stage.position # return position
+		if x0 is None:
+			x0 = currentx
+		if y0 is None:
+			y0 = currenty
+
+		allx = np.linspace(x0 - xsize/2, x0 + xsize/2, xsteps)
+		ally = np.linspace(y0 - ysize/2, y0 + ysize/2, ysteps)
+
+		signal = np.zeros((ysteps, xsteps, len(wavelengths)))
+		reference = np.zeros((ysteps, xsteps, len(wavelengths)))
+		delay = np.zeros((ysteps, xsteps))
+
+		firstscan = True
+		lastscan = False
+		reverse= -1 # for snaking
+		startTime = time.time()
+		for xidx, x in tqdm(enumerate(allx), desc = 'Scanning X', total = allx.shape[0], leave = False):
+			reverse=reverse*(-1)
+			for yidx, y in tqdm(enumerate(ally), desc = 'Scanning Y', total = ally.shape[0], leave = False):
+				if xidx == xsteps-1 and yidx == ysteps-1:
+					lastScan = True
+				# Condition to map in a snake pattern rather than coming back to first x point
+				wlThread = threading.Thread(target = self._goToWavelength, args = (wavelengths[0],))
+				wlThread.start()
+
+				if reverse > 0: #go in the forward direction
+					moveThread = threading.Thread(target = self.stage.moveto, args = (x, y))
+					moveThread.start()
+					wlThread.join()
+					moveThread.join()
+
+					signal[yidx, xidx, :], reference[yidx, xidx, :], _ = self._scanroutine(wavelengths = wavelengths, firstscan = firstscan, lastscan = lastscan)
+					delay[yidx, xidx] = time.time() - startTime #time in seconds since scan began
+				else: # go in the reverse direction
+					moveThread = threading.Thread(target = self.stage.moveto, args = (x, ally[ysteps-1-yidx]))
+					moveThread.start()
+					wlThread.join()
+					moveThread.join()
+
+					signal[ysteps-1-yidx, xidx, :], reference[ysteps-1-yidx, xidx, :], _ = self._scanroutine(wavelengths = wavelengths, firstscan = firstscan, lastscan = lastscan)
+					delay[ysteps-1-yidx, xidx] = time.time() - startTime #time in seconds since scan began
+				firstscan = False
+		self.stage.moveto(x = x0, y = y0)	#go back to map center position
+		self._lightOff()
+
+		if export:
+			# export as a hfile
+			self._save_scanLBIC(
+				label = label,
+				x = allx, 
+				y = ally, 
+				delay = delay, 
+				wavelengths = wavelengths, 
+				signal = signal, 
+				reference = reference
+				)
 
 	# internal methods
 	def _scanroutine(self, wavelengths, firstscan = True, lastscan = True):
@@ -625,6 +799,9 @@ class controlGeneric(object):
 
 	### Save methods to dump measurements to hdf5 file. Currently copied from PL code, need to fit this to the mapping data.
 	def _getSavePath(self, label):
+		todaysDate = datetime.datetime.now().strftime('%Y%m%d')
+		self.outputdir = os.path.join(root, datafolder, todaysDate)	#set outputdir folder so the scan saves on correct date (date of scan completion)
+
 		### figure out the sample directory, name, total filepath
 		if not os.path.exists(self.outputdir):
 			os.mkdir(self.outputdir)
@@ -641,9 +818,12 @@ class controlGeneric(object):
 			fname = 'frgmapper_{0:04d}.h5'.format(fileNumber)
 		fpath = os.path.join(self.outputdir, fname)
 
+
+		
+
 		return fpath
 
-	def _saveGeneralInformation(self, f, label):
+	def _saveGeneralInformation(self, f, label, include_baseline = True):
 		### General information that will be saved regardless of which method (point scan, area scan, etc.) was used. Should be called
 		# at the beginning of any method-specific save method.
 
@@ -679,31 +859,34 @@ class controlGeneric(object):
 			temp = settings.create_dataset('position', data = np.array(self.stage.position))
 			temp.attrs['description'] = 'Stage position (x,y) during scan.'
 
-			# baseline measurement
-			baseline = f.create_group('/settings/baseline')
+			if include_baseline:
+				# baseline measurement
+				baseline = f.create_group('/settings/baseline')
 
-			temp = baseline.create_dataset('wavelengths', data = np.array(self.__baseline['Wavelengths']))
-			temp.attrs['description'] = 'Wavelengths (nm) scanned for baseline measurement'
+				temp = baseline.create_dataset('wavelengths', data = np.array(self.__baseline['Wavelengths']))
+				temp.attrs['description'] = 'Wavelengths (nm) scanned for baseline measurement'
 
-			temp = baseline.create_dataset('sphere_ill', data = np.array(self.__baseline['LightRaw']))
-			temp.attrs['description'] = 'Raw counts for integrating sphere detector during illuminated baseline measurement'
+				temp = baseline.create_dataset('sphere_ill', data = np.array(self.__baseline['LightRaw']))
+				temp.attrs['description'] = 'Raw counts for integrating sphere detector during illuminated baseline measurement'
 
-			temp = baseline.create_dataset('ref_ill', data = np.array(self.__baseline['LightRefRaw']))
-			temp.attrs['description'] = 'Raw counts for reference detector during illuminated baseline measurement'
+				temp = baseline.create_dataset('ref_ill', data = np.array(self.__baseline['LightRefRaw']))
+				temp.attrs['description'] = 'Raw counts for reference detector during illuminated baseline measurement'
 
-			temp = baseline.create_dataset('ratio_ill', data = np.array(self.__baseline['Light']))
-			temp.attrs['description'] = 'Ratio of sphere/reference counts during illuminated baseline measurement. This number is considered 100\% reflectance'
+				temp = baseline.create_dataset('ratio_ill', data = np.array(self.__baseline['Light']))
+				temp.attrs['description'] = 'Ratio of sphere/reference counts during illuminated baseline measurement. This number is considered 100\% reflectance'
 
-			temp = baseline.create_dataset('sphere_dark', data = np.array(self.__baseline['DarkRaw']))
-			temp.attrs['description'] = 'Raw counts for integrating sphere detector during dark baseline measurement. Single point, independent of wavelength.'
+				temp = baseline.create_dataset('sphere_dark', data = np.array(self.__baseline['DarkRaw']))
+				temp.attrs['description'] = 'Raw counts for integrating sphere detector during dark baseline measurement. Single point, independent of wavelength.'
 
-			temp = baseline.create_dataset('ref_dark', data = np.array(self.__baseline['DarkRefRaw']))
-			temp.attrs['description'] = 'Raw counts for reference detector during dark baseline measurement. Single point, independent of wavelength.'
+				temp = baseline.create_dataset('ref_dark', data = np.array(self.__baseline['DarkRefRaw']))
+				temp.attrs['description'] = 'Raw counts for reference detector during dark baseline measurement. Single point, independent of wavelength.'
 
-			temp = baseline.create_dataset('ratio_dark', data = np.array(self.__baseline['Dark']))
-			temp.attrs['description'] = 'Ratio of sphere/reference counts during illuminated baseline measurement. This number is considered 0\% reflectance. Single point, independent of wavelength.'
+				temp = baseline.create_dataset('ratio_dark', data = np.array(self.__baseline['Dark']))
+				temp.attrs['description'] = 'Ratio of sphere/reference counts during illuminated baseline measurement. This number is considered 0\% reflectance. Single point, independent of wavelength.'
 
-			return info, settings, baseline
+				return info, settings, baseline
+			else:
+				return info, settings
 
 	def _save_scanPoint(self, label, wavelengths, reflectance, signal, reference):
 		
@@ -887,6 +1070,111 @@ class controlGeneric(object):
 
 		print('Data saved to {0}'.format(fpath))		
 
+	def _save_scanAreaWaRD(self, label, x, y, delay, wavelengths, reflectance, signal, reference, x_full, y_full, delay_full, wavelengths_full, reflectance_full, signal_full, reference_full):
+		
+		fpath = self._getSavePath(label = label)	#generate filepath for saving data
+
+		with h5py.File(fpath, 'w') as f:
+			
+			info, settings, baseline = self._saveGeneralInformation(f, label = label)
+
+			## add scan type to info
+			temp = info.create_dataset('type', data = 'scanAreaWaRD'.encode('utf-8'))
+			temp.attrs['description'] = 'Type of measurement held in this file.'		
+
+			## add scan parameters to settings
+			temp = settings.create_dataset('numx', data = np.array(x.shape[0]))
+			temp.attrs['description'] = 'Number of points scanned in x'			
+
+			temp = settings.create_dataset('numy', data = np.array(y.shape[0]))
+			temp.attrs['description'] = 'Number of points scanned in y'
+
+			temp = settings.create_dataset('numfull', data = np.array(len(x_full)))
+			temp.attrs['description'] = 'Number of points at which a full WaRD spectrum was acquired'			
+
+			temp = settings.create_dataset('rangex', data = np.array(np.abs(x[-1] - x[0])))
+			temp.attrs['description'] = 'Range scanned in x (mm)'
+
+			temp = settings.create_dataset('rangey', data = np.array(np.abs(y[-1] - y[0])))
+			temp.attrs['description'] = 'Range scanned in y (mm)'
+
+			# calculate step size. Calculates the average step size in x and y. If either axis has length 1 (ie line scan), only consider step size
+			# in the other axis. If both axes have length 0 (point scan, although not a realistic outcome for .scanArea()), leave stepsize as 0
+			countedaxes = 0
+			stepsize = 0
+			if x.shape[0] > 1:
+				stepsize = stepsize + np.abs(x[1] - x[0])
+				countedaxes = countedaxes + 1
+			if y.shape[0] > 1:
+				stepsize = stepsize + np.abs(y[1] - y[0])
+				countedaxes = countedaxes + 1
+			if countedaxes:
+				stepsize = stepsize / countedaxes
+
+			temp = settings.create_dataset('stepsize', data = np.array(stepsize))
+			temp.attrs['description'] = 'Average step size (mm) in x and y. If either axis has length 1 (ie line scan), only consider step size in the other axis. If both axes have length 0 (point scan, although not a realistic outcome for .scanArea()), leave stepsize as 0 '			
+
+			## measured data 
+			rawdata = f.create_group('/data')
+			rawdata.attrs['description'] = 'Data acquired during area scan.'
+
+			temp = rawdata.create_dataset('x', data = np.array(x))
+			temp.attrs['description'] = 'Absolute X coordinate (mm) per point'
+
+			temp = rawdata.create_dataset('y', data = np.array(y))
+			temp.attrs['description'] = 'Absolute Y coordinate (mm) per point'
+
+			temp = rawdata.create_dataset('relx', data = np.array(x - np.min(x)))
+			temp.attrs['description'] = 'Relative X coordinate (mm) per point'
+
+			temp = rawdata.create_dataset('rely', data = np.array(y - np.min(y)))
+			temp.attrs['description'] = 'Relative Y coordinate (mm) per point'						
+
+			temp = rawdata.create_dataset('wavelengths', data = np.array(wavelengths))
+			temp.attrs['description'] = 'Wavelengths (nm) scanned per point.'
+
+			temp = rawdata.create_dataset('reflectance', data = np.array(reflectance))
+			temp.attrs['description'] = 'Baseline-corrected reflectance measured. Stored as [y, x, wl]. Stored as fraction (0-1), not percent!'
+
+			temp = rawdata.create_dataset('signalRaw', data = np.array(signal))
+			temp.attrs['description'] = 'Raw signal for integrating sphere detector. (V)'
+
+			temp = rawdata.create_dataset('referenceRaw', data = np.array(reference))
+			temp.attrs['description'] = 'Raw signal for reference detector. (V)'
+
+			temp = rawdata.create_dataset('delay', data = np.array(delay))
+			temp.attrs['description'] = 'Time (seconds) that each scan was acquired at. Measured as seconds since first scan point.'			
+
+			## measured data, full WaRD spectra
+			temp = rawdata.create_dataset('x_full', data = np.array(x_full))
+			temp.attrs['description'] = 'Absolute X coordinate (mm) per point'
+
+			temp = rawdata.create_dataset('y_full', data = np.array(y_full))
+			temp.attrs['description'] = 'Absolute Y coordinate (mm) per point'
+
+			temp = rawdata.create_dataset('relx_full', data = np.array(x_full - np.min(x)))
+			temp.attrs['description'] = 'Relative X coordinate (mm) per point'
+
+			temp = rawdata.create_dataset('rely_full', data = np.array(y_full - np.min(y)))
+			temp.attrs['description'] = 'Relative Y coordinate (mm) per point'						
+
+			temp = rawdata.create_dataset('wavelengths_full', data = np.array(wavelengths_full))
+			temp.attrs['description'] = 'Wavelengths (nm) scanned per point.'
+
+			temp = rawdata.create_dataset('reflectance_full', data = np.array(reflectance_full))
+			temp.attrs['description'] = 'Baseline-corrected reflectance measured. Stored as [y, x, wl]. Stored as fraction (0-1), not percent!'
+
+			temp = rawdata.create_dataset('signalRaw_full', data = np.array(signal_full))
+			temp.attrs['description'] = 'Raw signal for integrating sphere detector. (V)'
+
+			temp = rawdata.create_dataset('referenceRaw_full', data = np.array(reference_full))
+			temp.attrs['description'] = 'Raw signal for reference detector. (V)'
+
+			temp = rawdata.create_dataset('delay_full', data = np.array(delay_full))
+			temp.attrs['description'] = 'Time (seconds) that each scan was acquired at. Measured as seconds since first scan point.'			
+
+		print('Data saved to {0}'.format(fpath))		
+
 	def _save_flyscanArea(self, label, x, y, delay, wavelengths, reflectance):
 		
 		fpath = self._getSavePath(label = label)	#generate filepath for saving data
@@ -995,7 +1283,75 @@ class controlGeneric(object):
 
 		print('Data saved to {0}'.format(fpath))
 
-	
+	def _save_scanLBIC(self, label, x, y, delay, wavelengths, signal, reference):
+		fpath = self._getSavePath(label = label)	#generate filepath for saving data
+
+		with h5py.File(fpath, 'w') as f:
+			
+			info, settings = self._saveGeneralInformation(f, label = label, include_baseline = False)
+
+			## add scan type to info
+			temp = info.create_dataset('type', data = 'scanLBIC'.encode('utf-8'))
+			temp.attrs['description'] = 'Type of measurement held in this file.'		
+
+			## add scan parameters to settings
+			temp = settings.create_dataset('numx', data = np.array(x.shape[0]))
+			temp.attrs['description'] = 'Number of points scanned in x'			
+
+			temp = settings.create_dataset('numy', data = np.array(y.shape[0]))
+			temp.attrs['description'] = 'Number of points scanned in y'
+
+			temp = settings.create_dataset('rangex', data = np.array(np.abs(x[-1] - x[0])))
+			temp.attrs['description'] = 'Range scanned in x (mm)'
+
+			temp = settings.create_dataset('rangey', data = np.array(np.abs(y[-1] - y[0])))
+			temp.attrs['description'] = 'Range scanned in y (mm)'
+
+			# calculate step size. Calculates the average step size in x and y. If either axis has length 1 (ie line scan), only consider step size
+			# in the other axis. If both axes have length 0 (point scan, although not a realistic outcome for .scanArea()), leave stepsize as 0
+			countedaxes = 0
+			stepsize = 0
+			if x.shape[0] > 1:
+				stepsize = stepsize + np.abs(x[1] - x[0])
+				countedaxes = countedaxes + 1
+			if y.shape[0] > 1:
+				stepsize = stepsize + np.abs(y[1] - y[0])
+				countedaxes = countedaxes + 1
+			if countedaxes:
+				stepsize = stepsize / countedaxes
+
+			temp = settings.create_dataset('stepsize', data = np.array(stepsize))
+			temp.attrs['description'] = 'Average step size (mm) in x and y. If either axis has length 1 (ie line scan), only consider step size in the other axis. If both axes have length 0 (point scan, although not a realistic outcome for .scanArea()), leave stepsize as 0 '			
+
+			## measured data 
+			rawdata = f.create_group('/data')
+			rawdata.attrs['description'] = 'Data acquired during area scan.'
+
+			temp = rawdata.create_dataset('x', data = np.array(x))
+			temp.attrs['description'] = 'Absolute X coordinate (mm) per point'
+
+			temp = rawdata.create_dataset('y', data = np.array(y))
+			temp.attrs['description'] = 'Absolute Y coordinate (mm) per point'
+
+			temp = rawdata.create_dataset('relx', data = np.array(x - np.min(x)))
+			temp.attrs['description'] = 'Relative X coordinate (mm) per point'
+
+			temp = rawdata.create_dataset('rely', data = np.array(y - np.min(y)))
+			temp.attrs['description'] = 'Relative Y coordinate (mm) per point'						
+
+			temp = rawdata.create_dataset('wavelengths', data = np.array(wavelengths))
+			temp.attrs['description'] = 'Wavelengths (nm) scanned per point.'
+
+			temp = rawdata.create_dataset('signalRaw', data = np.array(signal))
+			temp.attrs['description'] = 'Raw signal for calculating LBIC current. (V across 50 ohm terminating resistor)'
+
+			temp = rawdata.create_dataset('referenceRaw', data = np.array(reference))
+			temp.attrs['description'] = 'Raw signal for reference detector. (V)'
+
+			temp = rawdata.create_dataset('delay', data = np.array(delay))
+			temp.attrs['description'] = 'Time (seconds) that each scan was acquired at. Measured as seconds since first scan point.'			
+
+		print('Data saved to {0}'.format(fpath))	
 	### Test Methods: should remove these and make a wrapper function to execute these commands instead of building it into the class
 	#
 	#	This method has been saved under /tests/scanStageModule as an example test. Only thing we need to do is install the frgmapper package
