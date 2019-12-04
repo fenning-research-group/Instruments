@@ -8,6 +8,8 @@ frgmapper/nkt.py
 frgmapper/nkttest.py
 frgmapper/processing.py
 frgmapper/stage.py
+frgmapper/tec.py
+frgmapper/viewing.py
 frgmapper.egg-info/PKG-INFO
 frgmapper.egg-info/SOURCES.txt
 frgmapper.egg-info/dependency_links.txt
