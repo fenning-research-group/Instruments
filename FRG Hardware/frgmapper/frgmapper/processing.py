@@ -26,6 +26,14 @@ def fitThreePointWaRD(file, celltype, plot = False):
 		p1 = 29.75
 		p2 = 1.367
 		celltype = 'perc'
+	elif str.lower(celltype) in ['albsf2', 'al-bsf2']:
+		wl_eva = 1730
+		wl_h2o = 1902
+		wl_ref = 1872
+
+		p1 = 24.75
+		p2 = 0.3461
+		celltype = 'albsf2'
 	else:
 		print('Celltype Error: valid types are "albsf" or "perc"')
 		return
