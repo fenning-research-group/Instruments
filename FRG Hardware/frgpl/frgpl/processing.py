@@ -11,7 +11,7 @@ from scipy import ndimage
 from tqdm import tqdm
 import time
 
-def fitRsEL(file, area = 25, plot = False):
+def fitRsEL(file, area = 22.04, plot = False):
 	def cleanImage(img, bg, threshold = 3):
 		mask = img > (img.mean() + threshold*img.std())	#flag values * std devs over the mean
 		medvals = medfilt(img, 3) #3x3 median filter
@@ -222,11 +222,12 @@ def fitPLIV(fpath, area = 22.04):
 		suns = d['settings']['suns'][idx]
 		setVolt = d['settings']['vbias'][idx]
 
+	imgs[imgs<=0] = 1e-10	#avoid breaking log functions down the road
 	#locate short-circuit PL images per laser intensity to use for background subtraction
 	correctionImgs = {}
 	correctionJscs = {}
 	dataIdx = []
-	for suns_, setVolt_, img_, measCurr_ in zip(suns, setVolt, imgs, measCurr_):
+	for suns_, setVolt_, img_, measCurr_ in zip(suns, setVolt, imgs, measCurr):
 		if setVolt_ == 0:
 			correctionImgs[suns_] = img_.copy()
 			correctionJscs[suns_] = measCurr_/area
@@ -244,8 +245,8 @@ def fitPLIV(fpath, area = 22.04):
 	allSetVolts.sort()
 	mppVolt = allSetVolts[1] #second value of sorted list of bias voltages (first value = 0 for short circuit images)
 	allmppIdx = np.where(setVolt == mppVolt)
-	1sunIdx = np.where(suns == 1.0)
-	mppIdx = np.intersect1d(allmppIdx, 1sunIdx)[0]
+	oneSunIdx = np.where(suns == 1.0)
+	mppIdx = np.intersect1d(allmppIdx, oneSunIdx)[0]
 	imgMPP = imgs[mppIdx].copy() - correctionImgs[suns_.max()]
 	voltMPP = measVolt[mppIdx].copy()
 
@@ -269,6 +270,7 @@ def fitPLIV(fpath, area = 22.04):
 		M[:,:,idx,1] = -suns_*correctionJscs[suns_]
 		M[:,:,idx,2] = img_
 		M[:,:,idx,3] = np.sqrt(img_)
+		img_[img_<=0] = 1e-10
 		N[:,:,idx] = Vt * np.log(img_) - measV_
 
 	# solve matrix, process into each fit
@@ -276,18 +278,24 @@ def fitPLIV(fpath, area = 22.04):
 	for p,q in tqdm(np.ndindex(imgs[0].shape), total = imgs[0].ravel().shape[0]):
 		x[p,q] = np.linalg.lstsq(M[p,q], N[p,q], rcond = 0)[0]
 
+
 	C = np.exp(x[:,:,1]/Vt)
 	Rs = x[:,:,1]*1e4	#convert to ohm cm^2
 	J01 = x[:,:,2]*C/Rs
 	J02 = x[:,:,3]*np.sqrt(C)/Rs
-	Voc1sun = Vt*np.log(imgVoc/C)
-	Vmpp1sun = Vt*np.exp(imgMPP/C)
-	Jmpp1sun = -J01(p,q)*(np.exp(Vmpp1sun/Vt)-1)-J02*(np.exp(Vmpp1sun)/(2*Vt)-1)+correctionJscs[1.0]
+
+	tempMatrix = imgVoc/C
+	tempMatrix[tempMatrix<=0] = 1e-10
+	Voc1sun = Vt*np.log(tempMatrix)
+	
+	Vmpp1sun = Vt*np.exp(tempMatrix)
+	Jmpp1sun = -J01*(np.exp(Vmpp1sun/Vt)-1)-J02*(np.exp(Vmpp1sun)/(2*Vt)-1)+correctionJscs[1.0]
 	FF1sun = 100*voltMPP*Jmpp1sun*area/(correctionJscs[suns.max()]*Voc1sun)
 	nu1sun = FF1sun*correctionJscs[suns.max()]*Voc1sun/(area*1e3)	#divided by incident power, assuming 1000 w/m2
 
 
 	result = {
+		'x': x,
 		'C': C,
 		'Rs': Rs,
 		'J01': J01,
