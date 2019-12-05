@@ -203,3 +203,103 @@ def fitRsEL(file, area = 25, plot = False):
 	# 	ax[1].add_artist(scalebar)
 	# 	plt.tight_layout()
 	# 	plt.show()
+
+
+def fitPLIV(fpath, area = 22.04):
+	#define constants
+	k = 1.38e-23 #J/K
+	qC = 1.6022e-19 #C
+	T = 298.14 #K
+	Vt = k*T/qC
+	area = area/1e4 #convert cm2 to m2
+
+	###load PLIV data
+	with h5py.File(fpath, 'r') as d:
+		idx = [i for i, x in enumerate(d['settings']['notes'][()]) if b'PLIV' in x]
+		measCurr = d['data']['i'][idx]
+		measVolt = d['data']['v'][idx]
+		imgs = d['data']['image_bgc'][idx]
+		suns = d['settings']['suns'][idx]
+		setVolt = d['settings']['vbias'][idx]
+
+	#locate short-circuit PL images per laser intensity to use for background subtraction
+	correctionImgs = {}
+	correctionJscs = {}
+	dataIdx = []
+	for suns_, setVolt_, img_, measCurr_ in zip(suns, setVolt, imgs, measCurr_):
+		if setVolt_ == 0:
+			correctionImgs[suns_] = img_.copy()
+			correctionJscs[suns_] = measCurr_/area
+			dataIdx.append(False)
+		elif setVolt_ < 0.5:
+			dataIdx.append(False)
+		else:
+			dataIdx.append(True)
+	#### remove background from all images, find Voc and Mpp 1 sun images. discard correction images from the dataset		
+	# find Voc image
+	imgVoc = imgs[0].copy() - correctionImgs[suns_.max()]
+	
+	# find MPP image
+	allSetVolts = np.unique(setVolt)
+	allSetVolts.sort()
+	mppVolt = allSetVolts[1] #second value of sorted list of bias voltages (first value = 0 for short circuit images)
+	allmppIdx = np.where(setVolt == mppVolt)
+	1sunIdx = np.where(suns == 1.0)
+	mppIdx = np.intersect1d(allmppIdx, 1sunIdx)[0]
+	imgMPP = imgs[mppIdx].copy() - correctionImgs[suns_.max()]
+	voltMPP = measVolt[mppIdx].copy()
+
+
+	for idx, img_, suns_ in zip(range(suns.shape[0]), imgs, suns):
+		imgs[idx] = img_ - correctionImgs[suns_]
+		imgs[idx][imgs[idx] < 0] = 0
+	# throw away short circuit images
+	imgs = imgs[dataIdx]
+	measCurr = measCurr[dataIdx]
+	measVolt = measVolt[dataIdx]
+	suns = suns[dataIdx]
+	setVolt = setVolt[dataIdx]
+
+	###generate matrix to solve PLIV. 
+	#matrix 1: p x q x numimages x 4 (unity, Jsc (A/m2), Photon flux Phi (PL - short-circuit counts), sqrt(Phi))
+	#matrix 2: p x q x numimages x 1 (Vthermal * log(Phi) - Vterminal)
+	M = np.ones((imgs.shape[1], imgs.shape[2], imgs.shape[0], 4))
+	N = np.ones((imgs.shape[1], imgs.shape[2], imgs.shape[0]))
+	for idx, img_, suns_, measV_, measC_, setV_ in zip(range(suns.shape[0]), imgs, suns, measVolt, measCurr, setVolt):
+		M[:,:,idx,1] = -suns_*correctionJscs[suns_]
+		M[:,:,idx,2] = img_
+		M[:,:,idx,3] = np.sqrt(img_)
+		N[:,:,idx] = Vt * np.log(img_) - measV_
+
+	# solve matrix, process into each fit
+	x = np.full((imgs.shape[1], imgs.shape[2], 4), np.nan)
+	for p,q in tqdm(np.ndindex(imgs[0].shape), total = imgs[0].ravel().shape[0]):
+		x[p,q] = np.linalg.lstsq(M[p,q], N[p,q], rcond = 0)[0]
+
+	C = np.exp(x[:,:,1]/Vt)
+	Rs = x[:,:,1]*1e4	#convert to ohm cm^2
+	J01 = x[:,:,2]*C/Rs
+	J02 = x[:,:,3]*np.sqrt(C)/Rs
+	Voc1sun = Vt*np.log(imgVoc/C)
+	Vmpp1sun = Vt*np.exp(imgMPP/C)
+	Jmpp1sun = -J01(p,q)*(np.exp(Vmpp1sun/Vt)-1)-J02*(np.exp(Vmpp1sun)/(2*Vt)-1)+correctionJscs[1.0]
+	FF1sun = 100*voltMPP*Jmpp1sun*area/(correctionJscs[suns.max()]*Voc1sun)
+	nu1sun = FF1sun*correctionJscs[suns.max()]*Voc1sun/(area*1e3)	#divided by incident power, assuming 1000 w/m2
+
+
+	result = {
+		'C': C,
+		'Rs': Rs,
+		'J01': J01,
+		'J01': J02,
+		'Voc': Voc1sun,
+		'Vmpp': Vmpp1sun,
+		'Jmpp': Jmpp1sun,
+		'FF': FF1sun,
+		'Efficiency': nu1sun
+	}
+
+	for k, v in result.items():
+		result[k][v < 0] = np.nan
+
+	return result

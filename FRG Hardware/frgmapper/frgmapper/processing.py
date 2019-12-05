@@ -35,7 +35,7 @@ def fitThreePointWaRD(file, celltype, plot = False):
 		p2 = 0.3461
 		celltype = 'albsf2'
 	else:
-		print('Celltype Error: valid types are "albsf" or "perc"')
+		print('Celltype Error: valid types are "albsf", "perc", of "albsf2" - user provided {0}'.format(celltype))
 		return
 
 	with h5py.File(file, 'r') as d:
