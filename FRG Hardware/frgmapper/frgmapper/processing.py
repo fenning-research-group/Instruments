@@ -8,7 +8,8 @@ import cmocean
 import imreg_dft as ird
 from skimage.filters import gaussian
 from scipy import ndimage as nd
-
+from matplotlib.widgets import Button
+from tqdm import tqdm
 def fitThreePointWaRD(file, celltype, plot = False):
 	if str.lower(celltype) in ['albsf', 'al-bsf']:
 		wl_eva = 1730
@@ -85,26 +86,20 @@ def fitThreePointWaRD(file, celltype, plot = False):
 		)
 
 	## write fits to h5 file
-	def fillDataset(d, name, data, description):
-		if name in d.keys():
-			del d[name]
-		temp = d.create_dataset(name, data = data)
-		temp.attrs['description'] = description
-
 	with h5py.File(file, 'a') as d:
 		if 'fits' in d.keys():
 			fits = d['fits']
 		else:
 			fits = d.create_group('/fits')
 
-		fillDataset(d['fits'], 'water', h2o, 'Water content (mg/cm^3) measured by WaRD.')
-		fillDataset(d['fits'], 'celltype', celltype.encode('utf-8'), 'Cell architecture assumed during fitting.')
-		fillDataset(d['fits'], 'wl_eva', wl_eva, 'Wavelength used as EVA absorbance point.')
-		fillDataset(d['fits'], 'wl_h2o', wl_h2o, 'Wavelength used as water absorbance point.')
-		fillDataset(d['fits'], 'wl_ref', wl_ref, 'Wavelength used as reference absorbance point.')
-		fillDataset(d['fits'], 'poly', [p1, p2], 'Polynomial fit coefficients used to convert absorbances to water content. From highest to lowest order.')
-		fillDataset(d['fits'], 'avgref', avgRef, 'Average reflectance at each point')
-		fillDataset(d['fits'], 'water_reg', h2o_reg_imputed, 'Water map after registration to dummy mask + imputing to replace finger regions')
+		_fillDataset(d['fits'], 'water', h2o, 'Water content (mg/cm^3) measured by WaRD.')
+		_fillDataset(d['fits'], 'celltype', celltype.encode('utf-8'), 'Cell architecture assumed during fitting.')
+		_fillDataset(d['fits'], 'wl_eva', wl_eva, 'Wavelength used as EVA absorbance point.')
+		_fillDataset(d['fits'], 'wl_h2o', wl_h2o, 'Wavelength used as water absorbance point.')
+		_fillDataset(d['fits'], 'wl_ref', wl_ref, 'Wavelength used as reference absorbance point.')
+		_fillDataset(d['fits'], 'poly', [p1, p2], 'Polynomial fit coefficients used to convert absorbances to water content. From highest to lowest order.')
+		_fillDataset(d['fits'], 'avgref', avgRef, 'Average reflectance at each point')
+		_fillDataset(d['fits'], 'water_reg', h2o_reg_imputed, 'Water map after registration to dummy mask + imputing to replace finger regions')
 	## Plotting
 	if plot:
 		fig, ax = plt.subplots(1,2, figsize = (10, 8))
@@ -243,3 +238,104 @@ def RegisterToDummy(start, start_ref = None):
 	)
 	
 	return start_reg
+
+def ManualRegistrationSelection(file, **kwargs):
+	with h5py.File(file, 'a') as d:
+		# use average reflectance as reference to pick corners 
+		avgRef = d['data']['reflectance'][()].mean(axis = 2) #average reflectance across all wavelengths per point
+		p = ImagePointPicker(avgRef, pts = 4, **kwargs)
+
+		# add points to fits group.
+		if 'fits' in d.keys():
+			fits = d['fits']
+		else:
+			fits = d.create_group('/fits')
+
+		_fillDataset(d['fits'], 'registrationpoints', p, 'Four corners of cell, used for registration. Points are ordered top right, top left, bottom left, bottom right, assuming that the cell is oriented with the busbar horizontal and closer to the top edge of the cell')
+
+def BatchManualRegistrationSelection(directory, **kwargs):
+	def traverse_files(f, files = []):
+		for f_ in os.listdir(f):
+			f__ = os.path.join(f, f_)
+			if os.path.isdir(f__):
+				files = traverse_files(f__, files)
+			else:
+				if f__[-3:] == '.h5':
+					try:
+						with h5py.File(f__, 'r') as d:
+							if 'fits/registrationpoints' not in d:
+								files.append(f__)
+					except:
+						pass
+		return files
+	
+	for f in tqdm(traverse_files(directory)):
+		try:
+			ManualRegistrationSelection(f, **kwargs)
+		except:
+			print('Error fitting {0}'.format(f))
+
+## write fits to h5 file
+def _fillDataset(d, name, data, description):
+	if name in d.keys():
+		del d[name]
+	temp = d.create_dataset(name, data = data)
+	temp.attrs['description'] = description
+
+## Image registration point picking. Taken from frgtools.imageprocessing
+class __ImgPicker():
+	def __init__(self, img, pts, markersize = 0.3, **kwargs):
+		self.numPoints = pts
+		self.currentPoint = 0
+		self.finished = False
+		self.markersize = markersize
+
+		self.fig, self.ax = plt.subplots()
+		self.ax.imshow(img, picker = True, **kwargs)
+		self.fig.canvas.mpl_connect('pick_event', self.onpick)
+
+		self.buttonAx = plt.axes([0.4, 0, 0.1, 0.075])
+		self.stopButton = Button(self.buttonAx, 'Done')
+		self.stopButton.on_clicked(self.setFinished)
+
+		self.pickedPoints = [None for x in range(self.numPoints)]
+		self.pointArtists = [None for x in range(self.numPoints)]
+		self.pointText = [None for x in range(self.numPoints)]
+
+		plt.show(block = True)        
+	
+	def setFinished(self, event):
+		self.finished = True
+		plt.close(self.fig)
+	
+	def onpick(self, event):
+		if not self.finished:
+			mevt = event.mouseevent
+			idx = self.currentPoint % self.numPoints
+			self.currentPoint += 1
+
+			x = mevt.xdata
+			y = mevt.ydata
+			self.pickedPoints[idx] = [x,y]
+
+			if self.pointArtists[idx] is not None:
+				self.pointArtists[idx].remove()
+			self.pointArtists[idx] = plt.Circle((x,y), self.markersize, color = [1,1,1])
+			self.ax.add_patch(self.pointArtists[idx])
+
+			if self.pointText[idx] is not None:
+				self.pointText[idx].set_position((x,y))
+			else:
+				self.pointText[idx] = self.ax.text(x,y, '{0}'.format(idx), color = [0,0,0], ha = 'center', va = 'center')
+				self.ax.add_artist(self.pointText[idx])
+
+			self.fig.canvas.draw()
+			self.fig.canvas.flush_events()
+
+def ImagePointPicker(img, pts = 4, **kwargs):
+	"""
+	Given an image and a number of points, allows the user to interactively select points on the image.
+	These points are returned when the "Done" button is pressed. Useful to generate inputs for AffineCalculate.
+	"""
+	imgpicker = __ImgPicker(img, pts, **kwargs)
+	return imgpicker.pickedPoints
