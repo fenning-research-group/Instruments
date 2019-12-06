@@ -12,6 +12,9 @@ from tqdm import tqdm
 import time
 from multiprocessing import Pool
 import scipy.linalg as la
+import threading
+from matplotlib.widgets import Button
+
 
 def fitRsEL(file, area = 22.04, plot = False):
 	def cleanImage(img, bg, threshold = 3):
@@ -206,7 +209,6 @@ def fitRsEL(file, area = 22.04, plot = False):
 	# 	plt.tight_layout()
 	# 	plt.show()
 
-
 def fitPLIV(fpath, area = 22.04):
 	#define constants
 	k = 1.38e-23 #J/K
@@ -263,10 +265,10 @@ def fitPLIV(fpath, area = 22.04):
 
 	fig, ax = plt.subplots(numrows, numcols, figsize = (12,12))
 
-	for idx, img_, suns_, ax_ in zip(range(suns.shape[0]), imgs, suns, ax.ravel()):
-		imgs[idx] = img_ - correctionImgs[suns_]
-		imgs[idx][imgs[idx] < 0] = 0
-		ax_.imshow(imgs[idx])
+	# for idx, img_, suns_, ax_ in zip(range(suns.shape[0]), imgs, suns, ax.ravel()):
+	# 	imgs[idx] = img_ - correctionImgs[suns_]
+	# 	imgs[idx][imgs[idx] < 0] = 0
+	# 	ax_.imshow(imgs[idx])
 
 	# throw away short circuit images
 	imgs = imgs[dataIdx]
@@ -332,5 +334,192 @@ def fitPLIV(fpath, area = 22.04):
 	# for k, v in result.items():
 	# 	result[k][v < 0] = np.nan
 
-	plt.show()		
-	return result
+	# plt.show()
+
+	def fillDataset(d, name, data, description):
+		if name in d.keys():
+			del d[name]
+		temp = d.create_dataset(name, data = data)
+		temp.attrs['description'] = description
+
+	with h5py.File(fpath, 'a') as d:
+		if 'fits' in d.keys():
+			fits = d['fits']
+		else:
+			fits = d.create_group('/fits')
+
+		fillDataset(d['fits'], 'Rs_PLIV', result['Rs'], 'Local series resistance (ohm*cm^2) calculated by fitting PLIV data.')
+		fillDataset(d['fits'], 'J01', result['J01'], 'Local J01 calculated by fitting PLIV data.')
+		fillDataset(d['fits'], 'J02', result['J02'], 'Local J02 calculated by fitting PLIV data.')
+		fillDataset(d['fits'], 'Voc', result['Voc'], 'Local Voc (V) calculated by fitting PLIV data.')
+		fillDataset(d['fits'], 'Vmpp', result['Vmpp'], 'Local Vmpp (V) calculated by fitting PLIV data.')
+		fillDataset(d['fits'], 'Jmpp', result['Jmpp'], 'Local Jmpp (mA/cm2) calculated by fitting PLIV data.')
+		fillDataset(d['fits'], 'FF', result['FF'], 'Local fill factor calculated by fitting PLIV data.')
+		fillDataset(d['fits'], 'Efficiency', result['Efficiency'], 'Local efficiency calculated by fitting PLIV data.')
+
+		# fillDataset(d['fits'], 'celltype', celltype.encode('utf-8'), 'Cell architecture assumed during fitting.')
+		# fillDataset(d['fits'], 'wl_eva', wl_eva, 'Wavelength used as EVA absorbance point.')
+		# fillDataset(d['fits'], 'wl_h2o', wl_h2o, 'Wavelength used as water absorbance point.')
+		# fillDataset(d['fits'], 'wl_ref', wl_ref, 'Wavelength used as reference absorbance point.')
+		# fillDataset(d['fits'], 'poly', [p1, p2], 'Polynomial fit coefficients used to convert absorbances to water content. From highest to lowest order.')
+		# fillDataset(d['fits'], 'avgref', avgRef, 'Average reflectance at each point')
+	# return result
+
+def ManualRegistrationSelection(file, **kwargs):
+	with h5py.File(file, 'a') as d:
+		# use average reflectance as reference to pick corners 
+		regImg = d['data']['image_bgc'][-2] #Highest Bias + Suns image for corner location
+		p = ImagePointPicker(regImg, pts = 4, **kwargs)
+
+		# add points to fits group.
+		if 'fits' in d.keys():
+			fits = d['fits']
+		else:
+			fits = d.create_group('fits')
+
+		_fillDataset(d['fits'], 'registrationpoints', p, 'Four corners of cell, used for registration. Points are ordered top right, top left, bottom left, bottom right, assuming that the cell is oriented with the busbar horizontal and closer to the top edge of the cell')
+
+def BatchManualRegistrationSelection(directory, overwrite = False, **kwargs):
+	def traverse_files(f, files = [], first = True):
+		if first:
+			for f_ in tqdm(os.listdir(f)):
+				f__ = os.path.join(f, f_)
+				if os.path.isdir(f__):
+					files = traverse_files(f__, files, first = False)
+				else:
+					if f__[-3:] == '.h5':
+						try:
+							with h5py.File(f__, 'r') as d:
+								if 'fits/registrationpoints' not in d:
+									files.append(f__)
+						except:
+							pass
+		else:
+			for f_ in os.listdir(f):
+				f__ = os.path.join(f, f_)
+				if os.path.isdir(f__):
+					files = traverse_files(f__, files, first = False)
+				else:
+					if f__[-3:] == '.h5':
+						try:
+							with h5py.File(f__, 'r') as d:
+								if 'fits/registrationpoints' not in d:
+									files.append(f__)
+						except:
+							pass			
+		return files
+
+	for f in tqdm(traverse_files(directory)):
+		try:
+			ManualRegistrationSelection(f, **kwargs)
+		except:
+			print('Error fitting {0}'.format(f))
+
+# def BatchManualRegistrationSelection(directory, overwrite = False, **kwargs):
+# 	class fobject():
+# 		def __init__(self, directory = directory):
+# 			self.rootdir = directory
+# 			self.files = []
+		
+# 		def traverse_files(self, f = None):
+# 			if f is None:
+# 				f = self.rootdir
+# 			for f_ in tqdm(os.listdir(f)):
+# 				f__ = os.path.join(f, f_)
+# 				if os.path.isdir(f__):
+# 					self.traverse_files(f__)
+# 				else:
+# 					if f__[-3:] == '.h5':
+# 						try:
+# 							with h5py.File(f__, 'r') as d:
+# 								if not overwrite and 'fits/registrationpoints' not in d:
+# 									self.files.append(f__)
+# 						except:
+# 							pass
+
+# 	fileobject = fobject(directory = directory)
+# 	traverse_thread = threading.Thread(target = fileobject.traverse_files)
+# 	print('Starting to search for PL data files...')
+# 	traverse_thread.start()
+	
+# 	time.sleep(0.1)
+
+# 	file_idx = 0
+# 	startTime = time.time()
+# 	while traverse_thread.is_alive() or file_idx < len(fileobject.files):
+# 		if file_idx < len(fileobject.files):		
+# 			if file_idx > 0:
+# 				print('{0}/{1}, {2:.0f} s remaining'.format(file_idx, len(fileobject.files), (time.time()-startTime)*(len(fileobject.files)-file_idx)/file_idx))
+# 			try:
+# 				ManualRegistrationSelection(fileobject.files[file_idx], **kwargs)
+# 			except:
+# 				print('Error fitting {0}'.format(fileobject.files[file_idx]))
+# 			file_idx += 1
+# 		else:
+# 			time.sleep(0.2)
+
+## Image registration point picking. Taken from frgtools.imageprocessing
+class __ImgPicker():
+	def __init__(self, img, pts, markersize = 0.3, **kwargs):
+		self.numPoints = pts
+		self.currentPoint = 0
+		self.finished = False
+		self.markersize = markersize
+
+		self.fig, self.ax = plt.subplots()
+		self.ax.imshow(img, picker = True, **kwargs)
+		self.fig.canvas.mpl_connect('pick_event', self.onpick)
+
+		self.buttonAx = plt.axes([0.4, 0, 0.1, 0.075])
+		self.stopButton = Button(self.buttonAx, 'Done')
+		self.stopButton.on_clicked(self.setFinished)
+
+		self.pickedPoints = [None for x in range(self.numPoints)]
+		self.pointArtists = [None for x in range(self.numPoints)]
+		self.pointText = [None for x in range(self.numPoints)]
+
+		plt.show(block = True)        
+	
+	def setFinished(self, event):
+		self.finished = True
+		plt.close(self.fig)
+	
+	def onpick(self, event):
+		if not self.finished:
+			mevt = event.mouseevent
+			idx = self.currentPoint % self.numPoints
+			self.currentPoint += 1
+
+			x = mevt.xdata
+			y = mevt.ydata
+			self.pickedPoints[idx] = [x,y]
+
+			if self.pointArtists[idx] is not None:
+				self.pointArtists[idx].remove()
+			self.pointArtists[idx] = plt.Circle((x,y), self.markersize, color = [1,1,1])
+			self.ax.add_patch(self.pointArtists[idx])
+
+			if self.pointText[idx] is not None:
+				self.pointText[idx].set_position((x,y))
+			else:
+				self.pointText[idx] = self.ax.text(x,y, '{0}'.format(idx), color = [0,0,0], ha = 'center', va = 'center')
+				self.ax.add_artist(self.pointText[idx])
+
+			self.fig.canvas.draw()
+			self.fig.canvas.flush_events()
+
+def ImagePointPicker(img, pts = 4, **kwargs):
+	"""
+	Given an image and a number of points, allows the user to interactively select points on the image.
+	These points are returned when the "Done" button is pressed. Useful to generate inputs for AffineCalculate.
+	"""
+	imgpicker = __ImgPicker(img, pts, **kwargs)
+	return imgpicker.pickedPoints
+
+
+## write fits to h5 file
+def _fillDataset(d, name, data, description):
+	if name in d.keys():
+		del d[name]
+	temp = d.create_dataset(name, data = data)
+	temp.attrs['description'] = description
