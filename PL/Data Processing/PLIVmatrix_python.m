@@ -67,37 +67,37 @@ close all;
 % sq=ceil(sqrt(L)); % Calculate appropriate size for subplot
 
 % Plot two first Jsc correction images
-% PLIVplot(datastruc, nb_V, nb_int, 1, 1); % net image, Voc and 1 sun
-% PLIVplot(datastruc, nb_V, nb_int, 2, 1); % bgc image, Voc and 1 sun
+PLIVplot(datastruc, nb_V, nb_int, 1, 1); % net image, Voc and 1 sun
+PLIVplot(datastruc, nb_V, nb_int, 2, 1); % bgc image, Voc and 1 sun
 
 % Plot PLIV images at different conditions
 % for i=3:L
-% for i=2:L % for all images (except the first image that is at Voc), make array of intensity values
-%     % Net background-corrected images (Jsc subtracted)
-%     f1=figure(1);
-%     subplot(nb_int+1,nb_V,i+nb_V-1); % Plot Voc image in the first row, then PLIV images at different conditions in next row
-% %     set(f1,'Visible','off');
-%     imagesc(datastruc(i).netimage);
-%     c=colorbar; % Plot net images
-%     c.FontSize=11;
-%     I=datastruc(i).current;
-%     V=datastruc(i).set_voltage;
-%     int=datastruc(i).intensity;
-%     title_str=sprintf('%2.0f mV, %.1f sun, %2.0f mA',V*1e3,int,I*1e3);
-%     title(title_str,'FontSize',11);
-%     % Raw background-corrected images (before Jsc subtration)
-%     f2=figure(2);
-%     subplot(nb_int+1,nb_V,i+nb_V-1);
-% %     set(f2,'Visible','off');
-%     imagesc(datastruc(i).image_bgc); % Plot background corrected images before Jsc correction
-%     c=colorbar; % Plot net images
-%     c.FontSize=11;
-%     I=datastruc(i).current;
-%     V=datastruc(i).set_voltage;
-%     int=datastruc(i).intensity;
-%     title_str=sprintf('%2.0f mV, %.1f sun, %2.0f mA',V*1e3,int,I*1e3);
-%     title(title_str,'FontSize',11); %annotation('textbox','string',title_str);  
-% end
+for i=2:L % for all images (except the first image that is at Voc), make array of intensity values
+    % Net background-corrected images (Jsc subtracted)
+    f1=figure(1);
+    subplot(nb_int+1,nb_V,i+nb_V-1); % Plot Voc image in the first row, then PLIV images at different conditions in next row
+%     set(f1,'Visible','off');
+    imagesc(datastruc(i).netimage);
+    c=colorbar; % Plot net images
+    c.FontSize=11;
+    I=datastruc(i).current;
+    V=datastruc(i).set_voltage;
+    int=datastruc(i).intensity;
+    title_str=sprintf('%2.0f mV, %.1f sun, %2.0f mA',V*1e3,int,I*1e3);
+    title(title_str,'FontSize',11);
+    % Raw background-corrected images (before Jsc subtration)
+    f2=figure(2);
+    subplot(nb_int+1,nb_V,i+nb_V-1);
+%     set(f2,'Visible','off');
+    imagesc(datastruc(i).image_bgc); % Plot background corrected images before Jsc correction
+    c=colorbar; % Plot net images
+    c.FontSize=11;
+    I=datastruc(i).current;
+    V=datastruc(i).set_voltage;
+    int=datastruc(i).intensity;
+    title_str=sprintf('%2.0f mV, %.1f sun, %2.0f mA',V*1e3,int,I*1e3);
+    title(title_str,'FontSize',11); %annotation('textbox','string',title_str);  
+end
 
 %{
 % Rescaled Jsc images based on laser intensity

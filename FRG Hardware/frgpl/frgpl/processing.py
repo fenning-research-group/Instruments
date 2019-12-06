@@ -10,6 +10,8 @@ from skimage.filters import threshold_otsu #, threshold_adaptive
 from scipy import ndimage
 from tqdm import tqdm
 import time
+from multiprocessing import Pool
+import scipy.linalg as la
 
 def fitRsEL(file, area = 22.04, plot = False):
 	def cleanImage(img, bg, threshold = 3):
@@ -222,7 +224,7 @@ def fitPLIV(fpath, area = 22.04):
 		suns = d['settings']['suns'][idx]
 		setVolt = d['settings']['vbias'][idx]
 
-	imgs[imgs<=0] = 1e-10	#avoid breaking log functions down the road
+	# imgs[imgs<=0] = 1e-4	#avoid breaking log functions down the road
 	#locate short-circuit PL images per laser intensity to use for background subtraction
 	correctionImgs = {}
 	correctionJscs = {}
@@ -232,7 +234,7 @@ def fitPLIV(fpath, area = 22.04):
 			correctionImgs[suns_] = img_.copy()
 			correctionJscs[suns_] = measCurr_/area
 			dataIdx.append(False)
-		elif setVolt_ < 0.5:
+		elif setVolt_ <= 0.55 and suns_ <= 0.4:
 			dataIdx.append(False)
 		else:
 			dataIdx.append(True)
@@ -249,11 +251,23 @@ def fitPLIV(fpath, area = 22.04):
 	mppIdx = np.intersect1d(allmppIdx, oneSunIdx)[0]
 	imgMPP = imgs[mppIdx].copy() - correctionImgs[suns_.max()]
 	voltMPP = measVolt[mppIdx].copy()
+	# voltMPP = measVolt[mppIdx]
+
+	imgVoc[imgVoc < 0] = 0
+	imgMPP[imgMPP < 0] = 0
 
 
-	for idx, img_, suns_ in zip(range(suns.shape[0]), imgs, suns):
+	numimgs = imgs.shape[0]
+	numrows = 5
+	numcols = np.ceil(numimgs/numrows).astype(int)
+
+	fig, ax = plt.subplots(numrows, numcols, figsize = (12,12))
+
+	for idx, img_, suns_, ax_ in zip(range(suns.shape[0]), imgs, suns, ax.ravel()):
 		imgs[idx] = img_ - correctionImgs[suns_]
 		imgs[idx][imgs[idx] < 0] = 0
+		ax_.imshow(imgs[idx])
+
 	# throw away short circuit images
 	imgs = imgs[dataIdx]
 	measCurr = measCurr[dataIdx]
@@ -268,46 +282,55 @@ def fitPLIV(fpath, area = 22.04):
 	N = np.ones((imgs.shape[1], imgs.shape[2], imgs.shape[0]))
 	for idx, img_, suns_, measV_, measC_, setV_ in zip(range(suns.shape[0]), imgs, suns, measVolt, measCurr, setVolt):
 		M[:,:,idx,1] = -suns_*correctionJscs[suns_]
+		# img_[img_<= 0] = 0
 		M[:,:,idx,2] = img_
 		M[:,:,idx,3] = np.sqrt(img_)
-		img_[img_<=0] = 1e-10
+		# img_[img_<= 0] = 1e-20
 		N[:,:,idx] = Vt * np.log(img_) - measV_
 
 	# solve matrix, process into each fit
 	x = np.full((imgs.shape[1], imgs.shape[2], 4), np.nan)
+
 	for p,q in tqdm(np.ndindex(imgs[0].shape), total = imgs[0].ravel().shape[0]):
 		x[p,q] = np.linalg.lstsq(M[p,q], N[p,q], rcond = 0)[0]
+		# Q,R,perm = la.qr(M[p,q], pivoting = True)
+		# print(perm)
+		# Qb = np.matmul(Q.T, N[p,q])
+		# x[p,q] = np.linalg.lstsq(R, Qb, rcond = None)[0]
+		# print(x[p,q].shape)
+		# x[p,q] = x[p,q][perm]
 
 
-	C = np.exp(x[:,:,1]/Vt)
+	C = np.exp(x[:,:,0]/Vt)
 	Rs = x[:,:,1]*1e4	#convert to ohm cm^2
 	J01 = x[:,:,2]*C/Rs
 	J02 = x[:,:,3]*np.sqrt(C)/Rs
 
-	tempMatrix = imgVoc/C
-	tempMatrix[tempMatrix<=0] = 1e-10
-	Voc1sun = Vt*np.log(tempMatrix)
-	
-	Vmpp1sun = Vt*np.exp(tempMatrix)
-	Jmpp1sun = -J01*(np.exp(Vmpp1sun/Vt)-1)-J02*(np.exp(Vmpp1sun)/(2*Vt)-1)+correctionJscs[1.0]
-	FF1sun = 100*voltMPP*Jmpp1sun*area/(correctionJscs[suns.max()]*Voc1sun)
-	nu1sun = FF1sun*correctionJscs[suns.max()]*Voc1sun/(area*1e3)	#divided by incident power, assuming 1000 w/m2
+	Voc1sun = Vt*np.log(imgVoc/C)
+	Vmpp1sun = Vt*np.log(imgMPP/C)
+
+	Jmpp1sun = -J01*(np.exp(Vmpp1sun/Vt) - 1) - J02*(np.exp(Vmpp1sun/(2*Vt))-1) + correctionJscs[suns.max()]
+	FF1sun = (voltMPP*Jmpp1sun) / (correctionJscs[suns.max()]*Voc1sun)
+	nu1sun = Vmpp1sun*-Jmpp1sun / (1e3)	#divided by incident power, assuming 1000 w/m2
 
 
 	result = {
 		'x': x,
 		'C': C,
 		'Rs': Rs,
-		'J01': J01,
-		'J01': J02,
+		'J01': -J01,
+		'J02': -J02,
 		'Voc': Voc1sun,
 		'Vmpp': Vmpp1sun,
-		'Jmpp': Jmpp1sun,
-		'FF': FF1sun,
-		'Efficiency': nu1sun
+		'Jmpp': -Jmpp1sun * 0.1, #convert A/m2 -> mA/cm2
+		'FF': FF1sun * 100, #convert to percent
+		'Efficiency': nu1sun,
+		'imgVoc': imgVoc,
+		'imgMPP': imgMPP
 	}
 
-	for k, v in result.items():
-		result[k][v < 0] = np.nan
+	# for k, v in result.items():
+	# 	result[k][v < 0] = np.nan
 
+	plt.show()		
 	return result
