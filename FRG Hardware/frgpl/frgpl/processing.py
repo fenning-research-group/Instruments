@@ -150,19 +150,13 @@ def fitRsEL(file, area = 22.04, plot = False):
 				pb.update(1)
 
 	## write fits to h5 file
-	def fillDataset(d, name, data, description):
-		if name in d.keys():
-			del d[name]
-		temp = d.create_dataset(name, data = data)
-		temp.attrs['description'] = description
-
 	with h5py.File(file, 'a') as d:
 		if 'fits' in d.keys():
 			fits = d['fits']
 		else:
 			fits = d.create_group('/fits')
 
-		fillDataset(d['fits'], 'Rs_EL', Rse, 'Local series resistance (ohm*cm^2) calculated by fitting electroluminescence data.')
+		_fillDataset(d['fits'], 'Rs_EL', Rse, 'Local series resistance (ohm*cm^2) calculated by fitting electroluminescence data.')
 		# fillDataset(d['fits'], 'celltype', celltype.encode('utf-8'), 'Cell architecture assumed during fitting.')
 		# fillDataset(d['fits'], 'wl_eva', wl_eva, 'Wavelength used as EVA absorbance point.')
 		# fillDataset(d['fits'], 'wl_h2o', wl_h2o, 'Wavelength used as water absorbance point.')
@@ -336,26 +330,20 @@ def fitPLIV(fpath, area = 22.04):
 
 	# plt.show()
 
-	def fillDataset(d, name, data, description):
-		if name in d.keys():
-			del d[name]
-		temp = d.create_dataset(name, data = data)
-		temp.attrs['description'] = description
-
 	with h5py.File(fpath, 'a') as d:
 		if 'fits' in d.keys():
 			fits = d['fits']
 		else:
 			fits = d.create_group('/fits')
 
-		fillDataset(d['fits'], 'Rs_PLIV', result['Rs'], 'Local series resistance (ohm*cm^2) calculated by fitting PLIV data.')
-		fillDataset(d['fits'], 'J01', result['J01'], 'Local J01 calculated by fitting PLIV data.')
-		fillDataset(d['fits'], 'J02', result['J02'], 'Local J02 calculated by fitting PLIV data.')
-		fillDataset(d['fits'], 'Voc', result['Voc'], 'Local Voc (V) calculated by fitting PLIV data.')
-		fillDataset(d['fits'], 'Vmpp', result['Vmpp'], 'Local Vmpp (V) calculated by fitting PLIV data.')
-		fillDataset(d['fits'], 'Jmpp', result['Jmpp'], 'Local Jmpp (mA/cm2) calculated by fitting PLIV data.')
-		fillDataset(d['fits'], 'FF', result['FF'], 'Local fill factor calculated by fitting PLIV data.')
-		fillDataset(d['fits'], 'Efficiency', result['Efficiency'], 'Local efficiency calculated by fitting PLIV data.')
+		_fillDataset(d['fits'], 'Rs_PLIV', result['Rs'], 'Local series resistance (ohm*cm^2) calculated by fitting PLIV data.')
+		_fillDataset(d['fits'], 'J01', result['J01'], 'Local J01 calculated by fitting PLIV data.')
+		_fillDataset(d['fits'], 'J02', result['J02'], 'Local J02 calculated by fitting PLIV data.')
+		_fillDataset(d['fits'], 'Voc', result['Voc'], 'Local Voc (V) calculated by fitting PLIV data.')
+		_fillDataset(d['fits'], 'Vmpp', result['Vmpp'], 'Local Vmpp (V) calculated by fitting PLIV data.')
+		_fillDataset(d['fits'], 'Jmpp', result['Jmpp'], 'Local Jmpp (mA/cm2) calculated by fitting PLIV data.')
+		_fillDataset(d['fits'], 'FF', result['FF'], 'Local fill factor calculated by fitting PLIV data.')
+		_fillDataset(d['fits'], 'Efficiency', result['Efficiency'], 'Local efficiency calculated by fitting PLIV data.')
 
 		# fillDataset(d['fits'], 'celltype', celltype.encode('utf-8'), 'Cell architecture assumed during fitting.')
 		# fillDataset(d['fits'], 'wl_eva', wl_eva, 'Wavelength used as EVA absorbance point.')
