@@ -18,12 +18,15 @@ cellarea=((2*2.54)^2)*1e-4; % Cell area (m²) (actually the cell width is 47 mm).
 
 % folder='G:\Shared drives\FenningLab2\groupMembers\Guillaume\PLIVtest_newsetup';
 % folder='C:\Users\Guillaume\Documents\#UCSD\2_PVRD2_water_degradation\Results\PLIV_tests\test_fulldata';
-folder='G:\My Drive\PVRD2 WaRM\Experiments\Damp Heat Cell Degradation Testing\Round 2\Data\PL, EL, PLIV\20191120';
+% folder='G:\My Drive\PVRD2 WaRM\Experiments\Damp Heat Cell Degradation Testing\Round 2\Data\PL, EL, PLIV\20191120';
+folder='G:\My Drive\PVRD2 WaRM\Experiments\Damp Heat Cell Degradation Testing\Round 2\Data\PL, EL, PLIV\20191205';
+
 % file='frgPL_20191009_0002_Test_GG_Al_10_PLIV.h5';
 % file='frgPL_20191031_0002_GB8.h5';
 % file='frgPL_20191030_0002_GB11.h5';
 % file='frgPL_20191023_0002_GB11.h5'; % The file 'frgPL_20191031_0006_GB5.h5' has exploitable data (laser was on)
-file='frgPL_20191120_0001_GB11.h5';
+% file='frgPL_20191120_0001_GB11.h5';
+file='frgPL_20191205_0001_GB5.h5';
 filepath=fullfile(folder,file);
 
 %% Load data
@@ -149,14 +152,14 @@ for p=1:size(M,1) % For all pixel columns
         X{p,q}=linsolve(M{p,q},N{p,q});
         Rs_raw(p,q)=X{p,q}(2); % The Rs value is in the second element of vector X
         C_raw(p,q)=exp(X{p,q}(1)/VT);
-        J01_raw(p,q)=-X{p,q}(3)*C(p,q)/Rs(p,q);
-        J02_raw(p,q)=-X{p,q}(4)*sqrt(C(p,q))/Rs(p,q);
-        Voc1sun_raw(p,q)= VT*log(lumstruc(voc1sun_ind).netimage(p,q)/C(p,q)); 
-        Vmpp1sun_raw(p,q)=VT*log(lumstruc(mpp1sun_ind).netimage(p,q)/C(p,q)); % V %
-        Jmpp1sun_raw(p,q)=-J01(p,q)*(exp(Vmpp1sun(p,q)/VT)-1)-J02(p,q)*(exp(Vmpp1sun(p,q)/(2*VT))-1)+lumstruc(sc1sun_ind).current/cellarea; % A/m²
-        FF1sun_raw(p,q)=lumstruc(mpp1sun_ind).voltage*Jmpp1sun(p,q)*cellarea/(lumstruc(sc1sun_ind).current*Voc1sun(p,q))*100; % FF=Vmpp*Jmpp,xy/(Jsc*Voc,xy) where Jmpp,xy and Voc,xy are maps and Vmpp and Jsc are scalars.
+        J01_raw(p,q)=-X{p,q}(3)*C_raw(p,q)/Rs_raw(p,q);
+        J02_raw(p,q)=-X{p,q}(4)*sqrt(C_raw(p,q))/Rs_raw(p,q);
+        Voc1sun_raw(p,q)= VT*log(lumstruc(voc1sun_ind).netimage(p,q)/C_raw(p,q)); 
+        Vmpp1sun_raw(p,q)=VT*log(lumstruc(mpp1sun_ind).netimage(p,q)/C_raw(p,q)); % V %
+        Jmpp1sun_raw(p,q)=-J01_raw(p,q)*(exp(Vmpp1sun(p,q)/VT)-1)-J02_raw(p,q)*(exp(Vmpp1sun(p,q)/(2*VT))-1)+lumstruc(sc1sun_ind).current/cellarea; % A/m²
+        FF1sun_raw(p,q)=lumstruc(mpp1sun_ind).voltage*Jmpp1sun_raw(p,q)*cellarea/(lumstruc(sc1sun_ind).current*Voc1sun_raw(p,q))*100; % FF=Vmpp*Jmpp,xy/(Jsc*Voc,xy) where Jmpp,xy and Voc,xy are maps and Vmpp and Jsc are scalars.
 %         nu1sun(p,q)=FF1sun(p,q)*lumstruc(sc1sun_ind).current*lumstruc(voc1sun_ind).voltage/(Pin1sun*cellarea); % 1 sun efficiency map
-        nu1sun_raw(p,q)=FF1sun(p,q)*lumstruc(sc1sun_ind).current*Voc1sun(200,200)/(Pin1sun*cellarea); % 1 sun efficiency map. Use a Voc point from the map as the Voc data in lumstruc is wrong for some reason
+        nu1sun_raw(p,q)=Vmpp1sun_raw(p,q)*Jmpp1sun_raw(p,q)/(Pin1sun); % 1 sun efficiency map. Use a Voc point from the map as the Voc data in lumstruc is wrong for some reason
     end
 end
 
