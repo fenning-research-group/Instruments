@@ -156,7 +156,7 @@ for p=1:size(M,1) % For all pixel columns
         J02_raw(p,q)=-X{p,q}(4)*sqrt(C_raw(p,q))/Rs_raw(p,q);
         Voc1sun_raw(p,q)= VT*log(lumstruc(voc1sun_ind).netimage(p,q)/C_raw(p,q)); 
         Vmpp1sun_raw(p,q)=VT*log(lumstruc(mpp1sun_ind).netimage(p,q)/C_raw(p,q)); % V %
-        Jmpp1sun_raw(p,q)=-J01_raw(p,q)*(exp(Vmpp1sun(p,q)/VT)-1)-J02_raw(p,q)*(exp(Vmpp1sun(p,q)/(2*VT))-1)+lumstruc(sc1sun_ind).current/cellarea; % A/m²
+        Jmpp1sun_raw(p,q)=-J01_raw(p,q)*(exp(Vmpp1sun_raw(p,q)/VT)-1)-J02_raw(p,q)*(exp(Vmpp1sun_raw(p,q)/(2*VT))-1)+lumstruc(sc1sun_ind).current/cellarea; % A/m²
         FF1sun_raw(p,q)=lumstruc(mpp1sun_ind).voltage*Jmpp1sun_raw(p,q)*cellarea/(lumstruc(sc1sun_ind).current*Voc1sun_raw(p,q))*100; % FF=Vmpp*Jmpp,xy/(Jsc*Voc,xy) where Jmpp,xy and Voc,xy are maps and Vmpp and Jsc are scalars.
 %         nu1sun(p,q)=FF1sun(p,q)*lumstruc(sc1sun_ind).current*lumstruc(voc1sun_ind).voltage/(Pin1sun*cellarea); % 1 sun efficiency map
         nu1sun_raw(p,q)=Vmpp1sun_raw(p,q)*Jmpp1sun_raw(p,q)/(Pin1sun); % 1 sun efficiency map. Use a Voc point from the map as the Voc data in lumstruc is wrong for some reason
