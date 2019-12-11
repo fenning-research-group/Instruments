@@ -26,7 +26,7 @@ folder='G:\My Drive\PVRD2 WaRM\Experiments\Damp Heat Cell Degradation Testing\Ro
 % file='frgPL_20191030_0002_GB11.h5';
 % file='frgPL_20191023_0002_GB11.h5'; % The file 'frgPL_20191031_0006_GB5.h5' has exploitable data (laser was on)
 % file='frgPL_20191120_0001_GB11.h5';
-file='frgPL_20191205_0001_GB5.h5';
+file='frgPL_20191205_0005_GB6.h5';
 filepath=fullfile(folder,file);
 
 %% Load data
@@ -159,7 +159,7 @@ for p=1:size(M,1) % For all pixel columns
         Jmpp1sun_raw(p,q)=-J01_raw(p,q)*(exp(Vmpp1sun_raw(p,q)/VT)-1)-J02_raw(p,q)*(exp(Vmpp1sun_raw(p,q)/(2*VT))-1)+lumstruc(sc1sun_ind).current/cellarea; % A/m²
         FF1sun_raw(p,q)=lumstruc(mpp1sun_ind).voltage*Jmpp1sun_raw(p,q)*cellarea/(lumstruc(sc1sun_ind).current*Voc1sun_raw(p,q))*100; % FF=Vmpp*Jmpp,xy/(Jsc*Voc,xy) where Jmpp,xy and Voc,xy are maps and Vmpp and Jsc are scalars.
 %         nu1sun(p,q)=FF1sun(p,q)*lumstruc(sc1sun_ind).current*lumstruc(voc1sun_ind).voltage/(Pin1sun*cellarea); % 1 sun efficiency map
-        nu1sun_raw(p,q)=Vmpp1sun_raw(p,q)*Jmpp1sun_raw(p,q)/(Pin1sun); % 1 sun efficiency map. Use a Voc point from the map as the Voc data in lumstruc is wrong for some reason
+        nu1sun_raw(p,q)=-100*Vmpp1sun_raw(p,q)*Jmpp1sun_raw(p,q)/(Pin1sun); % 1 sun efficiency map. Use a Voc point from the map as the Voc data in lumstruc is wrong for some reason
     end
 end
 
@@ -191,7 +191,8 @@ caxis([0 10]);
 ylabel(hRs, 'Rs (Ohm-cm^2)');
 caxis([0, 10]);
 
-savefig(fig4by4,fullfile(folder,file(1:end-3)+"_outputfig"));
+fig4path=fullfile(folder,file(1:end-3)+"_outputfig");
+savefig(fig4by4,fig4path);
 
 % Plot Vmpp
 Vmpp1sun=Vmpp1sun_raw;
@@ -203,7 +204,8 @@ caxis([0.5 0.8])
 hVmpp=colorbar;
 ylabel(hVmpp, '1 sun Vmpp (V)')
 set(gca,'FontSize',16);
-savefig(Vmppfig,fullfile(folder,file(1:end-3)+"_1sunVmpp"));
+savefigpathVmpp=fullfile(folder,file(1:end-3)+"_1sunVmpp");
+savefig(Vmppfig,savefigpathVmpp);
 
 % C
 C=C_raw;
@@ -294,7 +296,7 @@ ylabel(hJmpp, 'J (A/m^2)')
 
 %% Part to check how many complex numbers are in Rs (to make sure all of them are not)
 % Check the number of complex numbers in Rs
-Rs_complex=imag(Rs)~=0; % Logical array of complex values in Rs
+Rs_complex=imag(Rs_raw)~=0; % Logical array of complex values in Rs
 Rs_complex_logical=find(Rs_complex); % Array containing linear indices of complexes
 % disp(Rs_complex_logical); % Contains the linear indices of complex numbers
 
