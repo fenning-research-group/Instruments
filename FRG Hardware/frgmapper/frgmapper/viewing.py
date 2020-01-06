@@ -24,9 +24,9 @@ def plotMeas(filepath, ax = None):
 		showlater = True
 		fig, ax = plt.subplots(1,1)
 
-	img = avgRef
+	img = np.flipud(np.fliplr(avgRef))	#to put in realspace frame of reference when looking at sample from enclosure door side
 	# img[img < 0] = 0
-	im = ax.imshow(img, extent = [x[0], x[-1], y[-1], y[0]], vmin = 0, vmax = np.min([0.4, img.max()]))
+	im = ax.imshow(img, extent = [x[-1], x[0], y[0], y[-1]], vmin = 0, vmax = np.min([0.4, img.max()]))
 	cb = plt.colorbar(im, ax = ax, fraction = 0.046)
 	cb.set_label('Average Reflectance (%)')
 
@@ -78,7 +78,7 @@ def plotMeas(filepath, ax = None):
 	if showlater:
 		plt.show()
 
-def plotScanLine(self, filepath, ax = None):
+def plotScanLine(filepath, ax = None):
 	showlater = False
 	if ax is None:
 		showlater = True
@@ -94,10 +94,10 @@ def plotScanLine(self, filepath, ax = None):
 
 	if axis == 'x':
 		ax.plot(x, 100*reflectance.mean(axis = 1))
-		ax.set_title('{0}\n y = {1}'.format(label, y[0]))
+		ax.set_title('{0}\n y = {1}'.format(label, y))
 	else:
 		ax.plot(y, 100*reflectance.mean(axis = 1))
-		ax.set_title('{0}\n x = {1}'.format(label, x[0]))
+		ax.set_title('{0}\n x = {1}'.format(label, x))
 
 	ax.set_ylabel('Reflectance (%)')
 	ax.set_xlabel('{0} (mm)'.format(axis))

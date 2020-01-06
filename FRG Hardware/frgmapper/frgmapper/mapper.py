@@ -135,7 +135,7 @@ class controlGeneric(object):
 
 		if str.lower(axis) == 'x':
 			axis = 'x'
-		elif str.lower(axis) = 'y':
+		elif str.lower(axis) == 'y':
 			axis = 'y'
 		else:
 			print('Error: axis must equal \'x\' or \'y\': user provided {0}'.format(axis))
@@ -143,7 +143,7 @@ class controlGeneric(object):
 
 		x0, y0 = self.stage.position # return position
 		if p0 is None:
-			if axis = 'x':
+			if axis == 'x':
 				p0 = x0
 			else:
 				p0 = y0
@@ -159,7 +159,7 @@ class controlGeneric(object):
 		lastscan = False
 		startTime = time.time()
 		for idx, p in tqdm(enumerate(allpts), desc = 'Scanning {0}'.format(axis), total = steps, leave = False):
-			if idx == steps-1
+			if idx == steps-1:
 				lastScan = True
 
 			if axis == 'x':
@@ -930,36 +930,34 @@ class controlGeneric(object):
 			temp.attrs['description'] = 'Type of measurement held in this file.'		
 
 			## add scan parameters to settings
-			temp = settings.create_dataset('numx', data = np.array(x.shape[0]))
-			temp.attrs['description'] = 'Number of points scanned in x'			
+			if axis == 'x':
+				temp = settings.create_dataset('numx', data = np.array(x.shape[0]))
+				temp.attrs['description'] = 'Number of points scanned in x'			
 
-			temp = settings.create_dataset('numy', data = np.array(y.shape[0]))
-			temp.attrs['description'] = 'Number of points scanned in y'
+				temp = settings.create_dataset('numy', data = np.array(y))
+				temp.attrs['description'] = 'Number of points scanned in y'
+
+				stepsize = np.abs(x[1] - x[0])
+			else:
+				temp = settings.create_dataset('numx', data = np.array(x))
+				temp.attrs['description'] = 'Number of points scanned in x'			
+
+				temp = settings.create_dataset('numy', data = np.array(y.shape[0]))
+				temp.attrs['description'] = 'Number of points scanned in y'
+
+				stepsize = np.abs(y[1] - y[0])
+
+			temp = settings.create_dataset('stepsize', data = np.array(stepsize))
+			temp.attrs['description'] = 'Step size (mm) in line scan.'	
 
 			temp = settings.create_dataset('axis', data = axis.encode('utf-8'))
 			temp.attrs['description'] = 'Axis scanned (x or y)'
 
-			temp = settings.create_dataset('rangex', data = np.array(np.abs(x[-1] - x[0])))
-			temp.attrs['description'] = 'Range scanned in x (mm)'
+			# temp = settings.create_dataset('rangex', data = np.array(np.abs(x[-1] - x[0])))
+			# temp.attrs['description'] = 'Range scanned in x (mm)'
 
-			temp = settings.create_dataset('rangey', data = np.array(np.abs(y[-1] - y[0])))
-			temp.attrs['description'] = 'Range scanned in y (mm)'
-
-			# calculate step size. Calculates the average step size in x and y. If either axis has length 1 (ie line scan), only consider step size
-			# in the other axis. If both axes have length 0 (point scan, although not a realistic outcome for .scanArea()), leave stepsize as 0
-			countedaxes = 0
-			stepsize = 0
-			if x.shape[0] > 1:
-				stepsize = stepsize + np.abs(x[1] - x[0])
-				countedaxes = countedaxes + 1
-			if y.shape[0] > 1:
-				stepsize = stepsize + np.abs(y[1] - y[0])
-				countedaxes = countedaxes + 1
-			if countedaxes:
-				stepsize = stepsize / countedaxes
-
-			temp = settings.create_dataset('stepsize', data = np.array(stepsize))
-			temp.attrs['description'] = 'Step size (mm) in line scan.'			
+			# temp = settings.create_dataset('rangey', data = np.array(np.abs(y[-1] - y[0])))
+			# temp.attrs['description'] = 'Range scanned in y (mm)'
 
 			## measured data 
 			rawdata = f.create_group('/data')
