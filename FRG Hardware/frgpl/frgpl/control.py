@@ -19,6 +19,7 @@ from tqdm import tqdm
 import threading
 import pdb
 import winsound
+from frgpl.checkPLmaps import plotPL
 
 soundpath='C:\\Users\\Operator\\Documents\\GitHub\\Instruments\\FRG Hardware\\frgpl\\frgpl\\tada.wav'
 
@@ -248,6 +249,7 @@ class control:
 		temperature = self.tec.getTemperature()
 		im, _, _ = self.camera.capture(frames = self.numframes, imputeHotPixels = imputeHotPixels)
 		v, i = self.kepco.read(counts = self.numIV)
+		#pdb.set_trace()
 		irradiance = self._getOpticalPower()
 		temperature = (temperature + self.tec.getTemperature()) / 2	#average the temperature from just before and after the measurement. Typically averaging >1 second of time here.
 
@@ -498,6 +500,23 @@ class control:
 		
 		self.__dataBuffer = []
 
+		return fpath
+
+	### tile imaging
+	def tileImages(xmin, xmax, numx, ymin, ymax, numy, frames = 100):
+		x0, y0 = self.stage.position
+		xp = [int(x) for x in np.linspace(x0-xmin, x0+xmax, numx)]
+		yp = [int(y) for  in np.linspace(y0-ymin, y0+ymax, numy)]
+		ims = np.zeros((numy, numx, 512, 640))
+
+		for n, x in tqdm(enumerate(xp), total = numx, desc = 'X', leave = False):
+			c.stage.moveto(x = x)
+			for m, y in tqdm(enumerate(yp), total = numy, desc = 'Y', leave = False):
+				c.stage.moveto(y = y)
+				ims[m,n], _, _ = self.camera.capture(frames = frames)
+		c.stage.moveto(x = x0, y = y0)
+		return ims, xp, yp
+
 	### calibration methods
 
 	def findOneSun(self, jsc, area):
@@ -534,7 +553,7 @@ class control:
 		self._sampleOneSunSweep = [laserpowers, laserjsc]
 		self._sampleOneSunJsc = jsc
 
-		# pdb.set_trace()
+		#pdb.set_trace()
 
 		return p(isc), laserpowers, laserjsc	#return laser power to match target jsc
 
@@ -697,12 +716,12 @@ class control:
 
 		# full factorial imaging across voltage (vmpp - voc) and illumination (0.2 - 1.0 suns). 25 images
 		allbiases = np.append(0,np.linspace(vmpp, voc, 5))		#range of voltages used for image generation (including short-circuit image at each intensity)
-		#allbiases = np.concatenate(([0], allbiases)) #add 0 bias to include a short-circuit PL image at each laser intensity
-		#allsuns = np.linspace(0.2, 1, 5)			#range of suns (pl injection) used for image generation
-		allsuns = np.linspace(0.2, 1, 5)	
+		allsuns = np.linspace(0.2, 1, 5)			#range of suns (pl injection) used for image generation
 
 		self.setMeas(bias = 0, suns = 1, temperature = 25, note = 'PLIV - open circuit PL image')
-		self.kepco.set(current = 0)
+		# this should work, something else is going wrong occasionally.
+		self.kepco.set(current = 0) # does not work as takeMeas will reset the voltage setting based on setMeas parameters. Better to set voc directly in setMeas.
+		#pdb.set_trace()
 		self.takeMeas()
 
 		with tqdm(total = allbiases.shape[0] * allsuns.shape[0], desc = 'PLIV', leave = False) as pb:
@@ -719,7 +738,14 @@ class control:
 		#self.save(samplename = 'Test_GG_Al_10_PLIV', note = '', reset = True) # remove this for a regular measurement with takePVRD2Meas
 
 
-	def takePVRD2Meas(self, samplename, note, vmpp, voc, jsc, area = 25.08, vstep = 0.005):
+	def takePVRD2Meas(self, samplename, note, vmpp, voc, jsc, area = 22.1, vstep = 0.005):
+		#reset in case previous measurement was cancelled midway
+		self.__dataBuffer = []
+		self._sampleOneSun = None
+		self._sampleOneSunSweep = None
+		self._sampleOneSunJsc = None
+		self.__backgroundImage = None
+
 		self.takeRseMeas(
 			vmpp = vmpp,
 			voc = voc,
@@ -750,11 +776,12 @@ class control:
 		if not os.path.exists(self.outputDirectory):
 			os.mkdir(self.outputDirectory)
 
-		self.save(samplename = samplename, note = note, reset = True)
+		fpath=self.save(samplename = samplename, note = note, reset = True)
 
 		self.outputDirectory = storedOutputDir
 
-		winsound.PlaySound(soundpath,winsound.SND_FILENAME)		
+		winsound.PlaySound(soundpath,winsound.SND_FILENAME)
+		plotPL(fpath) # plot images to check the measurement
 
 	### helper methods
 	def _waitForTemperature(self):

@@ -4,6 +4,7 @@ import serial
 import numpy as np
 import codecs
 import time
+import sys
 
 class omega:
 
@@ -74,7 +75,12 @@ class omega:
 		self.__handle.write(payload)
 		response = self.__handle.readline()
 
-		data = int(response[7:-4], 16) * 0.1	#response given in 0.1 C
+		try:
+			data = int(response[7:-4], 16) * 0.1	#response given in 0.1 C
+		except Exception as e:
+			print('\nError in tec.py, method getSetPoint: ')
+			print(e)
+			sys.exit("\n************************************\nError: Make sure the temperature controller switch is turned on.\n****************************************")
 
 		return data		
 
