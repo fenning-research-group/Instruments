@@ -10,6 +10,8 @@ from skimage.filters import gaussian
 from scipy import ndimage as nd
 from matplotlib.widgets import Button
 from tqdm import tqdm
+import csv
+
 def fitThreePointWaRD(file, celltype, plot = False):
 	if str.lower(celltype) in ['albsf', 'al-bsf']:
 		wl_eva = 1730
@@ -339,3 +341,103 @@ def ImagePointPicker(img, pts = 4, **kwargs):
 	"""
 	imgpicker = __ImgPicker(img, pts, **kwargs)
 	return imgpicker.pickedPoints
+
+## Baseline adjustment
+
+def ExtractBaseline(file):
+	bl = {}
+	with h5py.File(file, 'r') as d:
+		bld = d['settings']['baseline']
+		for k in bld.keys():
+			bl[k] = bld[k][()]
+	return bl
+
+def ApplyBaseline(file, bl, overwrite = False):
+	def baselineCorrectionRoutine(wl, signal, reference, bl):
+		bl_idx = np.where(bl['wavelengths'] == wl)
+		numerator = (signal-bl['sphere_dark']) / (bl['sphere_ill'][bl_idx]-bl['sphere_dark'])
+		denominator = (reference-bl['ref_dark']) / (bl['ref_ill'][bl_idx]-bl['ref_dark'])
+		corrected = numerator/denominator
+		
+		return corrected
+
+	bl0 = {}
+	with h5py.File(file, 'r') as d:
+		bl0d = d['settings']['baseline']
+		for k in bl0d.keys():
+			bl0[k] = bl0d[k][()]
+
+		wl = d['data']['wavelengths'][()]
+		sig = d['data']['signalRaw'][()]
+		ref = d['data']['referenceRaw'][()]
+		r0 = d['data']['reflectance'][()]
+
+		if 'wavelengths_full' in d['data'].keys():
+			fullspec = True
+			wlf = d['data']['wavelengths_full'][()]
+			sigf = d['data']['signalRaw_full'][()]
+			reff = d['data']['referenceRaw_full'][()]
+			r0f = d['data']['reflectance_full'][()]
+		else:
+			fullspec = False
+
+	r = np.zeros(r0.shape)
+	for m,n in np.ndindex((r.shape[0], r.shape[1])):
+		for wlidx, wl_ in enumerate(wl):
+			r[m,n,wlidx] = baselineCorrectionRoutine(wl_, sig[m,n, wlidx], ref[m,n, wlidx], bl)
+
+	if fullspec:
+		rf = np.zeros(r0f.shape)
+		for m in range(r0f.shape[0]):
+			for wlidx, wl_ in enumerate(wlf):
+				rf[m,wlidx] = baselineCorrectionRoutine(wl_, sigf[m, wlidx], reff[m, wlidx], bl)
+
+	if overwrite:
+		with h5py.File(file, 'a') as d:
+			bl0d = d['settings']['baseline']
+			for k in bl0d.keys():
+				bl0d[k][()] = bl0[k]
+
+			d['data']['reflectance'][()] = r
+
+			if fullspec:
+				d['data']['reflectance_full'][()] = rf
+
+			if 'fits' in d.keys():
+				fitme = True
+			else:
+				fitme = False
+	
+	if fitme:
+		try:
+			fitThreePointWaRD(file, 'albsf2')
+		except:
+			fitThreePointWaRD(file, 'albsf')
+
+
+## Data File Format
+
+def H5toCSV(file, outfile = None):
+	if outfile is None:
+		fname = os.path.basename(file).split('.')[0]
+		fname += '.csv'
+		fdir = os.path.dirname(file)
+		outfile = os.path.join(fdir, fname)
+
+	with h5py.File(file, 'r') as d:
+		if d['info']['type'][()] != b'scanPoint':
+			print('Only scanPoint data supported - aborting')
+			return
+
+		wl = d['data']['wavelengths'][()]
+		r = d['data']['reflectance'][()]
+		colNames = ['Wavelength (nm)', 'Reflectance']
+
+	with open(outfile, 'w', newline = '') as f:
+		writer = csv.writer(f, delimiter = ',')
+
+		writer.writerow(colNames)
+		for wl_, r_ in zip(wl, r):
+			writer.writerow([wl_, r_])
+
+	print('Wrote to {}'.format(outfile))

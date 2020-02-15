@@ -115,11 +115,12 @@ def fitRsEL(file, area = 22.04, plot = False):
 	calfit = np.polyfit(j*mask.sum(), sumphi, 1)
 	CiJoi = calfit[0]
 
-	plt.plot(j*mask.sum(), sumphi)
-	plt.plot(j*mask.sum(), j*mask.sum()*calfit[0] + calfit[1], linestyle = ':')
-	plt.xlabel('amps/cm2/pixel')
-	plt.ylabel(u'$\Sigma\Phi$')
-	plt.show()
+	if plot:
+		plt.plot(j*mask.sum(), sumphi)
+		plt.plot(j*mask.sum(), j*mask.sum()*calfit[0] + calfit[1], linestyle = ':')
+		plt.xlabel('amps/cm2/pixel')
+		plt.ylabel(u'$\Sigma\Phi$')
+		plt.show()
 
 	time.sleep(1)
 	## Rs fitting
@@ -203,7 +204,7 @@ def fitRsEL(file, area = 22.04, plot = False):
 	# 	plt.tight_layout()
 	# 	plt.show()
 
-def fitPLIV(fpath, area = 22.04):
+def fitPLIV(fpath, area = 22.04, plot = False):
 	#define constants
 	k = 1.38e-23 #J/K
 	qC = 1.6022e-19 #C
@@ -230,8 +231,8 @@ def fitPLIV(fpath, area = 22.04):
 			correctionImgs[suns_] = img_.copy()
 			correctionJscs[suns_] = measCurr_/area
 			dataIdx.append(False)
-		elif setVolt_ <= 0.55 and suns_ <= 0.4:
-			dataIdx.append(False)
+		# elif setVolt_ <= 0.55 and suns_ <= 0.4:
+		# 	dataIdx.append(False)
 		else:
 			dataIdx.append(True)
 	#### remove background from all images, find Voc and Mpp 1 sun images. discard correction images from the dataset		
@@ -257,12 +258,18 @@ def fitPLIV(fpath, area = 22.04):
 	numrows = 5
 	numcols = np.ceil(numimgs/numrows).astype(int)
 
-	fig, ax = plt.subplots(numrows, numcols, figsize = (12,12))
 
-	# for idx, img_, suns_, ax_ in zip(range(suns.shape[0]), imgs, suns, ax.ravel()):
-	# 	imgs[idx] = img_ - correctionImgs[suns_]
-	# 	imgs[idx][imgs[idx] < 0] = 0
-	# 	ax_.imshow(imgs[idx])
+	for idx, img_, suns_ in zip(range(suns.shape[0]), imgs, suns):
+		imgs[idx] = img_ - correctionImgs[suns_]
+		imgs[idx][imgs[idx] <= 0] = 1e-5
+		
+	if plot:
+		fig, ax = plt.subplots(numrows, numcols, figsize = (12,12))
+		for img_, ax_ in zip(imgs, ax.ravel()):
+			ax_.imshow(img_)
+			ax_.set_xticks([])
+			ax_.set_yticks([])
+		plt.show()
 
 	# throw away short circuit images
 	imgs = imgs[dataIdx]
@@ -277,12 +284,12 @@ def fitPLIV(fpath, area = 22.04):
 	M = np.ones((imgs.shape[1], imgs.shape[2], imgs.shape[0], 4))
 	N = np.ones((imgs.shape[1], imgs.shape[2], imgs.shape[0]))
 	for idx, img_, suns_, measV_, measC_, setV_ in zip(range(suns.shape[0]), imgs, suns, measVolt, measCurr, setVolt):
-		M[:,:,idx,1] = -suns_*correctionJscs[suns_]
+		M[:,:,idx,1] = -correctionJscs[suns_]
 		# img_[img_<= 0] = 0
 		M[:,:,idx,2] = img_
 		M[:,:,idx,3] = np.sqrt(img_)
 		# img_[img_<= 0] = 1e-20
-		N[:,:,idx] = Vt * np.log(img_) - measV_
+		N[:,:,idx] = Vt * np.log(img_) - setV_
 
 	# solve matrix, process into each fit
 	x = np.full((imgs.shape[1], imgs.shape[2], 4), np.nan)
