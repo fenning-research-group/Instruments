@@ -13,6 +13,7 @@ from tqdm import tqdm
 import h5py
 import threading
 from .nkt import compact, select
+from .tec import omega
 
 root = 'D:\\frgmapper'
 if not os.path.exists(root):
@@ -402,11 +403,13 @@ class controlGeneric(object):
 				reflectance = data
 				)
 
-	def timeSeries(self, label, wavelengths, duration, interval, export = True):
+	def timeSeries(self, label, wavelengths, duration, interval, logtemperature = False, export = True):
 		### records a reflectance spectrum for a given duration (seconds) at set intervals (seconds)
 		#	TODO: I don't think this will work for single wavelength inputs
 
 		# clean up wavelengths input
+		if logtemperature:
+			print('Note: Temperature control/logging is only valid on slot 2!')
 
 		wavelengths = np.array(wavelengths)
 
@@ -414,12 +417,15 @@ class controlGeneric(object):
 		signal = []
 		reference = []
 		delay = []
+		temperature = []
 		startTime = time.time()
 		pbarPercent = 0
 		with tqdm(total = 100, desc = 'Scanning every {0} s for {1} s'.format(interval, duration), leave = False) as pbar:
 			while (time.time() - startTime) <= duration:
 				if (time.time()-startTime) >= (interval*len(delay)):	#time for the next scan
 					delay.append(time.time() - startTime)
+					if logtemperature:
+						temperature.append(self.heater.getTemperature())
 					sig, ref, ratio = self._scanroutine(wavelengths, lastscan = False)
 					reflectance.append(self._baselineCorrectionRoutine(wavelengths, sig, ref, ratio))
 					signal.append(sig)
@@ -444,6 +450,7 @@ class controlGeneric(object):
 		delay = np.array(delay)
 		signal = np.array(signal)
 		reference = np.array(reference)
+		temperature = np.array(temperature)
 
 		if export:
 			self._save_timeSeries(
@@ -454,7 +461,9 @@ class controlGeneric(object):
 				duration = duration, 
 				interval = interval,
 				signal = signal,
-				reference = reference
+				reference = reference,
+				temperature = temperature,
+				logtemperature = logtemperature
 				)
 
 		# if plot:
@@ -796,7 +805,6 @@ class controlGeneric(object):
 	
 		return wavelength
 	
-
 	### Save methods to dump measurements to hdf5 file. Currently copied from PL code, need to fit this to the mapping data.
 	def _getSavePath(self, label):
 		todaysDate = datetime.datetime.now().strftime('%Y%m%d')
@@ -1241,7 +1249,7 @@ class controlGeneric(object):
 
 		print('Data saved to {0}'.format(fpath))
 
-	def _save_timeSeries(self, label, wavelengths, reflectance, delay, duration, interval, signal, reference):
+	def _save_timeSeries(self, label, wavelengths, reflectance, delay, duration, interval, signal, reference, logtemperature, temperature):
 
 		fpath = self._getSavePath(label = label)	#generate filepath for saving data
 
@@ -1259,6 +1267,12 @@ class controlGeneric(object):
 
 			temp = settings.create_dataset('interval', data = np.array(interval))
 			temp.attrs['description'] = 'Time (s) desired between subsequent scans.'
+
+			if logtemperature:
+				temp = settings.create_dataset('temperatureLogged', data = 1)
+			else:
+				temp = settings.create_dataset('temperatureLogged', data = 0)
+			temp.attrs['description'] = 'Temperature logged during measurements. Note that this is the temperature of the heating pad in slot 2, actual sample temperature may vary.'
 
 			## measured data 
 			rawdata = f.create_group('/data')
@@ -1278,6 +1292,9 @@ class controlGeneric(object):
 			
 			temp = rawdata.create_dataset('delay', data = np.array(delay))
 			temp.attrs['description'] = 'Time (seconds) that each scan was acquired at. Measured as seconds since first scan point.'			
+
+			temp = rawdata.create_dataset('temperature', data = np.array(temperature))
+			temp.attrs['description'] = 'Temperature (C) of heating pad in slot 2 at the time that each scan was acquired at.'
 
 		print('Data saved to {0}'.format(fpath))
 
@@ -1423,6 +1440,7 @@ class controlNKT(controlGeneric):
 		self.connect()
 		self.daq.useExtClock = False	#use external Compact trigger to drive daq, match the laser pulse train
 		self.processPulseTrain = False
+		self.heater = None
 		plt.ion()	#make plots of results non-blocking
 
 	def connect(self):
@@ -1446,6 +1464,11 @@ class controlNKT(controlGeneric):
 
 		self.stage = stage()
 		print("stage connected")
+
+		self.heater = omega(
+			port = 'COM14'
+			)
+		print("heater connected")
 
 	def disconnect(self):
 		self.compact.disconnect()
