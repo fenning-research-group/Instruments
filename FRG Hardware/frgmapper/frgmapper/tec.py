@@ -9,9 +9,10 @@ class omega:
 
 	def __init__(self, port = 'COM14', address = 1):
 		self.connect(port = port, address = address)	
-
+		
 	@property
 	def setpoint(self):
+		self.__setpoint = self.getSetPoint()
 		return self.__setpoint
 
 	@setpoint.setter
