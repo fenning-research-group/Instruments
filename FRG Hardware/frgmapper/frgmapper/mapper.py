@@ -465,7 +465,7 @@ class controlGeneric(object):
 		# 	plt.show()
 	
 	def scanAreaWaRD(self, label, wavelengths, wavelengths_full = None, xsize = 52, ysize = 52, xsteps = 53, ysteps = 53, x0 = None, y0 = None, position = None, export = True):
-		x0s = [31, 104, 104, 31]	## UPDATE PROPER LOCATIONS
+		x0s = [33, 106, 106, 33]	## UPDATE PROPER LOCATIONS
 		y0s = [117,117,57.5,57.5]
 
 		fullScanCoordinates = [		#spiral pattern to sample pts at varying distance from map center
