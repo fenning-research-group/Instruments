@@ -1,4 +1,4 @@
-## module for communication with Keithley source-meter
+## module for communication with Keithley 2401 source-meter
 
 import visa
 import numpy as np
@@ -63,7 +63,7 @@ class keithley:
 		if _setter_helper(x, ['VOLT', 'CURR', 'RES']):
 			self.__handle.write(':FORM:ELEM {}'.format(x))
 	
-	
+
 
 	@property
 	def terminals(self):			
