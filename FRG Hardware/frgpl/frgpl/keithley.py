@@ -5,20 +5,37 @@ import numpy as np
 
 class keithley:
 	def __init__(self, port = 'GPIB2::20::INSTR'):
-		self.__maxcurrent = 5
-		self.__maxvoltage = 1
-		self.__mode = 'VOLT'
 		self.connect(port = port)	
-		self.__handle.timeout = 0.5
-		self.__handle.read_terminator = '\n'
-		self.__handle.write_terminator = '\n'
+		self.__handle.timeout = 500 #ms
 
+	def connect(self, port = 'GPIB2::20::INSTR'):
+		self.__rm = visa.ResourceManager()
+		self.__handle = self.__rm.open_resource(port)
+		# self.__handle.timeout = 0.5
+		self.__handle.read_termination = '\n'
+		self.__handle.write_termination = '\n'
+		self.__handle.write(':OUTP?')
+		response = self.__handle.read()
+		if response == 'ON':
+			self._on = True
+		else:
+			self._on = False
+
+		self.__valuelabels = self.format_element
+
+		return True
+
+	def disconnect(self):
+		# self.__handle.write(':SYST:REM OFF')
+		self.__handle.close()
+		return True
 	def errorcheck(self):
-		x = self.__handle.write(':SYST:ERR?')
+		self.__handle.write(':SYST:ERR?')
+		x = self.__handle.read()
 		code, explanation = x.split(',')
-		if code == 0:
+		if code == '0':
 			return True
-		else
+		else:
 			print('Error {}:{}'.format(code, explanation))
 			return False
 	### SOURCE COMMANDS
@@ -30,7 +47,7 @@ class keithley:
 	@source_mode.setter
 	def source_mode(self, x):
 		self.__handle.write(':SOUR:FUNC {}'.format(str.upper(x)))
-		return self.errorcheck():
+		return self.errorcheck()
 	
 	@property
 	def source_voltage(self):
@@ -115,6 +132,10 @@ class keithley:
 	def averaging_filter(self):			
 		self.__handle.write(':SENS:AVER:STAT?')
 		response = self.__handle.read()
+		if response is '1':
+			response = 'ON'
+		else:
+			response = 'OFF'
 		print('Averaging Filter is {}'.format(response))
 		if response is 'ON':
 			self.__averagingfilteron = True
@@ -129,8 +150,7 @@ class keithley:
 
 		print('Type: {}\nCounts: {}'.format(filtertype, filtercount))
 		return
-	@averaging_filter.setter
-	def averaging_filter(self, on = True, filtertype = 'REP', count = 10):
+	def set_averaging_filter(self, on = True, filtertype = 'REP', count = 10):
 		if 'REP' in str.upper(filtertype):
 			filtertype = 'REP'
 		elif 'MOV' in str.upper(filtertype):
@@ -187,14 +207,14 @@ class keithley:
 	### Basic usage COMMANDS
 	def on(self):
 		self.__handle.write(':OUTP ON')
-		success = self.errorcheck():
+		success = self.errorcheck()
 		if success:
 			self._on = True
 		return success
 
 	def off(self):
 		self.__handle.write(':OUTP OFF')
-		success = self.errorcheck():
+		success = self.errorcheck()
 		if success:
 			self._on = False
 		return success
@@ -210,22 +230,6 @@ class keithley:
 			readings[k] = float(v)
 		return readings
 
-	def connect(self, port = 'GPIB2::20::INSTR'):
-		self.__rm = visa.ResourceManager()
-		self.__handle = rm.open_resource(port)
-
-		self.__handle.write(':OUTP ?')
-		self._on = self.__handle.read()
-
-		self.__valuelabels = self.format_element
-
-		return True
-
-	def disconnect(self):
-		# self.__handle.write(':SYST:REM OFF')
-		self.__handle.close()
-		return True
-
 	def sweep_voltage(self, start, stop, steps, delay = 0.01, spacing = 'LIN'):
 		if 'LIN' in str.upper(spacing):
 			spacing = 'LIN'
@@ -240,8 +244,11 @@ class keithley:
 		self.__handle.write(':SOUR:VOLT:START {0:f}'.format(start))
 		self.__handle.write(':SOUR:VOLT:STOP {0:f}'.format(stop))
 		self.__handle.write(':SOUR:SWE:POIN {0:d}'.format(steps))
-		self.__handle.write(':SOUR:SWE:DIRE UP') #go from start to stop
+		self.__handle.write(':SOUR:SWE:DIR UP') #go from start to stop
 		self.__handle.write(':SOUR:VOLT:MODE SWE')
+		self.__handle.write(':TRIG:COUN {0:d}'.format(steps))
+		self.__handle.write(':SOUR:DEL {0:f}'.format(delay))
+
 
 
 		if not self.errorcheck():
@@ -249,23 +256,18 @@ class keithley:
 
 		self.__handle.write(':OUTP ON')
 		self.__handle.write(':READ?')
+
+		timeout0 = self.__handle.timeout
+		# self.__handle.timeout = 1.5*1000*delay*steps #give long enough time for scan to be acquired before triggering timeout.
+		self.__handle.timeout = None #give long enough time for scan to be acquired before triggering timeout.
 		response = self.__handle.read()
+		self.__handle.timeout = timeout0
+		self.__handle.write(':OUTP OFF')
 
 		self.__handle.write('SOUR:VOLT:MODE FIX')
 		self.errorcheck()
 
 		return response
-
-
-	def on(self):
-		self.__handle.write(':OUTP ON')
-		self.__on = True
-		return True
-
-	def off(self):
-		self.__handle.write(':OUTP OFF')
-		self.__on = False
-		return True
 
 	def reset(self):
 		self.__handle.write('*RST')
