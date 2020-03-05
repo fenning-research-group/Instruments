@@ -100,7 +100,7 @@ class stage:
 			self.__handle.write('2/2/{0:d}/'.format(y).encode())
 			self.waitforstage()
 
-		self.postmove(x, y)
+		self.postmove(self.position[0] + x, self.position[1] + y)
 		return True
 
 	def waitforstage(self):

@@ -9,6 +9,7 @@ import matplotlib.animation as animation
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import time
 from scipy.signal import medfilt
+from tqdm import tqdm
 
 class camera:
 	def __init__(self, port = None):
@@ -76,7 +77,7 @@ class camera:
 		raw = np.zeros((self._resolution[0], self._resolution[1], frames))
 
 		self._cam.BeginAcquisition()
-		for idx in range(frames):
+		for idx in tqdm(range(frames), desc = 'Acquiring Images', leave = False):
 			acquired = False
 
 			while not acquired:
@@ -84,9 +85,9 @@ class camera:
 				if not image_result.IsIncomplete():
 					acquired = True
 
-				img = image_result.Convert(PySpin.PixelFormat_Mono16, PySpin.HQ_LINEAR).GetNDArray()
-				image_result.Release()
-				raw[:, :, idx] = img[1:self._resolution[0]+1, :self._resolution[1]]	#throw away pixels outside of desired resolution (specifically one column is inactive in InGaAs camera)
+			img = image_result.Convert(PySpin.PixelFormat_Mono16, PySpin.HQ_LINEAR).GetNDArray()
+			image_result.Release()
+			raw[:, :, idx] = img[1:self._resolution[0]+1, :self._resolution[1]]	#throw away pixels outside of desired resolution (specifically one column is inactive in InGaAs camera)
 		self._cam.EndAcquisition()
 
 		avg = np.mean(raw, axis = 2)
@@ -107,7 +108,7 @@ class camera:
 				image_result = self._cam.GetNextImage()
 				if not image_result.IsIncomplete():
 					acquired = True
-				img = image_result.Convert(PySpin.PixelFormat_Mono8, PySpin.HQ_LINEAR).GetNDArray()
+				img = image_result.Convert(PySpin.PixelFormat_Mono16, PySpin.HQ_LINEAR).GetNDArray()
 				image_result.Release()
 				raw = img[1:self._resolution[0]+1, :self._resolution[1]]		#throw away pixels outside of desired resolution (specifically one column is inactive in InGaAs camera)
 				# mask = raw > (raw.mean() + 3*raw.std())	#flag values 3 std devs over the mean

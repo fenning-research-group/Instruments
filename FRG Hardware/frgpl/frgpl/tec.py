@@ -3,11 +3,13 @@
 import serial
 import numpy as np
 import codecs
+import time
+import sys
 
 class omega:
 
 
-	def __init__(self, port = 'COM14', address = 1):
+	def __init__(self, port = 'COM15', address = 1):
 		self.connect(port = port, address = address)	
 
 	@property
@@ -73,7 +75,12 @@ class omega:
 		self.__handle.write(payload)
 		response = self.__handle.readline()
 
-		data = int(response[7:-4], 16) * 0.1	#response given in 0.1 C
+		try:
+			data = int(response[7:-4], 16) * 0.1	#response given in 0.1 C
+		except Exception as e:
+			print('\nError in tec.py, method getSetPoint: ')
+			print(e)
+			sys.exit("\n************************************\nError: Make sure the temperature controller switch is turned on.\n****************************************")
 
 		return data		
 
@@ -87,8 +94,8 @@ class omega:
 			)
 		self.__handle.write(payload)
 		response = self.__handle.readline()
-
-		if response == payload:
+		# time.sleep(0.2)
+		if self.getSetPoint()*10 == setpoint:	
 			return True
 			self.__setpoint = setpoint
 		else:
