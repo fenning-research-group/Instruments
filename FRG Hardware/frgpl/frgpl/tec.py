@@ -9,7 +9,7 @@ import sys
 class omega:
 
 
-	def __init__(self, port = 'COM14', address = 1):
+	def __init__(self, port = 'COM15', address = 1):
 		self.connect(port = port, address = address)	
 
 	@property

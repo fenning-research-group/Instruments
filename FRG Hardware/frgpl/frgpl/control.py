@@ -69,8 +69,8 @@ class control:
 		self.__dataBuffer = [] # buffer to hold data files during sequential measurements of single sample. Held until a batch export
 
 		# stage/positioning constants
-		self.__sampleposition = (31000, 63500)	#position where TEC stage is centered in camera FOV, um
-		self.__detectorposition = (48500, 124500)	#delta position between detector and sampleposition, um.
+		self.__sampleposition = (52000, 56000)	#position where TEC stage is centered in camera FOV, um
+		self.__detectorposition = (68000, 117000)	#delta position between detector and sampleposition, um.
 		self.__fov = (77000, 56000)	#dimensions of FOV, um
 
 		self.connect()
@@ -503,18 +503,31 @@ class control:
 		return fpath
 
 	### tile imaging
-	def tileImages(xmin, xmax, numx, ymin, ymax, numy, frames = 100):
+	def tileImages(self, xmin, xmax, numx, ymin, ymax, numy, frames = 100):
 		x0, y0 = self.stage.position
-		xp = [int(x) for x in np.linspace(x0-xmin, x0+xmax, numx)]
-		yp = [int(y) for  in np.linspace(y0-ymin, y0+ymax, numy)]
+		xp = [int(x) for x in np.linspace(x0+xmin, x0+xmax, numx)]
+		yp = [int(y) for y in np.linspace(y0+ymin, y0+ymax, numy)]
 		ims = np.zeros((numy, numx, 512, 640))
+		self.stage.moveto(x = xp[0], y = yp[0])
+		time.sleep(5) #sometimes stage says its done moving too early, expect that on first move which is likely a longer travel time
 
-		for n, x in tqdm(enumerate(xp), total = numx, desc = 'X', leave = False):
-			c.stage.moveto(x = x)
-			for m, y in tqdm(enumerate(yp), total = numy, desc = 'Y', leave = False):
-				c.stage.moveto(y = y)
-				ims[m,n], _, _ = self.camera.capture(frames = frames)
-		c.stage.moveto(x = x0, y = y0)
+		flip = True #for snaking
+		for m, y in tqdm(enumerate(yp), total = numy, desc = 'Y', leave = False):
+			if flip:
+				flip = False
+			else:
+				flip = True
+			self.stage.moveto(y = y)
+			for n, x in tqdm(enumerate(xp), total = numx, desc = 'X', leave = False):
+				if flip:
+					nn = -n-1
+					xx = xp[nn]
+				else:
+					nn = n
+					xx = x
+				self.stage.moveto(x = xx)
+				ims[m,nn], _, _ = self.camera.capture(frames = frames)
+		self.stage.moveto(x = x0, y = y0)
 		return ims, xp, yp
 
 	### calibration methods

@@ -24,12 +24,12 @@ def plotall():
 				plt.colorbar()
 			hf.close()
 
-#import matplotlib.pyplot as plt
-#plt.close('all')
+	#import matplotlib.pyplot as plt
+	#plt.close('all')
 
 def plotPL(filepath):
-#idx=[b'open circuit PL image' in x for x in hf['settings']['notes'][()]]
-#vmeas=d['data']['v'][()][idx]
+	#idx=[b'open circuit PL image' in x for x in hf['settings']['notes'][()]]
+	#vmeas=d['data']['v'][()][idx]
 
 	plt.ion()
 
