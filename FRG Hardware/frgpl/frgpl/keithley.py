@@ -1,20 +1,133 @@
-## module for communication with OSTech laser controller
+## module for communication with Keithley 2401 source-meter
 
-import serial
-import re
+import visa
 import numpy as np
-import pdb
 
-class kepco:
-	def __init__(self, port = 'COM12'):
+class keithley:
+	def __init__(self, port = 'GPIB2::20::INSTR'):
 		self.__maxcurrent = 5
 		self.__maxvoltage = 1
 		self.__mode = 'VOLT'
 		self.__on = False
 		self.connect(port = port)	
 
-	def connect(self, port = 'COM12'):
-		self.__handle = serial.Serial(port,timeout=8)
+	def _setter_helper(x, valid_inputs):
+		if any([x == v for v in valid_inputs]):
+			return True
+		else:
+			errorstr = 'Invalid input {}, value unchanged. Valid inputs are'.format(x)
+			for v in valid_inputs[:-1]:
+				errorstr += ' {},'.format(v)
+			errorstr += ' {}.'.format(valid_inputs[-1])
+			print(errorstr)	
+			return False
+
+	@property
+	def source_mode(self):
+		x = self.__handle.write(':SOUR:FUNC?')
+		return x
+	@source_mode.setter
+	def source_mode(self, x):
+		x = str.upper(x)
+		valid_inputs = ['VOLT', 'CURR']
+		if _setter_helper(x, valid_inputs)
+			self.__handle.write(':SOUR:FUNC {}'.format(x))
+
+	@property
+	def source_delay(self):
+		x = self.__handle.write(':SOUR:DEL?')
+		return x
+	@source_delay.setter
+	def source_delay(self, x):
+		self.__handle.write(':SOUR:DEL {0:f}'.format(x))
+
+	@property
+	def sense_mode(self):			
+		x = self.__handle.write(':SENSE:FUNC?')
+		return x
+	@sense_mode.setter
+	def sense_mode(self, x, y):
+		x = str.upper(x)
+		y = str.upper(y)
+		if _setter_helper(x, ['VOLT', 'CURR']) and _setter_helper(y, ['DC', 'AC']):
+			self.__handle.write(':SENSE:FUNC \'{}:{}\''.format(x,y))
+
+	@property
+	def format_element(self):
+		x = self.__handle.write(':FORM:ELEM?')
+		return x
+	@format_element.setter
+	def format_element(self, x):
+		# if type(x) is str:
+		# 	x = [x]
+		if _setter_helper(x, ['VOLT', 'CURR', 'RES']):
+			self.__handle.write(':FORM:ELEM {}'.format(x))
+	
+
+
+	@property
+	def terminals(self):			
+		x = self.__handle.write(':ROUT:TERM?')
+		return x
+	@terminals.setter
+	def terminals(self, x):
+		x = str.upper(x)
+		if _setter_helper(x, ['FRONT', 'REAR']):
+			self.__handle.write(':ROUT:TERM {}'.format(x))
+
+
+	@property
+	def voltage_limit(self):			
+		x = self.__handle.write(':SENS:VOLT:PROT?')
+		return x
+	@voltage_limit.setter
+	def voltage_limit(self, x):
+		self.__handle.write(':SENSE:VOLT:PROT {0:f}'.format(x))
+
+
+	@property
+	def current_limit(self):			
+		x = self.__handle.write(':SENS:CURR:PROT?')
+		return x
+	@current_limit.setter
+	def current_limit(self, x):
+		self.__handle.write(':SENSE:CURR:PROT {0:f}'.format(x))
+
+	@property
+	def current_limit(self):			
+		x = self.__handle.write(':SENS:CURR:PROT?')
+		return x
+	@current_limit.setter
+	def current_limit(self, x):
+		self.__handle.write(':SENSE:CURR:PROT {0:f}'.format(x))
+
+	@property
+	def sense_4wire(self):			
+		x = self.__handle.write(':SYST:RSEN?')
+		return x
+	@sense_4wire.setter
+	def sense_4wire(self, x):
+		if type(x) is not bool:
+			print('Error: input must be True or False')
+		else:
+			if x:
+				self.__handle.write(':SYST:RSEN ON')
+			else:
+				self.__handle.write(':SYST:RSEN OFF')
+
+	@property
+	def voltage(self):
+		x = self.__handle.write(':SOUR:VOLT?')
+		return x
+	@voltage.setter
+	def voltage(self, x):
+		self.__handle.write(':SOUR:VOLT {0:f}'.format(x))
+
+
+
+	def connect(self, port = 'GPIB2::20::INSTR'):
+		self.__rm = visa.ResourceManager()
+		self.__handle = rm.open_resource(port)
 		self.__handle.write('SYST:REM ON\n'.encode())
 		self.__handle.write('VOLT:RANG {0:.2f}\n'.format(self.__maxvoltage).encode())
 		self.__handle.write('FUNC:MODE {0:s}\n'.format(self.__mode).encode())
@@ -51,15 +164,22 @@ class kepco:
 		self.__handle.close()
 		return True
 
+
+
+
 	def on(self):
-		self.__handle.write('OUTP ON\n'.encode())	
+		self.__handle.write(':OUTP ON')
 		self.__on = True
 		return True
 
 	def off(self):
-		self.__handle.write('OUTP OFF\n'.encode())	
+		self.__handle.write(':OUTP OFF')
 		self.__on = False
 		return True
+
+	def reset(self):
+		self.__handle.write('*RST')
+
 
 	def set(self, voltage = None, current = None):
 		### ADD CHECK FOR LIMITS
@@ -78,8 +198,6 @@ class kepco:
 		return True
 
 	def read(self, counts = 10):
-		maxAttempts = 5
-
 		current = np.zeros((counts,1))
 		voltage = np.zeros((counts,1))
 
@@ -102,26 +220,17 @@ class kepco:
 
 
 		for idx in range(counts):
-			attempts = 0
-			success = False
-			while attempts < maxAttempts and not success:
-				try:
-					self.__handle.write('MEAS:VOLT?\n'.encode())
-					raw = self.__handle.readline()
-					voltage[idx] = clean(raw)
+			self.__handle.write('MEAS:VOLT?\n'.encode())
+			raw = self.__handle.readline()
+			voltage[idx] = clean(raw)
 
-					self.__handle.write('MEAS:CURR?\n'.encode())
-			
-					raw = self.__handle.readline()
-					current[idx] = clean(raw)
-
-					success = True
-				except:
-					attempts = attempts + 1
+			self.__handle.write('MEAS:CURR?\n'.encode())
+	
+			raw = self.__handle.readline()
+			current[idx] = clean(raw)
 
 			vmeas = round(np.mean(voltage), 5)
 			imeas = round(np.mean(current), 5)
-
 		return vmeas, imeas
 
 
