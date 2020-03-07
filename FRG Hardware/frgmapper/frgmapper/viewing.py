@@ -12,7 +12,7 @@ from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as Navigatio
 root = 'D:\\frgmapper'
 # root = 'G:\\My Drive\\FRG\\Projects\\PVRD2 WaRM\\Experiments\\Damp Heat Cell Degradation Testing\\Round 2\\Data'
 
-def plotMeas(filepath, ax = None):
+def plotScanArea(filepath, ax = None):
 	with h5py.File(filepath, 'r') as f:
 		avgRef = f['data']['reflectance'][()].mean(axis = 2)	#image to be plotted
 		x = f['data']['x'][()]
@@ -105,6 +105,47 @@ def plotScanLine(filepath, ax = None):
 	if showlater:
 		plt.show()
 
+def plotScanPoint(filepath, ax = None:)
+	showlater = False
+	if ax is None:
+		showlater = True
+		fig, ax = plt.subplots(1,1)
+
+
+	with h5py.File(filepath, 'r') as d:
+		wavelengths = d['data']['wavelengths'][()]
+		reflectance = d['data']['reflectance'][()]
+		label = d['info']['name'][()].decode('utf-8')
+
+	ax.plot(wavelengths, reflectance)
+	ax.set_ylabel('Reflectance (%)')
+	ax.set_xlabel('Wavelength (nm)')
+
+	if showlater:
+		plt.show()
+
+def plotTimeSeries(filepath, ax = None:)
+	showlater = False
+	if ax is None:
+		showlater = True
+		fig, ax = plt.subplots(1,1)
+
+
+	with h5py.File(filepath, 'r') as d:
+		wavelengths = d['data']['wavelengths'][()]
+		reflectance = d['data']['reflectance'][()]
+		delay = d['data']['delay'][()]
+		label = d['info']['name'][()].decode('utf-8')
+
+	numpts = delay.shape[0]
+	for i in range(numpts):
+		ax.plot(wavelengths, reflectance[i], color = plt.cm.viridis(i/numpts))
+	ax.title('Blue -> Yellow = 0 - {} minutes'.format(delay/60))
+	ax.set_ylabel('Reflectance (%)')
+	ax.set_xlabel('Wavelength (nm)')
+
+	if showlater:
+		plt.show()
 def Viewer(directory = root):
 	class App(QApplication):
 		def __init__(self):
@@ -160,9 +201,15 @@ def Viewer(directory = root):
 
 				self.plotCanvas.reset()
 				if scanType in ['scanArea', 'scanAreaWaRD']:
-					plotMeas(filepath = self.currentFilepath, ax = self.plotCanvas.ax)
+					plotScanArea(filepath = self.currentFilepath, ax = self.plotCanvas.ax)
 				elif scanType == 'scanLine':
 					plotScanLine(filepath = self.currentFilepath, ax = self.plotCanvas.ax)
+				elif scanType == 'scanPoint':
+					plotScanPoint(filepath = self.currentFilepath, ax = self.plotCanvas.ax)
+				elif scanType = 'timeSeries':
+					plotTimeSeries(filepath = self.currentFilepath, ax = self.plotCanvas.ax)
+
+
 				self.plotCanvas.draw()
 
 
