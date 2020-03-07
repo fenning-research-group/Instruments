@@ -1437,10 +1437,10 @@ class controlNKT(controlGeneric):
 		self.select = None
 		self.compact = None
 		self.daq = None
+		self.heater = None
 		self.connect()
 		self.daq.useExtClock = False	#use external Compact trigger to drive daq, match the laser pulse train
 		self.processPulseTrain = False
-		self.heater = None
 		plt.ion()	#make plots of results non-blocking
 
 	def connect(self):
@@ -1466,7 +1466,7 @@ class controlNKT(controlGeneric):
 		print("stage connected")
 
 		self.heater = omega(
-			port = 'COM14'
+			port = 'COM15'
 			)
 		print("heater connected")
 
