@@ -35,7 +35,7 @@ if not os.path.exists(datafolder):
 #		compact.setPulseFrequency(1665)
 
 
-class controlGeneric(object):
+class ControlGeneric(object):
 	def __init__(self, dwelltime = 0.2):
 		todaysDate = datetime.datetime.now().strftime('%Y%m%d')
 		self.outputdir = os.path.join(root, datafolder, todaysDate)
@@ -56,11 +56,11 @@ class controlGeneric(object):
 		self.__dwelltime = x
 
 	# user methods
-	def generateWavelengths(self, wmin = 1700, wmax = 2000, wsteps = 151):
+	def generatewavelengths(self, wmin = 1700, wmax = 2000, wsteps = 151):
 		wavelengths = np.linspace(wmin, wmax, wsteps)
 		return wavelengths
 
-	def takeBaseline(self, wavelengths):
+	def takebaseline(self, wavelengths):
 		# clean up wavelengths input
 		wavelengths = np.array(wavelengths)
 
@@ -89,12 +89,12 @@ class controlGeneric(object):
 
 		self.__baselineTaken = True
 
-	def scanPoint(self, label, wavelengths, plot = True, export = True):
+	def scanpoint(self, label, wavelengths, plot = True, export = True):
 		# clean up wavelengths input
-		wavelengths = self._cleanWavelengthInput(wavelengths)
+		wavelengths = self._cleanwavelengthinput(wavelengths)
 
 		signal, reference, ratio = self._scanroutine(wavelengths)
-		reflectance = self._baselineCorrectionRoutine(wavelengths, signal, reference, ratio)
+		reflectance = self._baselinecorrectionroutine(wavelengths, signal, reference, ratio)
 
 		data = {
 			'Label': label,
@@ -115,7 +115,7 @@ class controlGeneric(object):
 			# fpath = os.path.join(self.outputdir, label + '.json')
 			# with open(fpath, 'w') as f:
 			# 	json.dump(data, f)
-			self._save_scanPoint(
+			self._save_scanpoint(
 				label = label, 
 				wavelengths = wavelengths, 
 				reflectance = reflectance, 
@@ -130,9 +130,9 @@ class controlGeneric(object):
 			plt.title(label)
 			plt.show()
 
-	def scanLine(self, label, wavelengths, axis, p0, size, steps, plot = True, export = True):
+	def scanline(self, label, wavelengths, axis, p0, size, steps, plot = True, export = True):
 		# clean up wavelengths input
-		wavelengths = self._cleanWavelengthInput(wavelengths)
+		wavelengths = self._cleanwavelengthinput(wavelengths)
 
 		if str.lower(axis) == 'x':
 			axis = 'x'
@@ -174,7 +174,7 @@ class controlGeneric(object):
 			wlThread.join()
 
 			signal[idx, :], reference[idx, :], _ = self._scanroutine(wavelengths = wavelengths, firstscan = firstscan, lastscan = lastscan)
-			data[idx, :] = self._baselineCorrectionRoutine(wavelengths, signal[idx, :], reference[idx, :])
+			data[idx, :] = self._baselinecorrectionroutine(wavelengths, signal[idx, :], reference[idx, :])
 			delay[idx] = time.time() - startTime #time in seconds since scan began
 
 			firstscan = False
@@ -191,7 +191,7 @@ class controlGeneric(object):
 
 		if export:
 			# export as a hfile
-			self._save_scanLine(
+			self._save_scanline(
 				label = label,
 				x = xval, 
 				y = yval,
@@ -211,13 +211,13 @@ class controlGeneric(object):
 			ax.set_title('{0}'.format(label))
 			plt.show()
 
-	def findArea(self, wavelength, xsize = 30, ysize = 30, xsteps = 40, ysteps = 40, plot = True, export = False):
+	def findarea(self, wavelength, xsize = 30, ysize = 30, xsteps = 40, ysteps = 40, plot = True, export = False):
 		### method to find sample edges. does two line scans in a cross over the sample at a single wavelength.
 		# clean up wavelengths input
-		wavelength = self._cleanWavelengthInput(wavelength)
+		wavelength = self._cleanwavelengthinput(wavelength)
 
 		if wavelength.shape[0] > 1:
-			print('Please use a single wavelength for findArea - aborting')
+			print('Please use a single wavelength for findarea - aborting')
 			return False
 		
 		# self.stage.gotocenter() #go to center position, where sample is centered on integrating sphere port. Might need to remove this line later if inconvenient
@@ -237,7 +237,7 @@ class controlGeneric(object):
 			out = self.daq.read()
 			signal = [out['IntSphere']['Mean']]
 			ref = [out['Reference']['Mean']]
-			xdata[idx] = self._baselineCorrectionRoutine(wavelengths = wavelength, signal = signal, reference = ref)
+			xdata[idx] = self._baselinecorrectionroutine(wavelengths = wavelength, signal = signal, reference = ref)
 		self._lightOff()
 
 		self.stage.moveto(x = x0, y = ally[0])
@@ -248,7 +248,7 @@ class controlGeneric(object):
 			out = self.daq.read()
 			signal = [out['IntSphere']['Mean']]
 			ref = [out['Reference']['Mean']]
-			ydata[idx]= self._baselineCorrectionRoutine(wavelengths = wavelength, signal = signal, reference = ref)
+			ydata[idx]= self._baselinecorrectionroutine(wavelengths = wavelength, signal = signal, reference = ref)
 		self._lightOff()
 		self.stage.moveto(x = x0, y = y0) #return to original position
 
@@ -257,26 +257,26 @@ class controlGeneric(object):
 		if plot:
 			fig, ax = plt.subplots(2,1)
 			# ax[0].plot(allx, xdata)
-			center[0], size[0] = self._findEdges(allx, xdata, ax = ax[0])
+			center[0], size[0] = self._findedges(allx, xdata, ax = ax[0])
 			ax[0].set_xlabel('X Position (mm)')
 			ax[0].set_ylabel('Reflectance at {0} nm'.format(wavelength[0]))
 			ax[0].set_title('X Scan')
 
 			# ax[1].plot(ally, ydata)
-			center[1], size[1] = self._findEdges(ally, ydata, ax = ax[1])
+			center[1], size[1] = self._findedges(ally, ydata, ax = ax[1])
 			ax[1].set_xlabel('Y Position (mm)')
 			ax[1].set_ylabel('Reflectance at {0} nm'.format(wavelength[0]))
 			ax[1].set_title('Y Scan')
 			plt.tight_layout()
 			plt.show()
 		# print + return the centroid, width/bounds if found (currently no sanity checking to see if bounds are realistic, rely on user to judge the plots for themselves)
-		print('Suggested scanArea parameters:\n\tx0 = {0}\n\ty0 = {1}\n\txsize = {2}\n\tysize = {3}\n'.format(center[0], center[1], size[0], size[1]))
+		print('Suggested scanarea parameters:\n\tx0 = {0}\n\ty0 = {1}\n\txsize = {2}\n\tysize = {3}\n'.format(center[0], center[1], size[0], size[1]))
 
 		return center, size
 
-	def scanArea(self, label, wavelengths, xsize, ysize, xsteps = 21, ysteps = 21, x0 = None, y0 = None, export = True):
+	def scanarea(self, label, wavelengths, xsize, ysize, xsteps = 21, ysteps = 21, x0 = None, y0 = None, export = True):
 		# clean up wavelengths input
-		wavelengths = self._cleanWavelengthInput(wavelengths)
+		wavelengths = self._cleanwavelengthinput(wavelengths)
 
 		currentx, currenty = self.stage.position # return position
 		if x0 is None:
@@ -312,7 +312,7 @@ class controlGeneric(object):
 					moveThread.join()
 
 					signal[yidx, xidx, :], reference[yidx, xidx, :], _ = self._scanroutine(wavelengths = wavelengths, firstscan = firstscan, lastscan = lastscan)
-					data[yidx, xidx, :] = self._baselineCorrectionRoutine(wavelengths, signal[yidx, xidx, :], reference[yidx, xidx, :])
+					data[yidx, xidx, :] = self._baselinecorrectionroutine(wavelengths, signal[yidx, xidx, :], reference[yidx, xidx, :])
 					delay[yidx, xidx] = time.time() - startTime #time in seconds since scan began
 				else: # go in the reverse direction
 					moveThread = threading.Thread(target = self.stage.moveto, args = (x, ally[ysteps-1-yidx]))
@@ -321,7 +321,7 @@ class controlGeneric(object):
 					moveThread.join()
 
 					signal[ysteps-1-yidx, xidx, :], reference[ysteps-1-yidx, xidx, :], _ = self._scanroutine(wavelengths = wavelengths, firstscan = firstscan, lastscan = lastscan)
-					data[ysteps-1-yidx, xidx, :]= self._baselineCorrectionRoutine(wavelengths, signal[ysteps-1-yidx, xidx, :], reference[ysteps-1-yidx, xidx, :]) # baseline correction
+					data[ysteps-1-yidx, xidx, :]= self._baselinecorrectionroutine(wavelengths, signal[ysteps-1-yidx, xidx, :], reference[ysteps-1-yidx, xidx, :]) # baseline correction
 					delay[ysteps-1-yidx, xidx] = time.time() - startTime #time in seconds since scan began
 				firstscan = False
 		self.stage.moveto(x = x0, y = y0)	#go back to map center position
@@ -329,7 +329,7 @@ class controlGeneric(object):
 
 		if export:
 			# export as a hfile
-			self._save_scanArea(
+			self._save_scanarea(
 				label = label,
 				x = allx, 
 				y = ally, 
@@ -340,9 +340,9 @@ class controlGeneric(object):
 				reference = reference
 				)
 
-	def flyscanArea(self, label, wavelengths, xsize, ysize, xsteps = 21, ysteps = 21, x0 = None, y0 = None, export = True):
+	def flyscanarea(self, label, wavelengths, xsize, ysize, xsteps = 21, ysteps = 21, x0 = None, y0 = None, export = True):
 		# clean up wavelengths input
-		wavelengths = self._cleanWavelengthInput(wavelengths)
+		wavelengths = self._cleanwavelengthinput(wavelengths)
 
 		currentx, currenty = self.stage.position # return position
 		if x0 is None:
@@ -395,7 +395,7 @@ class controlGeneric(object):
 
 		if export:
 			# export as a hfile
-			self._save_flyscanArea(label = label, 
+			self._save_flyscanarea(label = label, 
 				x = allx, 
 				y = ally, 
 				delay = delay, 
@@ -403,7 +403,7 @@ class controlGeneric(object):
 				reflectance = data
 				)
 
-	def timeSeries(self, label, wavelengths, duration, interval, logtemperature = False, export = True):
+	def timeseries(self, label, wavelengths, duration, interval, logtemperature = False, export = True):
 		### records a reflectance spectrum for a given duration (seconds) at set intervals (seconds)
 		#	TODO: I don't think this will work for single wavelength inputs
 
@@ -427,7 +427,7 @@ class controlGeneric(object):
 					if logtemperature:
 						temperature.append(self.heater.getTemperature())
 					sig, ref, ratio = self._scanroutine(wavelengths, lastscan = False)
-					reflectance.append(self._baselineCorrectionRoutine(wavelengths, sig, ref, ratio))
+					reflectance.append(self._baselinecorrectionroutine(wavelengths, sig, ref, ratio))
 					signal.append(sig)
 					reference.append(ref)
 				else:	#if we have some time to wait between scans, close the shutter and go to the starting wavelength
@@ -453,7 +453,7 @@ class controlGeneric(object):
 		temperature = np.array(temperature)
 
 		if export:
-			self._save_timeSeries(
+			self._save_timeseries(
 				label = label, 
 				wavelengths = wavelengths, 
 				reflectance = reflectance, 
@@ -473,7 +473,7 @@ class controlGeneric(object):
 		# 	plt.title(label)
 		# 	plt.show()
 	
-	def scanAreaWaRD(self, label, wavelengths, wavelengths_full = None, xsize = 52, ysize = 52, xsteps = 53, ysteps = 53, x0 = None, y0 = None, position = None, export = True):
+	def scanareaWaRD(self, label, wavelengths, wavelengths_full = None, xsize = 52, ysize = 52, xsteps = 53, ysteps = 53, x0 = None, y0 = None, position = None, export = True):
 		x0s = [33, 106, 106, 33]	## UPDATE PROPER LOCATIONS
 		y0s = [117,117,57.5,57.5]
 
@@ -503,9 +503,9 @@ class controlGeneric(object):
 		if y0 is None:
 			y0 = currenty
 
-		wavelengths = self._cleanWavelengthInput(wavelengths)
+		wavelengths = self._cleanwavelengthinput(wavelengths)
 		if wavelengths_full is not None:
-			wavelengths_full = self._cleanWavelengthInput(wavelengths_full)
+			wavelengths_full = self._cleanwavelengthinput(wavelengths_full)
 		else:
 			wavelengths_full = np.linspace(1700, 2000, 151).astype(int)
 
@@ -550,13 +550,13 @@ class controlGeneric(object):
 				moveThread.join()
 
 				signal[yyidx, xidx, :], reference[yyidx, xidx, :], _ = self._scanroutine(wavelengths = wavelengths, firstscan = firstscan, lastscan = lastscan)
-				data[yyidx, xidx, :] = self._baselineCorrectionRoutine(wavelengths, signal[yyidx, xidx, :], reference[yyidx, xidx, :])
+				data[yyidx, xidx, :] = self._baselinecorrectionroutine(wavelengths, signal[yyidx, xidx, :], reference[yyidx, xidx, :])
 				delay[yyidx, xidx] = time.time() - startTime #time in seconds since scan began
 				firstscan = False
 
 				if [yyidx, xidx] in fullScanCoordinates:	#we've reached a coordinate to perform a full spectrum WaRD scan
 					signal_full[fullScanIdx, :], reference_full[fullScanIdx, :], _ = self._scanroutine(wavelengths = wavelengths_full, firstscan = firstscan, lastscan = lastscan)
-					data_full[fullScanIdx, :] = self._baselineCorrectionRoutine(wavelengths_full, signal_full[fullScanIdx, :], reference_full[fullScanIdx, :])
+					data_full[fullScanIdx, :] = self._baselinecorrectionroutine(wavelengths_full, signal_full[fullScanIdx, :], reference_full[fullScanIdx, :])
 					delay_full[fullScanIdx] = time.time() - startTime
 					x_full[fullScanIdx] = x
 					y_full[fullScanIdx] = ally[yyidx]
@@ -568,7 +568,7 @@ class controlGeneric(object):
 
 		if export:
 			# export as a hfile
-			self._save_scanAreaWaRD(
+			self._save_scanareaWaRD(
 				label = label,
 				x = allx, 
 				y = ally, 
@@ -588,7 +588,7 @@ class controlGeneric(object):
 
 	def scanLBIC(self, label, wavelengths, xsize, ysize, xsteps, ysteps, x0 = None, y0 = None, export = True):
 		# clean up wavelengths input
-		wavelengths = self._cleanWavelengthInput(wavelengths)
+		wavelengths = self._cleanwavelengthinput(wavelengths)
 
 		currentx, currenty = self.stage.position # return position
 		if x0 is None:
@@ -709,7 +709,7 @@ class controlGeneric(object):
 		signal = clipTime(timeraw, signalraw, rampTime)
 		reference = clipTime(timeraw, referenceraw, rampTime)
 		time = clipTime(timeraw, timeraw, rampTime)
-		data = self._baselineCorrectionRoutine(wavelength, signal, reference)
+		data = self._baselinecorrectionroutine(wavelength, signal, reference)
 		
 		time = time - time.min()	#force time to start at 0
 		endtime = time.max()
@@ -727,7 +727,7 @@ class controlGeneric(object):
 
 		return reflectance, timeraw, signalraw, referenceraw
 
-	def _baselineCorrectionRoutine(self, wavelengths, signal, reference, ratio = None):
+	def _baselinecorrectionroutine(self, wavelengths, signal, reference, ratio = None):
 		if self.__baselineTaken == False:
 			raise ValueError("Take baseline first")
 
@@ -758,7 +758,7 @@ class controlGeneric(object):
 		
 		return corrected
 
-	def _findEdges(self, x,r, ax = None):
+	def _findedges(self, x,r, ax = None):
 		### Given stage positions x and reflectance values r from a line scan at a single wavelength, compute the edges and center of 
 		# the sample area using the first derivative. If given an axis handle, plots the line scan + suggested positions to this axis.
 		r1 = np.gradient(r)
@@ -791,7 +791,7 @@ class controlGeneric(object):
 				   )
 		return center, rng
 
-	def _cleanWavelengthInput(self, wavelength):
+	def _cleanwavelengthinput(self, wavelength):
 		# clean up wavelengths input
 		if type(wavelength) is np.ndarray:
 			if wavelength.shape == ():
@@ -896,7 +896,7 @@ class controlGeneric(object):
 			else:
 				return info, settings
 
-	def _save_scanPoint(self, label, wavelengths, reflectance, signal, reference):
+	def _save_scanpoint(self, label, wavelengths, reflectance, signal, reference):
 		
 		fpath = self._getSavePath(label = label)	#generate filepath for saving data
 
@@ -905,7 +905,7 @@ class controlGeneric(object):
 			info, settings, baseline = self._saveGeneralInformation(f, label = label)	
 
 			## add scan type to info
-			temp = info.create_dataset('type', data = 'scanPoint'.encode('utf-8'))
+			temp = info.create_dataset('type', data = 'scanpoint'.encode('utf-8'))
 			temp.attrs['description'] = 'Type of measurement held in this file.'	
 			
 			# raw data
@@ -926,7 +926,7 @@ class controlGeneric(object):
 
 		print('Data saved to {0}'.format(fpath))	
 
-	def _save_scanLine(self, label, x, y, axis, delay, wavelengths, reflectance, signal, reference):
+	def _save_scanline(self, label, x, y, axis, delay, wavelengths, reflectance, signal, reference):
 		fpath = self._getSavePath(label = label)	#generate filepath for saving data
 
 		with h5py.File(fpath, 'w') as f:
@@ -934,7 +934,7 @@ class controlGeneric(object):
 			info, settings, baseline = self._saveGeneralInformation(f, label = label)
 
 			## add scan type to info
-			temp = info.create_dataset('type', data = 'scanLine'.encode('utf-8'))
+			temp = info.create_dataset('type', data = 'scanline'.encode('utf-8'))
 			temp.attrs['description'] = 'Type of measurement held in this file.'		
 
 			## add scan parameters to settings
@@ -1000,9 +1000,9 @@ class controlGeneric(object):
 
 		print('Data saved to {0}'.format(fpath))	
 	
-	# def _save_findArea(self, label, wavelength, reflectance):
+	# def _save_findarea(self, label, wavelength, reflectanceF):
 
-	def _save_scanArea(self, label, x, y, delay, wavelengths, reflectance, signal, reference):
+	def _save_scanarea(self, label, x, y, delay, wavelengths, reflectance, signal, reference):
 		
 		fpath = self._getSavePath(label = label)	#generate filepath for saving data
 
@@ -1011,7 +1011,7 @@ class controlGeneric(object):
 			info, settings, baseline = self._saveGeneralInformation(f, label = label)
 
 			## add scan type to info
-			temp = info.create_dataset('type', data = 'scanArea'.encode('utf-8'))
+			temp = info.create_dataset('type', data = 'scanarea'.encode('utf-8'))
 			temp.attrs['description'] = 'Type of measurement held in this file.'		
 
 			## add scan parameters to settings
@@ -1028,7 +1028,7 @@ class controlGeneric(object):
 			temp.attrs['description'] = 'Range scanned in y (mm)'
 
 			# calculate step size. Calculates the average step size in x and y. If either axis has length 1 (ie line scan), only consider step size
-			# in the other axis. If both axes have length 0 (point scan, although not a realistic outcome for .scanArea()), leave stepsize as 0
+			# in the other axis. If both axes have length 0 (point scan, although not a realistic outcome for .scanarea()), leave stepsize as 0
 			countedaxes = 0
 			stepsize = 0
 			if x.shape[0] > 1:
@@ -1041,7 +1041,7 @@ class controlGeneric(object):
 				stepsize = stepsize / countedaxes
 
 			temp = settings.create_dataset('stepsize', data = np.array(stepsize))
-			temp.attrs['description'] = 'Average step size (mm) in x and y. If either axis has length 1 (ie line scan), only consider step size in the other axis. If both axes have length 0 (point scan, although not a realistic outcome for .scanArea()), leave stepsize as 0 '			
+			temp.attrs['description'] = 'Average step size (mm) in x and y. If either axis has length 1 (ie line scan), only consider step size in the other axis. If both axes have length 0 (point scan, although not a realistic outcome for .scanarea()), leave stepsize as 0 '			
 
 			## measured data 
 			rawdata = f.create_group('/data')
@@ -1076,7 +1076,7 @@ class controlGeneric(object):
 
 		print('Data saved to {0}'.format(fpath))		
 
-	def _save_scanAreaWaRD(self, label, x, y, delay, wavelengths, reflectance, signal, reference, x_full, y_full, delay_full, wavelengths_full, reflectance_full, signal_full, reference_full):
+	def _save_scanareaWaRD(self, label, x, y, delay, wavelengths, reflectance, signal, reference, x_full, y_full, delay_full, wavelengths_full, reflectance_full, signal_full, reference_full):
 		
 		fpath = self._getSavePath(label = label)	#generate filepath for saving data
 
@@ -1085,7 +1085,7 @@ class controlGeneric(object):
 			info, settings, baseline = self._saveGeneralInformation(f, label = label)
 
 			## add scan type to info
-			temp = info.create_dataset('type', data = 'scanAreaWaRD'.encode('utf-8'))
+			temp = info.create_dataset('type', data = 'scanareaWaRD'.encode('utf-8'))
 			temp.attrs['description'] = 'Type of measurement held in this file.'		
 
 			## add scan parameters to settings
@@ -1105,7 +1105,7 @@ class controlGeneric(object):
 			temp.attrs['description'] = 'Range scanned in y (mm)'
 
 			# calculate step size. Calculates the average step size in x and y. If either axis has length 1 (ie line scan), only consider step size
-			# in the other axis. If both axes have length 0 (point scan, although not a realistic outcome for .scanArea()), leave stepsize as 0
+			# in the other axis. If both axes have length 0 (point scan, although not a realistic outcome for .scanarea()), leave stepsize as 0
 			countedaxes = 0
 			stepsize = 0
 			if x.shape[0] > 1:
@@ -1118,7 +1118,7 @@ class controlGeneric(object):
 				stepsize = stepsize / countedaxes
 
 			temp = settings.create_dataset('stepsize', data = np.array(stepsize))
-			temp.attrs['description'] = 'Average step size (mm) in x and y. If either axis has length 1 (ie line scan), only consider step size in the other axis. If both axes have length 0 (point scan, although not a realistic outcome for .scanArea()), leave stepsize as 0 '			
+			temp.attrs['description'] = 'Average step size (mm) in x and y. If either axis has length 1 (ie line scan), only consider step size in the other axis. If both axes have length 0 (point scan, although not a realistic outcome for .scanarea()), leave stepsize as 0 '			
 
 			## measured data 
 			rawdata = f.create_group('/data')
@@ -1181,7 +1181,7 @@ class controlGeneric(object):
 
 		print('Data saved to {0}'.format(fpath))		
 
-	def _save_flyscanArea(self, label, x, y, delay, wavelengths, reflectance):
+	def _save_flyscanarea(self, label, x, y, delay, wavelengths, reflectance):
 		
 		fpath = self._getSavePath(label = label)	#generate filepath for saving data
 
@@ -1190,7 +1190,7 @@ class controlGeneric(object):
 			info, settings, baseline = self._saveGeneralInformation(f, label = label)
 
 			## add scan type to info
-			temp = info.create_dataset('type', data = 'flyscanArea'.encode('utf-8'))
+			temp = info.create_dataset('type', data = 'flyscanarea'.encode('utf-8'))
 			temp.attrs['description'] = 'Type of measurement held in this file.'		
 
 			## add scan parameters to settings
@@ -1207,7 +1207,7 @@ class controlGeneric(object):
 			temp.attrs['description'] = 'Range scanned in y (mm)'
 
 			# calculate step size. Calculates the average step size in x and y. If either axis has length 1 (ie line scan), only consider step size
-			# in the other axis. If both axes have length 0 (point scan, although not a realistic outcome for .scanArea()), leave stepsize as 0
+			# in the other axis. If both axes have length 0 (point scan, although not a realistic outcome for .scanarea()), leave stepsize as 0
 			countedaxes = 0
 			stepsize = 0
 			if x.shape[0] > 1:
@@ -1220,7 +1220,7 @@ class controlGeneric(object):
 				stepsize = stepsize / countedaxes
 
 			temp = settings.create_dataset('stepsize', data = np.array(stepsize))
-			temp.attrs['description'] = 'Average step size (mm) in x and y. If either axis has length 1 (ie line scan), only consider step size in the other axis. If both axes have length 0 (point scan, although not a realistic outcome for .scanArea()), leave stepsize as 0. Note that steps in x are divided out of a continuous line scan.'			
+			temp.attrs['description'] = 'Average step size (mm) in x and y. If either axis has length 1 (ie line scan), only consider step size in the other axis. If both axes have length 0 (point scan, although not a realistic outcome for .scanarea()), leave stepsize as 0. Note that steps in x are divided out of a continuous line scan.'			
 
 			## measured data 
 			rawdata = f.create_group('/data')
@@ -1249,7 +1249,7 @@ class controlGeneric(object):
 
 		print('Data saved to {0}'.format(fpath))
 
-	def _save_timeSeries(self, label, wavelengths, reflectance, delay, duration, interval, signal, reference, logtemperature, temperature):
+	def _save_timeseries(self, label, wavelengths, reflectance, delay, duration, interval, signal, reference, logtemperature, temperature):
 
 		fpath = self._getSavePath(label = label)	#generate filepath for saving data
 
@@ -1258,7 +1258,7 @@ class controlGeneric(object):
 			info, settings, baseline = self._saveGeneralInformation(f, label = label)		
 
 			## add scan type to info
-			temp = info.create_dataset('type', data = 'timeSeries'.encode('utf-8'))
+			temp = info.create_dataset('type', data = 'timeseries'.encode('utf-8'))
 			temp.attrs['description'] = 'Type of measurement held in this file.'
 
 			## add scan parameters to settings
@@ -1323,7 +1323,7 @@ class controlGeneric(object):
 			temp.attrs['description'] = 'Range scanned in y (mm)'
 
 			# calculate step size. Calculates the average step size in x and y. If either axis has length 1 (ie line scan), only consider step size
-			# in the other axis. If both axes have length 0 (point scan, although not a realistic outcome for .scanArea()), leave stepsize as 0
+			# in the other axis. If both axes have length 0 (point scan, although not a realistic outcome for .scanarea()), leave stepsize as 0
 			countedaxes = 0
 			stepsize = 0
 			if x.shape[0] > 1:
@@ -1336,7 +1336,7 @@ class controlGeneric(object):
 				stepsize = stepsize / countedaxes
 
 			temp = settings.create_dataset('stepsize', data = np.array(stepsize))
-			temp.attrs['description'] = 'Average step size (mm) in x and y. If either axis has length 1 (ie line scan), only consider step size in the other axis. If both axes have length 0 (point scan, although not a realistic outcome for .scanArea()), leave stepsize as 0 '			
+			temp.attrs['description'] = 'Average step size (mm) in x and y. If either axis has length 1 (ie line scan), only consider step size in the other axis. If both axes have length 0 (point scan, although not a realistic outcome for .scanarea()), leave stepsize as 0 '			
 
 			## measured data 
 			rawdata = f.create_group('/data')
@@ -1367,24 +1367,8 @@ class controlGeneric(object):
 			temp.attrs['description'] = 'Time (seconds) that each scan was acquired at. Measured as seconds since first scan point.'			
 
 		print('Data saved to {0}'.format(fpath))	
-	### Test Methods: should remove these and make a wrapper function to execute these commands instead of building it into the class
-	#
-	#	This method has been saved under /tests/scanStageModule as an example test. Only thing we need to do is install the frgmapper package
-	#	instead of calling the filepath directly. Can be done by moving to the WaRD Mapping directory and running pip install -e frgmapper. The
-	# 	-e flag (editable) makes future changes reflected in the module, so we can use import frmapper / reload(frgmapper) from anywhe (including
-	#	within the test script)
 
-	def measspectra(self):
-		wave=np.linspace(1700,2000,151,dtype=int)
-		wave=wave.tolist()
-		self.connect()
-		self.takeBaseline(wave)
-		input('Place stage on integrating sphere: press enter to scan')
-		self.takeScan("test",wave,True,False,False) # green stage
-		input('Place mini module on sphere: press enter to scan')
-		self.takeScan("test",wave,True,False,False) # minimodule
-
-class controlMono(controlGeneric):
+class ControlMono(ControlGeneric):
 
 	def __init__(self, dwelltime = 0.25):
 		super().__init__(dwelltime = dwelltime)
@@ -1428,7 +1412,7 @@ class controlMono(controlGeneric):
 			self.mono.closeShutter()
 		return True
 
-class controlNKT(controlGeneric):
+class ControlNKT(ControlGeneric):
 
 	def __init__(self, dwelltime = 0.2):
 		super().__init__(dwelltime = dwelltime)
