@@ -429,7 +429,7 @@ class ControlGeneric(object):
 					delay[yidx, xidx_] = time.time() - startTime #time in seconds since scan began
 				
 					firstscan = False
-					
+
 		self.stage.moveto(x = x0, y = y0)	#go back to map center position
 		self._lightOff()
 
@@ -752,23 +752,14 @@ class ControlGeneric(object):
 		ratio = np.zeros(wavelengths.shape)
 		for idx, wl in tqdm(enumerate(wavelengths), total = wavelengths.shape[0], desc = 'Scanning {0:.1f}-{1:.1f} nm'.format(wavelengths[0], wavelengths[-1]), leave = False):
 			self._goToWavelength(wl)
-			out = self.daq.read(processPulseTrain = self.processPulseTrain)
-			if self.processPulseTrain:
-				signal[idx] = out['IntSphere']['MeanIlluminated'] - out['IntSphere']['MeanDark']
-				ref[idx] = out['Reference']['MeanIlluminated'] - out['Reference']['MeanDark']
-
-				allSignal = out['IntSphere']['AllIlluminated'] - out['IntSphere']['AllDark']
-				allRef = out['Reference']['AllIlluminated'] - out['Reference']['AllDark']
-				ratio[idx] = np.mean(np.divide(allSignal, allRef))
-			else:
-				signal[idx] = out['IntSphere']['Mean']
-				ref[idx] = out['Reference']['Mean']
-				ratio = None
+			out = self.daq.read()
+			signal[idx] = out['IntSphere']['Mean']
+			ref[idx] = out['Reference']['Mean']
 		
 		if lastscan:
 			self._lightOff()
 
-		return signal, ref, ratio
+		return signal, ref
 
 	def _flyscanroutine(self, wavelength, x0, x1, numpts, firstscan = True, lastscan = True):
 		def clipTime(timeraw, data, rampTime):
@@ -851,7 +842,7 @@ class ControlGeneric(object):
 		
 		return corrected
 
-	def _findedges(self, x,r, ax = None):
+	def _findedges(self, x, r, ax = None):
 		### Given stage positions x and reflectance values r from a line scan at a single wavelength, compute the edges and center of 
 		# the sample area using the first derivative. If given an axis handle, plots the line scan + suggested positions to this axis.
 		r1 = np.gradient(r)
@@ -927,6 +918,8 @@ class ControlGeneric(object):
 	def _save_generic(self, f, label, scantype):
 		### General information that will be saved regardless of which method (point scan, area scan, etc.) was used. Should be called
 		# at the beginning of any scan.
+
+		f.swmr_mode = True # Single Writer Multiple Reader, allows h5 file to be read during scan.
 
 		# sample info
 		info = f.create_group('/info')
