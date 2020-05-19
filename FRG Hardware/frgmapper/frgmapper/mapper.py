@@ -39,7 +39,6 @@ class ControlGeneric(object):
 	def __init__(self, dwelltime = 0.2):
 		todaysDate = datetime.datetime.now().strftime('%Y%m%d')
 		self.outputdir = os.path.join(root, datafolder, todaysDate)
-		self.__hardwareSetup = 'mono'		#distinguish whether saved data comes from the mono or nkt setup
 		self.__dwelltime = dwelltime
 		self.__baselineTaken = False
 		self.__baseline = {}
@@ -89,49 +88,109 @@ class ControlGeneric(object):
 
 		self.__baselineTaken = True
 
-	def scanpoint(self, label, wavelengths, plot = True, export = True):
-		# clean up wavelengths input
+	def scanpoint(self, label, wavelengths):
+		def preparefile(f):
+			dummy1d = np.full(wavelengths.shape, np.nan)
+
+			info, settings, baseline = self._save_generic(f, label = label)
+
+			temp = info.create_dataset('type', data = 'scanpoint'.encode('utf-8'))
+			temp.attrs['description'] = 'Type of measurement held in this file.'	
+			
+			# raw data
+			rawdata = f.create_group('/data')
+			rawdata.attrs['description'] = 'Data acquired during point scan.'
+
+			temp = rawdata.create_dataset('wavelengths', data = np.array(wavelengths))
+			temp.attrs['description'] = 'Wavelengths (nm) scanned.'
+
+			reflectance = rawdata.create_dataset('reflectance', data = dummy1d)
+			reflectance.attrs['description'] = 'Baseline-corrected reflectance measured. Stored as fraction (0-1), not percent!'
+
+			signal = rawdata.create_dataset('signalRaw', data = dummy1d)
+			signal.attrs['description'] = 'Raw signal for integrating sphere detector. (V)'
+
+			reference = rawdata.create_dataset('referenceRaw', data = dummy1d)
+			reference.attrs['description'] = 'Raw signal for reference detector. (V)'
+
+			return signal, reference, reflectance
+
 		wavelengths = self._cleanwavelengthinput(wavelengths)
+		fpath = self._getsavepath(label = label)	#generate filepath for saving data
 
-		signal, reference, ratio = self._scanroutine(wavelengths)
-		reflectance = self._baselinecorrectionroutine(wavelengths, signal, reference, ratio)
+		with h5py.File(fpath, 'w') as f:
+			signal, reference, reflectance = preparefile(f)
 
-		data = {
-			'Label': label,
-			'Wavelengths': wavelengths.tolist(),
-			'Reflectance': reflectance.tolist(),
-		}
+			signal[()], reference[()] = self._scanroutine(wavelengths)
+			reflectance[()] = self._baselinecorrectionroutine(wavelengths, signal, reference)
 
-		# if verbose:
-			### TODO: All nested numpy arrays need to be converted to lists to be compatible with json dumps. Commenting this out til hdf5, wont be an issue then
-			# data['Verbose'] = {
-			# 	'Signal': signal.tolist(),
-			# 	'Reference': reference.tolist(),
-			# 	'Baseline': self.__baseline.tolist()
-			# }
+	def scanline(self, label, wavelengths, axis, p0, size, steps):
+		def preparefile(f):
+			dummy1d =  np.full((steps, ), np.nan)
+			dummy2d =  np.full((steps, len(wavelengths)), np.nan)
 
-		if export and self.outputdir is not None:
-			# self._saveTakeScan(label = label, wavelengths = wavelengths, reflectance = reflectance)
-			# fpath = os.path.join(self.outputdir, label + '.json')
-			# with open(fpath, 'w') as f:
-			# 	json.dump(data, f)
-			self._save_scanpoint(
-				label = label, 
-				wavelengths = wavelengths, 
-				reflectance = reflectance, 
-				signal = signal, 
-				reference = reference
-				)
+			info, settings, baseline = self._save_generic(f, label = label)
 
-		if plot:
-			plt.plot(data['Wavelengths'],data['Reflectance'])
-			plt.xlabel('Wavelength (nm)')
-			plt.ylabel('Reflectance')
-			plt.title(label)
-			plt.show()
+			## add scan type to info
+			temp = info.create_dataset('type', data = 'scanline'.encode('utf-8'))
+			temp.attrs['description'] = 'Type of measurement held in this file.'		
 
-	def scanline(self, label, wavelengths, axis, p0, size, steps, plot = True, export = True):
-		# clean up wavelengths input
+			## add scan parameters to settings
+			if axis == 'x':
+				temp = settings.create_dataset('numx', data = np.array(x.shape[0]))
+				temp.attrs['description'] = 'Number of points scanned in x'			
+
+				temp = settings.create_dataset('numy', data = np.array(y))
+				temp.attrs['description'] = 'Number of points scanned in y'
+
+				stepsize = np.abs(x[1] - x[0])
+			else:
+				temp = settings.create_dataset('numx', data = np.array(x))
+				temp.attrs['description'] = 'Number of points scanned in x'			
+				temp = settings.create_dataset('numy', data = np.array(y.shape[0]))
+				temp.attrs['description'] = 'Number of points scanned in y'
+
+				stepsize = np.abs(y[1] - y[0])
+
+			temp = settings.create_dataset('stepsize', data = np.array(stepsize))
+			temp.attrs['description'] = 'Step size (mm) in line scan.'	
+
+			temp = settings.create_dataset('axis', data = axis.encode('utf-8'))
+			temp.attrs['description'] = 'Axis scanned (x or y)'
+
+			## measured data 
+			rawdata = f.create_group('/data')
+			rawdata.attrs['description'] = 'Data acquired during area scan.'
+
+			temp = rawdata.create_dataset('x', data = np.array(x))
+			temp.attrs['description'] = 'Absolute X coordinate (mm) per point'
+
+			temp = rawdata.create_dataset('y', data = np.array(y))
+			temp.attrs['description'] = 'Absolute Y coordinate (mm) per point'
+
+			temp = rawdata.create_dataset('relx', data = np.array(x - np.min(x)))
+			temp.attrs['description'] = 'Relative X coordinate (mm) per point'
+
+			temp = rawdata.create_dataset('rely', data = np.array(y - np.min(y)))
+			temp.attrs['description'] = 'Relative Y coordinate (mm) per point'						
+
+			temp = rawdata.create_dataset('wavelengths', data = np.array(wavelengths))
+			temp.attrs['description'] = 'Wavelengths (nm) scanned per point.'
+
+			reflectance = rawdata.create_dataset('reflectance', data = dummy2d)
+			reflectance.attrs['description'] = 'Baseline-corrected reflectance measured. Stored as [y, x, wl]. Stored as fraction (0-1), not percent!'
+
+			signal = rawdata.create_dataset('signalRaw', data = dummy2d)
+			signal.attrs['description'] = 'Raw signal for integrating sphere detector. (V)'
+
+			reference = rawdata.create_dataset('referenceRaw', data = dummy2d)
+			reference.attrs['description'] = 'Raw signal for reference detector. (V)'
+
+			delay = rawdata.create_dataset('delay', data = dummy1d)
+			delay.attrs['description'] = 'Time (seconds) that each scan was acquired at. Measured as seconds since first scan point.'			
+
+			return reflectance, signal, reference, delay
+
 		wavelengths = self._cleanwavelengthinput(wavelengths)
 
 		if str.lower(axis) == 'x':
@@ -142,7 +201,7 @@ class ControlGeneric(object):
 			print('Error: axis must equal \'x\' or \'y\': user provided {0}'.format(axis))
 			return
 
-		x0, y0 = self.stage.position # return position
+		x0, y0 = self.stage.position
 		if p0 is None:
 			if axis == 'x':
 				p0 = x0
@@ -150,38 +209,6 @@ class ControlGeneric(object):
 				p0 = y0
 
 		allpts = np.linspace(p0 - size/2, p0 + size/2, steps)
-		
-		data = np.zeros((steps, len(wavelengths)))
-		signal = np.zeros((steps, len(wavelengths)))
-		reference = np.zeros((steps, len(wavelengths)))
-		delay = np.zeros((steps,))
-
-		firstscan = True
-		lastscan = False
-		startTime = time.time()
-		for idx, p in tqdm(enumerate(allpts), desc = 'Scanning {0}'.format(axis), total = steps, leave = False):
-			if idx == steps-1:
-				lastScan = True
-
-			if axis == 'x':
-				moveThread = threading.Thread(target = self.stage.moveto, args = (p, y0))
-			else:
-				moveThread = threading.Thread(target = self.stage.moveto, args = (x0, p))
-			moveThread.start()
-			wlThread = threading.Thread(target = self._goToWavelength, args = (wavelengths[0],))
-			wlThread.start()
-			moveThread.join()
-			wlThread.join()
-
-			signal[idx, :], reference[idx, :], _ = self._scanroutine(wavelengths = wavelengths, firstscan = firstscan, lastscan = lastscan)
-			data[idx, :] = self._baselinecorrectionroutine(wavelengths, signal[idx, :], reference[idx, :])
-			delay[idx] = time.time() - startTime #time in seconds since scan began
-
-			firstscan = False
-
-		self.stage.moveto(x = x0, y = y0)	#go back to map center position
-		self._lightOff()
-
 		if axis == 'x':
 			xval = allpts
 			yval = y0
@@ -189,27 +216,35 @@ class ControlGeneric(object):
 			xval = x0,
 			yval = allpts
 
-		if export:
-			# export as a hfile
-			self._save_scanline(
-				label = label,
-				x = xval, 
-				y = yval,
-				axis = axis, 
-				delay = delay, 
-				wavelengths = wavelengths, 
-				reflectance = data, 
-				signal = signal, 
-				reference = reference
-				)
-		if plot:
-			fig, ax = plt.subplots(1,1)
-			ax.plot(allpts, data.mean(axis = 1))
+		fpath = self._getsavepath(label = label)	#generate filepath for saving data
+		with h5py.File(fpath, 'w') as f:
+			reflectance, signal, reference, delay = preparefile(f)
 
-			ax.set_xlabel('{0} (mm)'.format(axis))
-			ax.set_ylabel('Reflectance (%)')
-			ax.set_title('{0}'.format(label))
-			plt.show()
+			firstscan = True
+			lastscan = False
+			startTime = time.time()
+			for idx, p in tqdm(enumerate(allpts), desc = 'Scanning {0}'.format(axis), total = steps, leave = False):
+				if idx == steps-1:
+					lastScan = True
+
+				if axis == 'x':
+					moveThread = threading.Thread(target = self.stage.moveto, args = (p, y0))
+				else:
+					moveThread = threading.Thread(target = self.stage.moveto, args = (x0, p))
+				moveThread.start()
+				wlThread = threading.Thread(target = self._goToWavelength, args = (wavelengths[0],))
+				wlThread.start()
+				moveThread.join()
+				wlThread.join()
+
+				signal[idx, :], reference[idx, :] = self._scanroutine(wavelengths = wavelengths, firstscan = firstscan, lastscan = lastscan)
+				reflectance[idx, :] = self._baselinecorrectionroutine(wavelengths, signal[idx, :], reference[idx, :])
+				delay[idx] = time.time() - startTime #time in seconds since scan began
+
+				firstscan = False
+
+		self.stage.moveto(x = x0, y = y0)	#go back to map center position
+		self._lightOff()
 
 	def findarea(self, wavelength, xsize = 30, ysize = 30, xsteps = 40, ysteps = 40, plot = True, export = False):
 		### method to find sample edges. does two line scans in a cross over the sample at a single wavelength.
@@ -275,6 +310,78 @@ class ControlGeneric(object):
 		return center, size
 
 	def scanarea(self, label, wavelengths, xsize, ysize, xsteps = 21, ysteps = 21, x0 = None, y0 = None, export = True):
+		def preparefile(f):
+			dummy2d =  np.full((ysteps, xsteps), np.nan)
+			dummy3d =  np.full((ysteps, xsteps, len(wavelengths)), np.nan)
+
+			info, settings, baseline = self._save_generic(f, label = label)
+
+			## add scan type to info
+			temp = info.create_dataset('type', data = 'scanarea'.encode('utf-8'))
+			temp.attrs['description'] = 'Type of measurement held in this file.'		
+
+			## add scan parameters to settings
+			temp = settings.create_dataset('numx', data = np.array(x.shape[0]))
+			temp.attrs['description'] = 'Number of points scanned in x'			
+
+			temp = settings.create_dataset('numy', data = np.array(y.shape[0]))
+			temp.attrs['description'] = 'Number of points scanned in y'
+
+			temp = settings.create_dataset('rangex', data = np.array(np.abs(x[-1] - x[0])))
+			temp.attrs['description'] = 'Range scanned in x (mm)'
+
+			temp = settings.create_dataset('rangey', data = np.array(np.abs(y[-1] - y[0])))
+			temp.attrs['description'] = 'Range scanned in y (mm)'
+
+			# calculate step size. Calculates the average step size in x and y. If either axis has length 1 (ie line scan), only consider step size
+			# in the other axis. If both axes have length 0 (point scan, although not a realistic outcome for .scanarea()), leave stepsize as 0
+			countedaxes = 0
+			stepsize = 0
+			if x.shape[0] > 1:
+				stepsize = stepsize + np.abs(x[1] - x[0])
+				countedaxes = countedaxes + 1
+			if y.shape[0] > 1:
+				stepsize = stepsize + np.abs(y[1] - y[0])
+				countedaxes = countedaxes + 1
+			if countedaxes:
+				stepsize = stepsize / countedaxes
+
+			temp = settings.create_dataset('stepsize', data = np.array(stepsize))
+			temp.attrs['description'] = 'Average step size (mm) in x and y. If either axis has length 1 (ie line scan), only consider step size in the other axis. If both axes have length 0 (point scan, although not a realistic outcome for .scanarea()), leave stepsize as 0 '			
+
+			## measured data 
+			rawdata = f.create_group('/data')
+			rawdata.attrs['description'] = 'Data acquired during area scan.'
+
+			temp = rawdata.create_dataset('x', data = np.array(allx))
+			temp.attrs['description'] = 'Absolute X coordinate (mm) per point'
+
+			temp = rawdata.create_dataset('y', data = np.array(ally))
+			temp.attrs['description'] = 'Absolute Y coordinate (mm) per point'
+
+			temp = rawdata.create_dataset('relx', data = np.array(allx - np.min(allx)))
+			temp.attrs['description'] = 'Relative X coordinate (mm) per point'
+
+			temp = rawdata.create_dataset('rely', data = np.array(ally - np.min(ally)))
+			temp.attrs['description'] = 'Relative Y coordinate (mm) per point'						
+
+			temp = rawdata.create_dataset('wavelengths', data = np.array(wavelengths))
+			temp.attrs['description'] = 'Wavelengths (nm) scanned per point.'
+
+			reflectance = rawdata.create_dataset('reflectance', data = dummy3d)
+			reflectance.attrs['description'] = 'Baseline-corrected reflectance measured. Stored as [y, x, wl]. Stored as fraction (0-1), not percent!'
+
+			signal = rawdata.create_dataset('signalRaw', data = dummy3d)
+			signal.attrs['description'] = 'Raw signal for integrating sphere detector. (V)'
+
+			reference = rawdata.create_dataset('referenceRaw', data = dummy3d)
+			reference.attrs['description'] = 'Raw signal for reference detector. (V)'
+
+			delay = rawdata.create_dataset('delay', data = dummy2d)
+			delay.attrs['description'] = 'Time (seconds) that each scan was acquired at. Measured as seconds since first scan point.'	
+
+			return reflectance, signal, reference, delay
+
 		# clean up wavelengths input
 		wavelengths = self._cleanwavelengthinput(wavelengths)
 
@@ -287,58 +394,44 @@ class ControlGeneric(object):
 		allx = np.linspace(x0 - xsize/2, x0 + xsize/2, xsteps)
 		ally = np.linspace(y0 - ysize/2, y0 + ysize/2, ysteps)
 
-		data = np.zeros((ysteps, xsteps, len(wavelengths)))
-		signal = np.zeros((ysteps, xsteps, len(wavelengths)))
-		reference = np.zeros((ysteps, xsteps, len(wavelengths)))
-		delay = np.zeros((ysteps, xsteps))
 
-		firstscan = True
-		lastscan = False
-		reverse= -1 # for snaking
-		startTime = time.time()
-		for xidx, x in tqdm(enumerate(allx), desc = 'Scanning X', total = allx.shape[0], leave = False):
-			reverse=reverse*(-1)
+		fpath = self._getsavepath(label = label)	#generate filepath for saving data
+		with h5py.File(fpath, 'w'):
+			reflectance, signal, reflectance, delay = preparefile()
+
+			firstscan = True
+			lastscan = False
+			reverse= -1 # for snaking
+			startTime = time.time()
 			for yidx, y in tqdm(enumerate(ally), desc = 'Scanning Y', total = ally.shape[0], leave = False):
-				if xidx == xsteps-1 and yidx == ysteps-1:
-					lastScan = True
-				# Condition to map in a snake pattern rather than coming back to first x point
-				wlThread = threading.Thread(target = self._goToWavelength, args = (wavelengths[0],))
-				wlThread.start()
+				reverse=reverse*(-1)
+				for xidx, x in tqdm(enumerate(allx), desc = 'Scanning X', total = allx.shape[0], leave = False):
+					if xidx == xsteps-1 and yidx == ysteps-1:
+						lastScan = True
+					# Condition to map in a snake pattern rather than coming back to first x point
+					wlThread = threading.Thread(target = self._goToWavelength, args = (wavelengths[0],))
+					wlThread.start()
 
-				if reverse > 0: #go in the forward direction
-					moveThread = threading.Thread(target = self.stage.moveto, args = (x, y))
+					if reverse > 0: #snaking in x dimension
+						xidx_ = xidx
+						x_ = x
+					else:
+						xidx_ = xsteps-1-xidx
+						x_ = allx[xidx_]
+
+					moveThread = threading.Thread(target = self.stage.moveto, args = (x_, y))
 					moveThread.start()
 					wlThread.join()
 					moveThread.join()
 
-					signal[yidx, xidx, :], reference[yidx, xidx, :], _ = self._scanroutine(wavelengths = wavelengths, firstscan = firstscan, lastscan = lastscan)
-					data[yidx, xidx, :] = self._baselinecorrectionroutine(wavelengths, signal[yidx, xidx, :], reference[yidx, xidx, :])
-					delay[yidx, xidx] = time.time() - startTime #time in seconds since scan began
-				else: # go in the reverse direction
-					moveThread = threading.Thread(target = self.stage.moveto, args = (x, ally[ysteps-1-yidx]))
-					moveThread.start()
-					wlThread.join()
-					moveThread.join()
-
-					signal[ysteps-1-yidx, xidx, :], reference[ysteps-1-yidx, xidx, :], _ = self._scanroutine(wavelengths = wavelengths, firstscan = firstscan, lastscan = lastscan)
-					data[ysteps-1-yidx, xidx, :]= self._baselinecorrectionroutine(wavelengths, signal[ysteps-1-yidx, xidx, :], reference[ysteps-1-yidx, xidx, :]) # baseline correction
-					delay[ysteps-1-yidx, xidx] = time.time() - startTime #time in seconds since scan began
-				firstscan = False
+					signal[yidx, xidx_, :], reference[yidx, xidx_, :] = self._scanroutine(wavelengths = wavelengths, firstscan = firstscan, lastscan = lastscan)
+					reflectance[yidx_, xidx_, :] = self._baselinecorrectionroutine(wavelengths, signal[yidx, xidx_, :], reference[yidx, xidx_, :])
+					delay[yidx, xidx_] = time.time() - startTime #time in seconds since scan began
+				
+					firstscan = False
+					
 		self.stage.moveto(x = x0, y = y0)	#go back to map center position
 		self._lightOff()
-
-		if export:
-			# export as a hfile
-			self._save_scanarea(
-				label = label,
-				x = allx, 
-				y = ally, 
-				delay = delay, 
-				wavelengths = wavelengths, 
-				reflectance = data, 
-				signal = signal, 
-				reference = reference
-				)
 
 	def flyscanarea(self, label, wavelengths, xsize, ysize, xsteps = 21, ysteps = 21, x0 = None, y0 = None, export = True):
 		# clean up wavelengths input
@@ -806,7 +899,7 @@ class ControlGeneric(object):
 		return wavelength
 	
 	### Save methods to dump measurements to hdf5 file. Currently copied from PL code, need to fit this to the mapping data.
-	def _getSavePath(self, label):
+	def _getsavepath(self, label):
 		todaysDate = datetime.datetime.now().strftime('%Y%m%d')
 		self.outputdir = os.path.join(root, datafolder, todaysDate)	#set outputdir folder so the scan saves on correct date (date of scan completion)
 
@@ -831,258 +924,81 @@ class ControlGeneric(object):
 
 		return fpath
 
-	def _saveGeneralInformation(self, f, label, include_baseline = True):
+	def _save_generic(self, f, label, scantype):
 		### General information that will be saved regardless of which method (point scan, area scan, etc.) was used. Should be called
-		# at the beginning of any method-specific save method.
+		# at the beginning of any scan.
 
-			# sample info
-			info = f.create_group('/info')
-			info.attrs['description'] = 'Metadata describing sample, datetime, etc.'
-			
-			temp = info.create_dataset('name', data = label.encode('utf-8'))
-			temp.attrs['description'] = 'Sample name.'
-
-			date = info.create_dataset('date', data = datetime.datetime.now().strftime('%Y-%m-%d').encode('utf-8'))
-			temp.attrs['description'] = 'Measurement date.'
-			
-			temp = info.create_dataset('time', data =  datetime.datetime.now().strftime('%H:%M:%S').encode('utf-8'))
-			temp.attrs['description'] = 'Measurement time of day.'
-
-			# measurement settings
-			settings = f.create_group('/settings')
-			settings.attrs['description'] = 'Settings used for measurements.'
-
-			temp = settings.create_dataset('hardware', data = self.__hardwareSetup.encode('utf-8'))
-			temp.attrs['description'] = 'Light source/ardware used for this scan - either the newport lamp + monochromator, or nkt compact + select'
-
-			temp = settings.create_dataset('dwelltime', data = self.__dwelltime)
-			temp.attrs['description'] = 'Time spent collecting signal at each wavelength.'
-
-			temp = settings.create_dataset('count_rate', data = self.daq.rate)
-			temp.attrs['description'] = 'Acquisition rate (Hz) of data acquisition unit when reading detector voltages.'
-
-			temp = settings.create_dataset('num_counts', data = self.daq.counts)
-			temp.attrs['description'] = 'Voltage counts per detector used to quantify reflectance values.'
-
-			temp = settings.create_dataset('position', data = np.array(self.stage.position))
-			temp.attrs['description'] = 'Stage position (x,y) during scan.'
-
-			if include_baseline:
-				# baseline measurement
-				baseline = f.create_group('/settings/baseline')
-
-				temp = baseline.create_dataset('wavelengths', data = np.array(self.__baseline['Wavelengths']))
-				temp.attrs['description'] = 'Wavelengths (nm) scanned for baseline measurement'
-
-				temp = baseline.create_dataset('sphere_ill', data = np.array(self.__baseline['LightRaw']))
-				temp.attrs['description'] = 'Raw counts for integrating sphere detector during illuminated baseline measurement'
-
-				temp = baseline.create_dataset('ref_ill', data = np.array(self.__baseline['LightRefRaw']))
-				temp.attrs['description'] = 'Raw counts for reference detector during illuminated baseline measurement'
-
-				temp = baseline.create_dataset('ratio_ill', data = np.array(self.__baseline['Light']))
-				temp.attrs['description'] = 'Ratio of sphere/reference counts during illuminated baseline measurement. This number is considered 100\% reflectance'
-
-				temp = baseline.create_dataset('sphere_dark', data = np.array(self.__baseline['DarkRaw']))
-				temp.attrs['description'] = 'Raw counts for integrating sphere detector during dark baseline measurement. Single point, independent of wavelength.'
-
-				temp = baseline.create_dataset('ref_dark', data = np.array(self.__baseline['DarkRefRaw']))
-				temp.attrs['description'] = 'Raw counts for reference detector during dark baseline measurement. Single point, independent of wavelength.'
-
-				temp = baseline.create_dataset('ratio_dark', data = np.array(self.__baseline['Dark']))
-				temp.attrs['description'] = 'Ratio of sphere/reference counts during illuminated baseline measurement. This number is considered 0\% reflectance. Single point, independent of wavelength.'
-
-				return info, settings, baseline
-			else:
-				return info, settings
-
-	def _save_scanpoint(self, label, wavelengths, reflectance, signal, reference):
+		# sample info
+		info = f.create_group('/info')
+		info.attrs['description'] = 'Metadata describing sample, datetime, etc.'
 		
-		fpath = self._getSavePath(label = label)	#generate filepath for saving data
+		temp = info.create_dataset('name', data = label.encode('utf-8'))
+		temp.attrs['description'] = 'Sample name.'
 
-		with h5py.File(fpath, 'w') as f:
-			
-			info, settings, baseline = self._saveGeneralInformation(f, label = label)	
-
-			## add scan type to info
-			temp = info.create_dataset('type', data = 'scanpoint'.encode('utf-8'))
-			temp.attrs['description'] = 'Type of measurement held in this file.'	
-			
-			# raw data
-			rawdata = f.create_group('/data')
-			rawdata.attrs['description'] = 'Data acquired during point scan.'
-
-			temp = rawdata.create_dataset('wavelengths', data = np.array(wavelengths))
-			temp.attrs['description'] = 'Wavelengths (nm) scanned.'
-
-			temp = rawdata.create_dataset('reflectance', data = np.array(reflectance))
-			temp.attrs['description'] = 'Baseline-corrected reflectance measured. Stored as fraction (0-1), not percent!'
-
-			temp = rawdata.create_dataset('signalRaw', data = np.array(signal))
-			temp.attrs['description'] = 'Raw signal for integrating sphere detector. (V)'
-
-			temp = rawdata.create_dataset('referenceRaw', data = np.array(reference))
-			temp.attrs['description'] = 'Raw signal for reference detector. (V)'
-
-		print('Data saved to {0}'.format(fpath))	
-
-	def _save_scanline(self, label, x, y, axis, delay, wavelengths, reflectance, signal, reference):
-		fpath = self._getSavePath(label = label)	#generate filepath for saving data
-
-		with h5py.File(fpath, 'w') as f:
-			
-			info, settings, baseline = self._saveGeneralInformation(f, label = label)
-
-			## add scan type to info
-			temp = info.create_dataset('type', data = 'scanline'.encode('utf-8'))
-			temp.attrs['description'] = 'Type of measurement held in this file.'		
-
-			## add scan parameters to settings
-			if axis == 'x':
-				temp = settings.create_dataset('numx', data = np.array(x.shape[0]))
-				temp.attrs['description'] = 'Number of points scanned in x'			
-
-				temp = settings.create_dataset('numy', data = np.array(y))
-				temp.attrs['description'] = 'Number of points scanned in y'
-
-				stepsize = np.abs(x[1] - x[0])
-			else:
-				temp = settings.create_dataset('numx', data = np.array(x))
-				temp.attrs['description'] = 'Number of points scanned in x'			
-
-				temp = settings.create_dataset('numy', data = np.array(y.shape[0]))
-				temp.attrs['description'] = 'Number of points scanned in y'
-
-				stepsize = np.abs(y[1] - y[0])
-
-			temp = settings.create_dataset('stepsize', data = np.array(stepsize))
-			temp.attrs['description'] = 'Step size (mm) in line scan.'	
-
-			temp = settings.create_dataset('axis', data = axis.encode('utf-8'))
-			temp.attrs['description'] = 'Axis scanned (x or y)'
-
-			# temp = settings.create_dataset('rangex', data = np.array(np.abs(x[-1] - x[0])))
-			# temp.attrs['description'] = 'Range scanned in x (mm)'
-
-			# temp = settings.create_dataset('rangey', data = np.array(np.abs(y[-1] - y[0])))
-			# temp.attrs['description'] = 'Range scanned in y (mm)'
-
-			## measured data 
-			rawdata = f.create_group('/data')
-			rawdata.attrs['description'] = 'Data acquired during area scan.'
-
-			temp = rawdata.create_dataset('x', data = np.array(x))
-			temp.attrs['description'] = 'Absolute X coordinate (mm) per point'
-
-			temp = rawdata.create_dataset('y', data = np.array(y))
-			temp.attrs['description'] = 'Absolute Y coordinate (mm) per point'
-
-			temp = rawdata.create_dataset('relx', data = np.array(x - np.min(x)))
-			temp.attrs['description'] = 'Relative X coordinate (mm) per point'
-
-			temp = rawdata.create_dataset('rely', data = np.array(y - np.min(y)))
-			temp.attrs['description'] = 'Relative Y coordinate (mm) per point'						
-
-			temp = rawdata.create_dataset('wavelengths', data = np.array(wavelengths))
-			temp.attrs['description'] = 'Wavelengths (nm) scanned per point.'
-
-			temp = rawdata.create_dataset('reflectance', data = np.array(reflectance))
-			temp.attrs['description'] = 'Baseline-corrected reflectance measured. Stored as [y, x, wl]. Stored as fraction (0-1), not percent!'
-
-			temp = rawdata.create_dataset('signalRaw', data = np.array(signal))
-			temp.attrs['description'] = 'Raw signal for integrating sphere detector. (V)'
-
-			temp = rawdata.create_dataset('referenceRaw', data = np.array(reference))
-			temp.attrs['description'] = 'Raw signal for reference detector. (V)'
-
-			temp = rawdata.create_dataset('delay', data = np.array(delay))
-			temp.attrs['description'] = 'Time (seconds) that each scan was acquired at. Measured as seconds since first scan point.'			
-
-		print('Data saved to {0}'.format(fpath))	
-	
-	# def _save_findarea(self, label, wavelength, reflectanceF):
-
-	def _save_scanarea(self, label, x, y, delay, wavelengths, reflectance, signal, reference):
+		date = info.create_dataset('date', data = datetime.datetime.now().strftime('%Y-%m-%d').encode('utf-8'))
+		temp.attrs['description'] = 'Measurement start date.'
 		
-		fpath = self._getSavePath(label = label)	#generate filepath for saving data
+		temp = info.create_dataset('time', data =  datetime.datetime.now().strftime('%H:%M:%S').encode('utf-8'))
+		temp.attrs['description'] = 'Measurement start time of day.'
 
-		with h5py.File(fpath, 'w') as f:
-			
-			info, settings, baseline = self._saveGeneralInformation(f, label = label)
+		temp = info.create_dataset('completed', data =  0)
+		temp.attrs['description'] = 'Boolean flag, true if measurement was successfully completed. If false, portion of data is likely missing, and should be reported as NaNs'
 
-			## add scan type to info
-			temp = info.create_dataset('type', data = 'scanarea'.encode('utf-8'))
-			temp.attrs['description'] = 'Type of measurement held in this file.'		
+		temp = info.create_dataset('type', data = scantype.encode('utf-8'))
+		temp.attrs['description'] = 'Type of measurement held in this file.'
 
-			## add scan parameters to settings
-			temp = settings.create_dataset('numx', data = np.array(x.shape[0]))
-			temp.attrs['description'] = 'Number of points scanned in x'			
+		# measurement settings
+		settings = f.create_group('/settings')
+		settings.attrs['description'] = 'Settings used for measurements.'
 
-			temp = settings.create_dataset('numy', data = np.array(y.shape[0]))
-			temp.attrs['description'] = 'Number of points scanned in y'
+		temp = settings.create_dataset('hardware', data = self.__hardwareSetup.encode('utf-8'))
+		temp.attrs['description'] = 'Light source/ardware used for this scan - either the newport lamp + monochromator, or nkt compact + select'
 
-			temp = settings.create_dataset('rangex', data = np.array(np.abs(x[-1] - x[0])))
-			temp.attrs['description'] = 'Range scanned in x (mm)'
+		temp = settings.create_dataset('dwelltime', data = self.__dwelltime)
+		temp.attrs['description'] = 'Time spent collecting signal at each wavelength.'
 
-			temp = settings.create_dataset('rangey', data = np.array(np.abs(y[-1] - y[0])))
-			temp.attrs['description'] = 'Range scanned in y (mm)'
+		temp = settings.create_dataset('count_rate', data = self.daq.rate)
+		temp.attrs['description'] = 'Acquisition rate (Hz) of data acquisition unit when reading detector voltages.'
 
-			# calculate step size. Calculates the average step size in x and y. If either axis has length 1 (ie line scan), only consider step size
-			# in the other axis. If both axes have length 0 (point scan, although not a realistic outcome for .scanarea()), leave stepsize as 0
-			countedaxes = 0
-			stepsize = 0
-			if x.shape[0] > 1:
-				stepsize = stepsize + np.abs(x[1] - x[0])
-				countedaxes = countedaxes + 1
-			if y.shape[0] > 1:
-				stepsize = stepsize + np.abs(y[1] - y[0])
-				countedaxes = countedaxes + 1
-			if countedaxes:
-				stepsize = stepsize / countedaxes
+		temp = settings.create_dataset('num_counts', data = self.daq.counts)
+		temp.attrs['description'] = 'Voltage counts per detector used to quantify reflectance values.'
 
-			temp = settings.create_dataset('stepsize', data = np.array(stepsize))
-			temp.attrs['description'] = 'Average step size (mm) in x and y. If either axis has length 1 (ie line scan), only consider step size in the other axis. If both axes have length 0 (point scan, although not a realistic outcome for .scanarea()), leave stepsize as 0 '			
+		temp = settings.create_dataset('position', data = np.array(self.stage.position))
+		temp.attrs['description'] = 'Stage position (x,y) during scan.'
 
-			## measured data 
-			rawdata = f.create_group('/data')
-			rawdata.attrs['description'] = 'Data acquired during area scan.'
+		# baseline measurement
+		baseline = f.create_group('/settings/baseline')
 
-			temp = rawdata.create_dataset('x', data = np.array(x))
-			temp.attrs['description'] = 'Absolute X coordinate (mm) per point'
+		temp = baseline.create_dataset('wavelengths', data = np.array(self.__baseline['Wavelengths']))
+		temp.attrs['description'] = 'Wavelengths (nm) scanned for baseline measurement'
 
-			temp = rawdata.create_dataset('y', data = np.array(y))
-			temp.attrs['description'] = 'Absolute Y coordinate (mm) per point'
+		temp = baseline.create_dataset('sphere_ill', data = np.array(self.__baseline['LightRaw']))
+		temp.attrs['description'] = 'Raw counts for integrating sphere detector during illuminated baseline measurement'
 
-			temp = rawdata.create_dataset('relx', data = np.array(x - np.min(x)))
-			temp.attrs['description'] = 'Relative X coordinate (mm) per point'
+		temp = baseline.create_dataset('ref_ill', data = np.array(self.__baseline['LightRefRaw']))
+		temp.attrs['description'] = 'Raw counts for reference detector during illuminated baseline measurement'
 
-			temp = rawdata.create_dataset('rely', data = np.array(y - np.min(y)))
-			temp.attrs['description'] = 'Relative Y coordinate (mm) per point'						
+		temp = baseline.create_dataset('ratio_ill', data = np.array(self.__baseline['Light']))
+		temp.attrs['description'] = 'Ratio of sphere/reference counts during illuminated baseline measurement. This number is considered 100\% reflectance'
 
-			temp = rawdata.create_dataset('wavelengths', data = np.array(wavelengths))
-			temp.attrs['description'] = 'Wavelengths (nm) scanned per point.'
+		temp = baseline.create_dataset('sphere_dark', data = np.array(self.__baseline['DarkRaw']))
+		temp.attrs['description'] = 'Raw counts for integrating sphere detector during dark baseline measurement. Single point, independent of wavelength.'
 
-			temp = rawdata.create_dataset('reflectance', data = np.array(reflectance))
-			temp.attrs['description'] = 'Baseline-corrected reflectance measured. Stored as [y, x, wl]. Stored as fraction (0-1), not percent!'
+		temp = baseline.create_dataset('ref_dark', data = np.array(self.__baseline['DarkRefRaw']))
+		temp.attrs['description'] = 'Raw counts for reference detector during dark baseline measurement. Single point, independent of wavelength.'
 
-			temp = rawdata.create_dataset('signalRaw', data = np.array(signal))
-			temp.attrs['description'] = 'Raw signal for integrating sphere detector. (V)'
+		temp = baseline.create_dataset('ratio_dark', data = np.array(self.__baseline['Dark']))
+		temp.attrs['description'] = 'Ratio of sphere/reference counts during illuminated baseline measurement. This number is considered 0\% reflectance. Single point, independent of wavelength.'
 
-			temp = rawdata.create_dataset('referenceRaw', data = np.array(reference))
-			temp.attrs['description'] = 'Raw signal for reference detector. (V)'
-
-			temp = rawdata.create_dataset('delay', data = np.array(delay))
-			temp.attrs['description'] = 'Time (seconds) that each scan was acquired at. Measured as seconds since first scan point.'			
-
-		print('Data saved to {0}'.format(fpath))		
+		return info, settings, baseline
 
 	def _save_scanareaWaRD(self, label, x, y, delay, wavelengths, reflectance, signal, reference, x_full, y_full, delay_full, wavelengths_full, reflectance_full, signal_full, reference_full):
 		
-		fpath = self._getSavePath(label = label)	#generate filepath for saving data
+		fpath = self._getsavepath(label = label)	#generate filepath for saving data
 
 		with h5py.File(fpath, 'w') as f:
 			
-			info, settings, baseline = self._saveGeneralInformation(f, label = label)
+			info, settings, baseline = self._save_generic(f, label = label)
 
 			## add scan type to info
 			temp = info.create_dataset('type', data = 'scanareaWaRD'.encode('utf-8'))
@@ -1183,11 +1099,11 @@ class ControlGeneric(object):
 
 	def _save_flyscanarea(self, label, x, y, delay, wavelengths, reflectance):
 		
-		fpath = self._getSavePath(label = label)	#generate filepath for saving data
+		fpath = self._getsavepath(label = label)	#generate filepath for saving data
 
 		with h5py.File(fpath, 'w') as f:
 			
-			info, settings, baseline = self._saveGeneralInformation(f, label = label)
+			info, settings, baseline = self._save_generic(f, label = label)
 
 			## add scan type to info
 			temp = info.create_dataset('type', data = 'flyscanarea'.encode('utf-8'))
@@ -1251,11 +1167,11 @@ class ControlGeneric(object):
 
 	def _save_timeseries(self, label, wavelengths, reflectance, delay, duration, interval, signal, reference, logtemperature, temperature):
 
-		fpath = self._getSavePath(label = label)	#generate filepath for saving data
+		fpath = self._getsavepath(label = label)	#generate filepath for saving data
 
 		with h5py.File(fpath, 'w') as f:
 			
-			info, settings, baseline = self._saveGeneralInformation(f, label = label)		
+			info, settings, baseline = self._save_generic(f, label = label)		
 
 			## add scan type to info
 			temp = info.create_dataset('type', data = 'timeseries'.encode('utf-8'))
@@ -1299,11 +1215,11 @@ class ControlGeneric(object):
 		print('Data saved to {0}'.format(fpath))
 
 	def _save_scanLBIC(self, label, x, y, delay, wavelengths, signal, reference):
-		fpath = self._getSavePath(label = label)	#generate filepath for saving data
+		fpath = self._getsavepath(label = label)	#generate filepath for saving data
 
 		with h5py.File(fpath, 'w') as f:
 			
-			info, settings = self._saveGeneralInformation(f, label = label, include_baseline = False)
+			info, settings = self._save_generic(f, label = label, include_baseline = False)
 
 			## add scan type to info
 			temp = info.create_dataset('type', data = 'scanLBIC'.encode('utf-8'))
