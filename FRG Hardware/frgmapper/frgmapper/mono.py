@@ -6,7 +6,7 @@ class mono(object):
 	def __init__(self, monoAddress = 'GPIB0::4::INSTR'):
 		self.pauseTime = 0.015	#time to pause between subsequent communication to mono, in seconds. set to 10 ms on 2019-09-10
 		#self.handle = pyvisa.ResourceManager().open_resource(monoAddress)
-		if self.connect():
+		if self.connect(monoAddress = monoAddress):
 			self.handle.write('OUTPORT 1')	#select output port (1 = inline, 2 = axial)
 			self.currentWavelength = float(self.handle.query('WAVE?'))
 			self.currentFilter = int(self.handle.query('FILTER?'))
@@ -17,7 +17,7 @@ class mono(object):
 		self.shutterOpenStatus = None
 		self.closeShutter()
 
-	def connect(self):
+	def connect(self, monoAddress):
 		self.handle = pyvisa.ResourceManager().open_resource(monoAddress)
 		self.handle.timeout=10000 # set timeout to 10 s (input value in ms)
 		time.sleep(self.pauseTime)
