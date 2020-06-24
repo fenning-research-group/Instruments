@@ -105,7 +105,7 @@ def plotScanLine(filepath, ax = None):
 	if showlater:
 		plt.show()
 
-def plotScanPoint(filepath, ax = None:)
+def plotScanPoint(filepath, ax = None):
 	showlater = False
 	if ax is None:
 		showlater = True
@@ -124,7 +124,7 @@ def plotScanPoint(filepath, ax = None:)
 	if showlater:
 		plt.show()
 
-def plotTimeSeries(filepath, ax = None:)
+def plotTimeSeries(filepath, ax = None):
 	showlater = False
 	if ax is None:
 		showlater = True
@@ -140,12 +140,13 @@ def plotTimeSeries(filepath, ax = None:)
 	numpts = delay.shape[0]
 	for i in range(numpts):
 		ax.plot(wavelengths, reflectance[i], color = plt.cm.viridis(i/numpts))
-	ax.title('Blue -> Yellow = 0 - {} minutes'.format(delay/60))
+	ax.set_title('Blue -> Yellow = 0 - {0:.2f} minutes'.format(delay.max()/60))
 	ax.set_ylabel('Reflectance (%)')
 	ax.set_xlabel('Wavelength (nm)')
 
 	if showlater:
 		plt.show()
+
 def Viewer(directory = root):
 	class App(QApplication):
 		def __init__(self):
@@ -185,19 +186,19 @@ def Viewer(directory = root):
 
 			if self.currentFilepath[-3:] == '.h5':
 				with h5py.File(self.currentFilepath, 'r') as d:
-					self.scanInfo.label.setText(d['info']['name'][()].decode('utf-8'))
-					x = d['data']['x'][()]
-					y = d['data']['y'][()]
-					xsize = x.max() - x.min()
-					ysize = y.max() - y.min()
+				# 	self.scanInfo.label.setText(d['info']['name'][()].decode('utf-8'))
+				# 	x = d['data']['x'][()]
+				# 	y = d['data']['y'][()]
+				# 	xsize = x.max() - x.min()
+				# 	ysize = y.max() - y.min()
 					scanType = d['info']['type'][()].decode('utf-8')
-					self.scanInfo.dimensions.setText('{0} mm x {1} mm'.format(xsize, ysize))
-					if 'fits' in d.keys():
-						fitted = 'True'
-					else:
-						fitted = 'False'
+				# 	self.scanInfo.dimensions.setText('{0} mm x {1} mm'.format(xsize, ysize))
+				# 	if 'fits' in d.keys():
+				# 		fitted = 'True'
+				# 	else:
+				# 		fitted = 'False'
 
-					self.scanInfo.fitted.setText(fitted)
+				# 	self.scanInfo.fitted.setText(fitted)
 
 				self.plotCanvas.reset()
 				if scanType in ['scanArea', 'scanAreaWaRD']:
@@ -206,9 +207,10 @@ def Viewer(directory = root):
 					plotScanLine(filepath = self.currentFilepath, ax = self.plotCanvas.ax)
 				elif scanType == 'scanPoint':
 					plotScanPoint(filepath = self.currentFilepath, ax = self.plotCanvas.ax)
-				elif scanType = 'timeSeries':
+				elif scanType == 'timeSeries':
 					plotTimeSeries(filepath = self.currentFilepath, ax = self.plotCanvas.ax)
-
+				else:
+					return
 
 				self.plotCanvas.draw()
 
