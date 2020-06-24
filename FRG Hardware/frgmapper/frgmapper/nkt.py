@@ -435,7 +435,7 @@ class select(object):
 		wavelength = int(wavelength*1000)
 
 		if amplitude is not None:
-			amplitude = int(a * 1000)
+			amplitude = int(amplitude * 1000)
 		else:
 			amplitude = 650	#~average optimum RF power for IR AOTF between 1700-2000 nm
 

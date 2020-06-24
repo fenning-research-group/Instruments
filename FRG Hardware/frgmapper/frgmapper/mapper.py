@@ -474,7 +474,7 @@ class controlGeneric(object):
 		# 	plt.show()
 	
 	def scanAreaWaRD(self, label, wavelengths, wavelengths_full = None, xsize = 52, ysize = 52, xsteps = 53, ysteps = 53, x0 = None, y0 = None, position = None, export = True):
-		x0s = [31, 104, 104, 31]	## UPDATE PROPER LOCATIONS
+		x0s = [33, 106, 106, 33]	## UPDATE PROPER LOCATIONS
 		y0s = [117,117,57.5,57.5]
 
 		fullScanCoordinates = [		#spiral pattern to sample pts at varying distance from map center
@@ -1437,10 +1437,10 @@ class controlNKT(controlGeneric):
 		self.select = None
 		self.compact = None
 		self.daq = None
+		self.heater = None
 		self.connect()
 		self.daq.useExtClock = False	#use external Compact trigger to drive daq, match the laser pulse train
 		self.processPulseTrain = False
-		self.heater = None
 		plt.ion()	#make plots of results non-blocking
 
 	def connect(self):
@@ -1466,7 +1466,7 @@ class controlNKT(controlGeneric):
 		print("stage connected")
 
 		self.heater = omega(
-			port = 'COM14'
+			port = 'COM15'
 			)
 		print("heater connected")
 

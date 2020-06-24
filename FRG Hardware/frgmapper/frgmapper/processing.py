@@ -139,6 +139,132 @@ def fitThreePointWaRD(file, celltype, plot = False):
 		plt.tight_layout()
 		plt.show()
 
+def fitFullWaRD(file, celltype = 'Not Inputted', plot = False):
+	# if str.lower(celltype) in ['albsf', 'al-bsf']:
+	# 	wl_eva = 1730
+	# 	wl_h2o = 1902
+	# 	wl_ref = 1942
+
+	# 	p1 = 34.53
+	# 	p2 = 1.545
+	# 	celltype = 'albsf'
+	# elif str.lower(celltype) in ['perc']:
+	# 	wl_eva = 1730
+	# 	wl_h2o = 1902
+	# 	wl_ref = 1942
+
+	# 	p1 = 29.75
+	# 	p2 = 1.367
+	# 	celltype = 'perc'
+	# elif str.lower(celltype) in ['albsf2', 'al-bsf2']:
+	# 	wl_eva = 1730
+	# 	wl_h2o = 1902
+	# 	wl_ref = 1872
+
+	# 	p1 = 24.75
+	# 	p2 = 0.3461
+	# 	celltype = 'albsf2'
+	# else:
+	# 	print('Celltype Error: valid types are "albsf", "perc", of "albsf2" - user provided {0}'.format(celltype))
+	# 	return
+
+	with h5py.File(file, 'r') as d:
+	    name = d['info']['name'][()]
+	    x = d['data']['relx'][()]
+	    y = d['data']['rely'][()]
+	    realx = d['data']['x'][()]
+	    realy = d['data']['y'][()]
+	    wl = d['data']['wavelengths'][()]
+	    ref = d['data']['reflectance'][()]
+	    time = d['data']['delay'][()]
+	
+	ab = -np.log(ref)	#convert reflectance values to absorbance
+
+	allWavelengthsPresent = True
+	missingWavelength = None
+	for each in np.linspace(1700, 2000, 151):
+		if each not in wl:
+			allWavelengthsPresent = False
+			missingWavelength = each
+			break
+
+	if not allWavelengthsPresent:
+		print('Wavelength Error: Necessary wavelength {0} missing from dataset - cannot fit.'.format(missingWavelength))
+		return
+
+	h2o = np.zeros(time.shape)
+	for m,n in np.ndindex(h2o.shape):
+		h2o[m,n] = FullSpectrumFit(wl[m,n], ref[m,n], plot = False)
+	# h2o[h2o < 0] = 0	
+
+
+	## Avg Reflectance Fitting
+	avgRef = np.mean(ref, axis = 2)
+
+	# h2o_reg_imputed = RegisterToDummy(
+	# 		ImputeWater(h2o, avgRef > avgRef.mean()*1.2),
+	# 		avgRef
+	# 	)
+
+	h2o_reg_imputed = RegisterToDummy(
+			h2o,
+			avgRef
+		)
+
+	## write fits to h5 file
+	with h5py.File(file, 'a') as d:
+		if 'fits' in d.keys():
+			fits = d['fits']
+		else:
+			fits = d.create_group('/fits')
+
+		_fillDataset(d['fits'], 'water', h2o, 'Water content (mg/cm^3) measured by WaRD.')
+		_fillDataset(d['fits'], 'celltype', celltype.encode('utf-8'), 'Cell architecture assumed during fitting.')
+		_fillDataset(d['fits'], 'wl_eva', wl_eva, 'Wavelength used as EVA absorbance point.')
+		_fillDataset(d['fits'], 'wl_h2o', wl_h2o, 'Wavelength used as water absorbance point.')
+		_fillDataset(d['fits'], 'wl_ref', wl_ref, 'Wavelength used as reference absorbance point.')
+		_fillDataset(d['fits'], 'poly', [0,0], 'Polynomial fit coefficients used to convert absorbances to water content. From highest to lowest order.')
+		_fillDataset(d['fits'], 'avgref', avgRef, 'Average reflectance at each point')
+		_fillDataset(d['fits'], 'water_reg', h2o_reg_imputed, 'Water map after registration to dummy mask + imputing to replace finger regions')
+	## Plotting
+	if plot:
+		fig, ax = plt.subplots(1,2, figsize = (10, 8))
+
+		im1 = ax[0].imshow(
+		    h2o,
+		    extent = [0, x.max(), 0, y.max()],
+		    origin = 'lower',
+		    vmin = 0,
+		    vmax = 2
+		)
+		cb = fig.colorbar(im1, ax = ax[0],
+		                 orientation="horizontal",fraction=0.068,anchor=(1.0,0.0), pad = 0.01)
+		cb.set_label('$[H_{2}O]$  $(mg/cm^3)$')
+		ax[0].set_title('Water Map')
+		ax[0].axis('off')
+
+
+		im2 = ax[1].imshow(
+		    avgRef,
+		    extent = [0, x.max(), 0, y.max()],
+		    origin = 'lower',
+		    vmin = 0
+		)
+		cb = plt.colorbar(im2, ax = ax[1],
+		                 orientation="horizontal",fraction=0.068,anchor=(1.0,0.0), pad = 0.01)
+		cb.set_label('Reflectance')
+		ax[1].set_title('Avg Reflectance')
+		plt.axis('off')
+		scalebar = ScaleBar(
+		    dx = 1e-3,
+		    location = 'lower right',
+		    color = [1, 1, 1],
+		    box_alpha = 0
+		)
+		ax[1].add_artist(scalebar)
+		plt.tight_layout()
+		plt.show()
+
 def FullSpectrumFit(wavelengths, reflectance, plot = False):
 	eva_peak = 1730
 	eva_tolerance = 5
