@@ -21,7 +21,7 @@ channel_ref = 2
 ai_range = ULRange.BIP5VOLTS
 max_rate = 50e3
 
-class daq(object):
+class DAQ(object):
 
 	def __init__(self, channel_intSphere = 0, channel_ref = 2, rate = 50000, dwelltime = None, counts = 2500, extclock = False, countsPerTrigger = 35, countsPulseDuration = 15):
 		self.board_num = 0
