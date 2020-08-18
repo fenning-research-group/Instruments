@@ -14,13 +14,13 @@ from functools import partial
 # import threading
 
 class Hayear:
-	def __init__(self, address = 0)
+	def __init__(self, address = 0):
 		self._resolution = [1080, 1920]
 		self.__bufferSize = 5
 		# self.__queue = None
 		self.connect(address = address)
 	
-	def connect(self, address = address):
+	def connect(self, address):
 		self.cap = cv2.VideoCapture(address)
 		self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, self._resolution[1])
 		self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self._resolution[0])	
@@ -53,7 +53,7 @@ class Hayear:
 		self.cap.set(cv2.CAP_PROP_GAMMA, g)
 		self.__gamma = g
 
-	def capture(self, numframes = 10, imputeHotPixels = False):
+	def capture(self, numframes = 10, imputeHotPixels = False, verbose = False):
 		raw = np.zeros((numframes, self._resolution[0], self._resolution[1], 3))
 		for idx in tqdm(range(numframes), desc = 'Acquiring Images', leave = False):
 			for _ in range(self.__bufferSize - 1): #dump the buffer to acquire the most recent image
@@ -69,7 +69,10 @@ class Hayear:
 			medvals = medfilt(avg, 3)	#3x3 median filter
 			avg[mask] = medvals[mask]
 
-		return avg, std, raw
+		if verbose:
+			return dict(avg = avg, std = std, raw = raw)
+		else:
+			return avg
 
 	def preview(self):
 		# def animate(i, im):
