@@ -5,15 +5,15 @@ import serial
 import time
 import json
 import datetime
-from .stage import stage
-from .mono import mono
-from .daq import daq
+from frghardware.components.stage import Thorlabs_LTS150_xy
+from frghardware.components.mono import Mono
+from frghardware.components.daq import DAQ
 import datetime
 from tqdm import tqdm
 import h5py
 import threading
-from .nkt import compact, select
-from .tec import omega
+from frghardware.components.nkt import Compact, Select
+from frghardware.components.tec import Omega
 
 root = 'D:\\frgmapper'
 if not os.path.exists(root):
@@ -1399,13 +1399,13 @@ class controlMono(controlGeneric):
 
 	def connect(self):
 		#connect to mono, stage, detector+daq hardware
-		self.mono = mono()
+		self.mono = Mono()
 		print("mono connected")
 
-		self.daq = daq(dwelltime = self.dwelltime)
+		self.daq = DAQ(dwelltime = self.dwelltime)
 		print("daq connected")
 
-		self.stage = stage()
+		self.stage = Thorlabs_LTS150_xy()
 		print("stage connected")
 
 	def disconnect(self):
@@ -1445,16 +1445,16 @@ class controlNKT(controlGeneric):
 
 	def connect(self):
 		#connect to mono, stage, detector+daq hardware
-		self.compact = compact(
+		self.compact = Compact(
 			pulseFrequency = 21505
 			)
 		print("compact connected")
 
-		self.select = select()
+		self.select = Select()
 		self.select.setAOTF(1700, 0.6)
 		print("select+rf driver connected")
 
-		self.daq = daq(
+		self.daq = DAQ(
 			dwelltime = self.dwelltime,
 			rate = 50000,
 			countsPerTrigger = 3,
@@ -1462,10 +1462,10 @@ class controlNKT(controlGeneric):
 			)
 		print("daq connected")
 
-		self.stage = stage()
+		self.stage = Thorlabs_LTS150_xy()
 		print("stage connected")
 
-		self.heater = omega(
+		self.heater = Omega(
 			port = 'COM15'
 			)
 		print("heater connected")
@@ -1475,6 +1475,7 @@ class controlNKT(controlGeneric):
 		self.select.disconnect()
 		self.daq.disconnect()
 		self.stage.disable()
+		self.heater.disconnect()
 
 	### internal methods specific to nkt hardware setup
 

@@ -4,7 +4,7 @@ import time
 ## TO DO (ctrl-f TODO)
 #
 # 1. connect to hardware
-#		- figure out com port for each, fill in portName fields (ctrl-f INSERTDEFAULT)
+#		- figure out com port for each, fill in port fields (ctrl-f INSERTDEFAULT)
 #		- code currently checks to see if device is found, I think it receives a hex value from deviceGetAllTypes, which is then compared to an expected number for compact (74) or select (66)
 #		- need to get both the com port and the device address (0-15, I guess multiple devices can share one com port).
 #			- i think the code already grabs thisfrom deviceGetAllTypes. this number is the second argument when writing to hardware registry to control things
@@ -24,30 +24,30 @@ import time
 
 class Compact(object):
 
-	def __init__(self, portName = 'COM13', pulseFrequency = 21505):		# TODO: add compact port here as default
+	def __init__(self, port = 'COM13', pulseFrequency = 21505):		# TODO: add compact port here as default
 		self.__handle = None	#will be overwritten upon connecting, set back to None upon disconnecting
 		self.triggerMode = None
 		self.triggerSetPoint = None
-		if self.connect(portName = portName):
+		if self.connect(port = port):
 			# self.setPower(powerLevel = 50) #default starting power level, 0-100 = 0-100% power
 			self.setPulseFrequency(pulseFrequency = pulseFrequency)	#default pulse frequency set to 950 Hz
 			self.setTrigger(mode = 0)	#turn off external trigger mode
 
 		self.emissionOn = False
 		self.lightWarmupTime = 5	#seconds to wait after laser is turned on for laser to stabilize. Without lockin, 3 seconds is sufficient. Higher to allow lockin to find the frequency
-	def connect(self, portName = 'COM13'):
-		nktdll.openPorts(portName, 1 ,1)
-		result, devList = nktdll.deviceGetAllTypes(portName)
+	def connect(self, port = 'COM13'):
+		nktdll.openPorts(port, 1 ,1)
+		result, devList = nktdll.deviceGetAllTypes(port)
 		for devId in devList:
 			if devId == 0x74:		# TODO portData should hold a hex value corresponding to device found at this port. Compact = 74 (0x74?), select = 66 (0x66?). 
-				# portData = nktdll.openPorts(portName, 0, 0) # TODO I think the port is still open after running nktdll.deviceGetAllTypes(portName), but if not we can reconnect here
+				# portData = nktdll.openPorts(port, 0, 0) # TODO I think the port is still open after running nktdll.deviceGetAllTypes(port), but if not we can reconnect here
 				print('Connected to NKT COMPACT (0x74)')
-				self.__handle = portName
+				self.__handle = port
 				self.__address = devList.index(devId)
 				return True
-		#if we made it here, we didnt find the COMPACT at the supplied portName
-		nktdll.closePorts(portName)
-		print('NKT COMPACT not found at port {0}. Not connected.'.format(portName))
+		#if we made it here, we didnt find the COMPACT at the supplied port
+		nktdll.closePorts(port)
+		print('NKT COMPACT not found at port {0}. Not connected.'.format(port))
 		return False
 
 	def disconnect(self):
@@ -223,7 +223,7 @@ class Compact(object):
 
 class Select(object):
 
-	def __init__(self, portName = 'COM13'):		
+	def __init__(self, port = 'COM13'):		
 		self.__handle = None	#will be overwritten upon connecting, set back to None upon disconnecting
 		self.__defaultWavelengths = [1700, 1750, 1800, 1850, 1900, 1902, 1950, 2000]	#default values to assign to unspecified wavelength selections
 		self._wavelengths = [None] * 8
@@ -241,21 +241,21 @@ class Select(object):
 			self.on()	#turn on RF
 			self.setWavelengthRange()	#set range to default range
 		
-	def connect(self, portName = 'COM13'):
-		nktdll.openPorts(portName, 1 ,1)
-		result, devList = nktdll.deviceGetAllTypes(portName)
+	def connect(self, port = 'COM13'):
+		nktdll.openPorts(port, 1 ,1)
+		result, devList = nktdll.deviceGetAllTypes(port)
 		success = 0
 		for devId in devList:
 			if devId == 0x66:		#TODO portData should hold a hex value corresponding to device found at this port. Compact = 74, select = 67 (? not sure why its here on its own), select + rf driver = 66. 
-				# portData = nktdll.openPorts(portName, 0, 0) # TODO I think the port is still open after running nktdll.deviceGetAllTypes(portName), but if not we can reconnect here
+				# portData = nktdll.openPorts(port, 0, 0) # TODO I think the port is still open after running nktdll.deviceGetAllTypes(port), but if not we can reconnect here
 				print('Connected to NKT SELECT + RF (0x66)')
-				self.__handle = portName
+				self.__handle = port
 				self.__address = devList.index(devId)
 				success = success + 1
 			if devId == 0x67:		#TODO portData should hold a hex value corresponding to device found at this port. Compact = 74, select = 67 (? not sure why its here on its own), select + rf driver = 66. 
-				# portData = nktdll.openPorts(portName, 0, 0) # TODO I think the port is still open after running nktdll.deviceGetAllTypes(portName), but if not we can reconnect here
+				# portData = nktdll.openPorts(port, 0, 0) # TODO I think the port is still open after running nktdll.deviceGetAllTypes(port), but if not we can reconnect here
 				print('Connected to NKT SELECT (0x67)')
-				self.__handle = portName
+				self.__handle = port
 				self.__address2 = devList.index(devId)
 				success = success + 1
 
@@ -263,8 +263,8 @@ class Select(object):
 		if success == 2:	#found both addresses, no issues setting to IR aotf
 			return True
 		else:
-			nktdll.closePorts(portName)
-			print('Not connected.'.format(portName))
+			nktdll.closePorts(port)
+			print('Not connected.'.format(port))
 			return False
 
 	def disconnect(self):

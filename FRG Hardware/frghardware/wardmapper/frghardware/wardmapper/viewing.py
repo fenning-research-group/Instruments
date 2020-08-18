@@ -99,7 +99,7 @@ def plotScanLine(filepath, ax = None):
 		ax.plot(y, 100*reflectance.mean(axis = 1))
 		ax.set_title('{0}\n x = {1}'.format(label, x))
 
-	ax.set_ylabel('Reflectance (%)')
+	ax.set_ylabel('Average Reflectance (%)')
 	ax.set_xlabel('{0} (mm)'.format(axis))
 
 	if showlater:
