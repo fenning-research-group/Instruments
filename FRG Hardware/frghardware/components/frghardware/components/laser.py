@@ -3,7 +3,7 @@
 import serial
 import time
 
-class laser:
+class Laser:
 	def __init__(self, port = 'COM13'):
 		self.__maxcurrent = 55000.0
 		self.__wavelength = 808

@@ -3,7 +3,7 @@
 import visa
 import numpy as np
 
-class keithley:
+class Keithley:
 	def __init__(self, port = 'GPIB2::20::INSTR'):
 		self.__maxcurrent = 5
 		self.__maxvoltage = 1

@@ -22,7 +22,7 @@ import time
 #			- when using setAOTF, make amplitude default to optimum power per wavelength when value is not specified
 #				- interpolate or find nearest neighbor of specified wavelength from calibration, use this RF power.
 
-class compact(object):
+class Compact(object):
 
 	def __init__(self, portName = 'COM13', pulseFrequency = 21505):		# TODO: add compact port here as default
 		self.__handle = None	#will be overwritten upon connecting, set back to None upon disconnecting
@@ -221,7 +221,7 @@ class compact(object):
 
 		return bits
 
-class select(object):
+class Select(object):
 
 	def __init__(self, portName = 'COM13'):		
 		self.__handle = None	#will be overwritten upon connecting, set back to None upon disconnecting

@@ -2,7 +2,6 @@
 
 import serial
 import os
-import PySpin
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
@@ -14,10 +13,10 @@ import cv2
 from functools import partial
 # import threading
 
-class hayear:
+class Hayear:
 	def __init__(self, address = 0)
 		self._resolution = [1080, 1920]
-		self.bufferSize = 5
+		self.__bufferSize = 5
 		# self.__queue = None
 		self.connect(address = address)
 	

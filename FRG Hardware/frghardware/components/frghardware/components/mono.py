@@ -1,7 +1,7 @@
 import pyvisa
 import time
 
-class mono(object):
+class Mono(object):
 
 	def __init__(self, monoAddress = 'GPIB0::4::INSTR'):
 		self.pauseTime = 0.015	#time to pause between subsequent communication to mono, in seconds. set to 10 ms on 2019-09-10

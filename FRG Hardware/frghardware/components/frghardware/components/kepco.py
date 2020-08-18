@@ -5,7 +5,7 @@ import re
 import numpy as np
 import pdb
 
-class kepco:
+class Kepco:
 	def __init__(self, port = 'COM12'):
 		self.__maxcurrent = 5
 		self.__maxvoltage = 1
