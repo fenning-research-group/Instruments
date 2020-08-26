@@ -1,6 +1,6 @@
 from setuptools import setup, find_namespace_packages
 
-microlib_name = 'frghardware.wardmapper'
+microlib_name = 'frghardware.pliv'
 setup(
     name=microlib_name,
     version="0.1.0",

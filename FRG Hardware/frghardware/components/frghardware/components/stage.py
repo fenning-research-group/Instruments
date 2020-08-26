@@ -1,12 +1,14 @@
-import thorlabs_apt as apt
 import time
 import threading
-
+try:
+	import thorlabs_apt as apt
+except:
+	print('Thorlabs APT did not load properly - if needed, ensure that DLL has been installed!')
 class Thorlabs_LTS150_xy(object):
 
 	def __init__(self, xMotorAddress = 45992790, yMotorAddress = 45951900):
-		self.x = apt.Motor(xMotorAddress)
-		self.y = apt.Motor(yMotorAddress)
+		self.x = self.apt.Motor(xMotorAddress)
+		self.y = self.apt.Motor(yMotorAddress)
 		self.position = (self.x.position, self.y.position)
 
 		self.x.enable()

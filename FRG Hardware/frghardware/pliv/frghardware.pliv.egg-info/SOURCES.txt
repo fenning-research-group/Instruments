@@ -1,0 +1,8 @@
+setup.py
+frghardware.pliv.egg-info/PKG-INFO
+frghardware.pliv.egg-info/SOURCES.txt
+frghardware.pliv.egg-info/dependency_links.txt
+frghardware.pliv.egg-info/namespace_packages.txt
+frghardware.pliv.egg-info/requires.txt
+frghardware.pliv.egg-info/top_level.txt
+frghardware/pliv/control.py

@@ -1,10 +1,14 @@
 import ctypes
 from ctypes import c_ulonglong, cast
 from _ctypes import POINTER, addressof, sizeof
-from mcculw import ul
-from mcculw.enums import ScanOptions, FunctionType, Status, ChannelType, ULRange, \
-	InterfaceType, TriggerSource, TriggerSensitivity, TriggerEvent, InfoType, BoardInfo
-from mcculw.ul import ULError
+try:
+	from mcculw import ul
+	from mcculw.enums import ScanOptions, FunctionType, Status, ChannelType, ULRange, \
+		InterfaceType, TriggerSource, TriggerSensitivity, TriggerEvent, InfoType, BoardInfo
+	from mcculw.ul import ULError
+except:
+	print('mcculw APT did not load properly - if needed, ensure that DLL has been installed!')
+
 import numpy as np
 import time
 import os 
@@ -19,7 +23,7 @@ from PyDAQmx import *
 board_num = 0
 channel_intSphere = 0
 channel_ref = 2
-ai_range = ULRange.BIP5VOLTS
+# ai_range = ULRange.BIP5VOLTS
 max_rate = 50e3
 
 class DAQ(object):

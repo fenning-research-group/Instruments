@@ -3,10 +3,17 @@ frghardware.components.egg-info/PKG-INFO
 frghardware.components.egg-info/SOURCES.txt
 frghardware.components.egg-info/dependency_links.txt
 frghardware.components.egg-info/namespace_packages.txt
+frghardware.components.egg-info/requires.txt
 frghardware.components.egg-info/top_level.txt
+frghardware/components/FLIR.py
 frghardware/components/NKTP_DLL.py
 frghardware/components/__init__.py
+frghardware/components/camera.py
 frghardware/components/daq.py
+frghardware/components/keithley.py
+frghardware/components/kepco.py
+frghardware/components/laser.py
 frghardware/components/mono.py
 frghardware/components/nkt.py
+frghardware/components/stage.py
 frghardware/components/tec.py

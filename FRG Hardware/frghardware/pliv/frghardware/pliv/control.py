@@ -7,11 +7,11 @@ import h5py
 import sys
 import matplotlib.pyplot as plt
 from frghardware.components.FLIR import FLIR
-from frgpl.stage import PLStage
-from frgpl.kepco import Kepco
-from frgpl.daq import PLDAQ
-from frgpl.laser import Laser808
-from frgpl.tec import Omega
+from frghardware.components.stage import PLStage
+from frghardware.components.kepco import Kepco
+from frghardware.components.daq import PLDAQ
+from frghardware.components.laser import Laser808
+from frghardware.components.tec import Omega
 import datetime
 import time
 from mpl_toolkits.axes_grid1 import make_axes_locatable

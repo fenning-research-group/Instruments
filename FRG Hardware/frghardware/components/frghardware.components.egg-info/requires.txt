@@ -1,0 +1,4 @@
+numpy
+mcculw
+scipy
+pyvisa
