@@ -14,7 +14,7 @@ import h5py
 import threading
 from frghardware.components.nkt import Compact, Select
 from frghardware.components.tec import Omega
-
+from pymeasure.instruments.srs import SR830
 root = 'D:\\frgmapper'
 if not os.path.exists(root):
 	os.mkdir(root)
@@ -44,7 +44,7 @@ class controlGeneric(object):
 		self.__dwelltime = dwelltime
 		self.__baselineTaken = False
 		self.__baseline = {}
-		self.__flushinterval = BASE_FLUSH_INTERVAL
+		self.__flushinterval = DEFAULT_FLUSH_INTERVAL
 		self.__flushcounter = 0
 		plt.ion()	#make plots of results non-blocking
 
@@ -98,11 +98,8 @@ class controlGeneric(object):
 		def preparefile(f):
 			dummy1d = np.full(wavelengths.shape, np.nan)
 
-			info, settings, baseline = self._save_generic(f, label = label)
+			info, settings, baseline = self._save_generic(f, label = label, scantype = 'scanpoint')
 
-			temp = info.create_dataset('type', data = 'scanpoint'.encode('utf-8'))
-			temp.attrs['description'] = 'Type of measurement held in this file.'	
-			
 			# raw data
 			rawdata = f.create_group('/data')
 			rawdata.attrs['description'] = 'Data acquired during point scan.'
@@ -124,7 +121,7 @@ class controlGeneric(object):
 		wavelengths = self._cleanwavelengthinput(wavelengths)
 		fpath = self._getsavepath(label = label)	#generate filepath for saving data
 
-		with h5py.File(fpath, 'w') as self.f:
+		with h5py.File(fpath, 'w', swmr = True, libver = 'latest') as self.f:
 			signal, reference, reflectance = preparefile(self.f)
 
 			self.__flushcounter = 0
@@ -133,33 +130,26 @@ class controlGeneric(object):
 			self.__flushinterval = DEFAULT_FLUSH_INTERVAL
 			reflectance[()] = self._baselinecorrectionroutine(wavelengths, signal, reference)
 
-	def scanline(self, label, wavelengths, axis, p0, size, steps):
+	def scanline(self, label, wavelengths, axis, pmin, pmax, steps, p0 = None):
 		def preparefile(f):
 			dummy1d =  np.full((steps, ), np.nan)
 			dummy2d =  np.full((steps, len(wavelengths)), np.nan)
 
-			info, settings, baseline = self._save_generic(f, label = label)
+			if axis == 'x':
+				idlepos = self.stage.position[1]
+				idleaxis = 'y'
+			else:
+				idlepos = self.stage.position[0]
+				idleaxis = 'x'
 
-			## add scan type to info
-			temp = info.create_dataset('type', data = 'scanline'.encode('utf-8'))
-			temp.attrs['description'] = 'Type of measurement held in this file.'		
+
+			info, settings, baseline = self._save_generic(f, label = label, scantype = 'scanline')
 
 			## add scan parameters to settings
-			if axis == 'x':
-				temp = settings.create_dataset('numx', data = np.array(x.shape[0]))
-				temp.attrs['description'] = 'Number of points scanned in x'			
+			temp = settings.create_dataset('num', data = np.array(allpts.shape[0]))
+			temp.attrs['description'] = f'Number of points scanned in {axis}'			
 
-				temp = settings.create_dataset('numy', data = np.array(y))
-				temp.attrs['description'] = 'Number of points scanned in y'
-
-				stepsize = np.abs(x[1] - x[0])
-			else:
-				temp = settings.create_dataset('numx', data = np.array(x))
-				temp.attrs['description'] = 'Number of points scanned in x'			
-				temp = settings.create_dataset('numy', data = np.array(y.shape[0]))
-				temp.attrs['description'] = 'Number of points scanned in y'
-
-				stepsize = np.abs(y[1] - y[0])
+			stepsize = np.abs(allpts[1] - allpts[0])
 
 			temp = settings.create_dataset('stepsize', data = np.array(stepsize))
 			temp.attrs['description'] = 'Step size (mm) in line scan.'	
@@ -167,21 +157,21 @@ class controlGeneric(object):
 			temp = settings.create_dataset('axis', data = axis.encode('utf-8'))
 			temp.attrs['description'] = 'Axis scanned (x or y)'
 
+			temp = settings.create_dataset('idle_axis', data = axis.encode('utf-8'))
+			temp.attrs['description'] = 'Axis not scanned (x or y)'
+
 			## measured data 
 			rawdata = f.create_group('/data')
 			rawdata.attrs['description'] = 'Data acquired during area scan.'
 
-			temp = rawdata.create_dataset('x', data = np.array(x))
-			temp.attrs['description'] = 'Absolute X coordinate (mm) per point'
+			temp = rawdata.create_dataset('idle_pos', data = idlepos)
+			temp.attrs['description'] = f'{idleaxis} coordinate, did not change throughout line scan'
 
-			temp = rawdata.create_dataset('y', data = np.array(y))
-			temp.attrs['description'] = 'Absolute Y coordinate (mm) per point'
+			temp = rawdata.create_dataset('pos', data = np.array(allpts))
+			temp.attrs['description'] = f'Absolute {axis} coordinate (mm) per point'
 
-			temp = rawdata.create_dataset('relx', data = np.array(x - np.min(x)))
-			temp.attrs['description'] = 'Relative X coordinate (mm) per point'
-
-			temp = rawdata.create_dataset('rely', data = np.array(y - np.min(y)))
-			temp.attrs['description'] = 'Relative Y coordinate (mm) per point'						
+			temp = rawdata.create_dataset('relpos', data = np.array(allpts - np.min(allpts)))
+			temp.attrs['description'] = f'Relative {axis} coordinate (mm) per point'
 
 			temp = rawdata.create_dataset('wavelengths', data = np.array(wavelengths))
 			temp.attrs['description'] = 'Wavelengths (nm) scanned per point.'
@@ -197,6 +187,8 @@ class controlGeneric(object):
 
 			delay = rawdata.create_dataset('delay', data = dummy1d)
 			delay.attrs['description'] = 'Time (seconds) that each scan was acquired at. Measured as seconds since first scan point.'			
+
+			f.swmr_mode = True # Single Writer Multiple Reader, allows h5 file to be read during scan.
 
 			return reflectance, signal, reference, delay
 
@@ -217,7 +209,7 @@ class controlGeneric(object):
 			else:
 				p0 = y0
 
-		allpts = np.linspace(p0 - size/2, p0 + size/2, steps)
+		allpts = np.linspace(p0 - pmin, p0 + pmax, steps)
 		if axis == 'x':
 			xval = allpts
 			yval = y0
@@ -227,7 +219,7 @@ class controlGeneric(object):
 
 		fpath = self._getsavepath(label = label)	#generate filepath for saving data
 		self.__flushcounter = 0
-		with h5py.File(fpath, 'w') as self.f:
+		with h5py.File(fpath, 'w', swmr = True, libver = 'latest') as self.f:
 			reflectance, signal, reference, delay = preparefile(self.f)
 
 			firstscan = True
@@ -322,39 +314,35 @@ class controlGeneric(object):
 		self.__flushinterval = DEFAULT_FLUSH_INTERVAL
 		return center, size
 
-	def scanarea(self, label, wavelengths, xsize, ysize, xsteps = 21, ysteps = 21, x0 = None, y0 = None, export = True):
+	def scanarea(self, label, wavelengths, xmin, xmax, xsteps, ymin, ymax, ysteps, x0 = None, y0 = None, export = True):
 		def preparefile(f):
 			dummy2d =  np.full((ysteps, xsteps), np.nan)
 			dummy3d =  np.full((ysteps, xsteps, len(wavelengths)), np.nan)
 
-			info, settings, baseline = self._save_generic(f, label = label)
-
-			## add scan type to info
-			temp = info.create_dataset('type', data = 'scanarea'.encode('utf-8'))
-			temp.attrs['description'] = 'Type of measurement held in this file.'		
+			info, settings, baseline = self._save_generic(f, label = label, scantype = 'scanarea')
 
 			## add scan parameters to settings
-			temp = settings.create_dataset('numx', data = np.array(x.shape[0]))
+			temp = settings.create_dataset('numx', data = np.array(allx.shape[0]))
 			temp.attrs['description'] = 'Number of points scanned in x'			
 
-			temp = settings.create_dataset('numy', data = np.array(y.shape[0]))
+			temp = settings.create_dataset('numy', data = np.array(ally.shape[0]))
 			temp.attrs['description'] = 'Number of points scanned in y'
 
-			temp = settings.create_dataset('rangex', data = np.array(np.abs(x[-1] - x[0])))
+			temp = settings.create_dataset('rangex', data = np.array(np.abs(allx[-1] - allx[0])))
 			temp.attrs['description'] = 'Range scanned in x (mm)'
 
-			temp = settings.create_dataset('rangey', data = np.array(np.abs(y[-1] - y[0])))
+			temp = settings.create_dataset('rangey', data = np.array(np.abs(ally[-1] - ally[0])))
 			temp.attrs['description'] = 'Range scanned in y (mm)'
 
 			# calculate step size. Calculates the average step size in x and y. If either axis has length 1 (ie line scan), only consider step size
 			# in the other axis. If both axes have length 0 (point scan, although not a realistic outcome for .scanarea()), leave stepsize as 0
 			countedaxes = 0
 			stepsize = 0
-			if x.shape[0] > 1:
-				stepsize = stepsize + np.abs(x[1] - x[0])
+			if allx.shape[0] > 1:
+				stepsize = stepsize + np.abs(allx[1] - allx[0])
 				countedaxes = countedaxes + 1
-			if y.shape[0] > 1:
-				stepsize = stepsize + np.abs(y[1] - y[0])
+			if ally.shape[0] > 1:
+				stepsize = stepsize + np.abs(ally[1] - ally[0])
 				countedaxes = countedaxes + 1
 			if countedaxes:
 				stepsize = stepsize / countedaxes
@@ -393,6 +381,8 @@ class controlGeneric(object):
 			delay = rawdata.create_dataset('delay', data = dummy2d)
 			delay.attrs['description'] = 'Time (seconds) that each scan was acquired at. Measured as seconds since first scan point.'	
 
+			f.swmr_mode = True # Single Writer Multiple Reader, allows h5 file to be read during scan.
+
 			return reflectance, signal, reference, delay
 
 		# clean up wavelengths input
@@ -404,13 +394,13 @@ class controlGeneric(object):
 		if y0 is None:
 			y0 = currenty
 
-		allx = np.linspace(x0 - xsize/2, x0 + xsize/2, xsteps)
-		ally = np.linspace(y0 - ysize/2, y0 + ysize/2, ysteps)
+		allx = np.linspace(x0 + xmin, x0 + xmax, xsteps)
+		ally = np.linspace(y0 + ymin, y0 + ymax, ysteps)
 
 
 		fpath = self._getsavepath(label = label)	#generate filepath for saving data
 		self.__flushcounter = 0
-		with h5py.File(fpath, 'w') as self.f:
+		with h5py.File(fpath, 'w', swmr = True, libver = 'latest') as self.f:
 			reflectance, signal, reference, delay = preparefile(self.f)
 
 			firstscan = True
@@ -439,7 +429,7 @@ class controlGeneric(object):
 					moveThread.join()
 
 					signal[yidx, xidx_, :], reference[yidx, xidx_, :] = self._scanroutine(wavelengths = wavelengths, firstscan = firstscan, lastscan = lastscan)
-					reflectance[yidx_, xidx_, :] = self._baselinecorrectionroutine(wavelengths, signal[yidx, xidx_, :], reference[yidx, xidx_, :])
+					reflectance[yidx, xidx_, :] = self._baselinecorrectionroutine(wavelengths, signal[yidx, xidx_, :], reference[yidx, xidx_, :])
 					delay[yidx, xidx_] = time.time() - startTime #time in seconds since scan began
 				
 					firstscan = False
@@ -938,8 +928,6 @@ class controlGeneric(object):
 		### General information that will be saved regardless of which method (point scan, area scan, etc.) was used. Should be called
 		# at the beginning of any scan.
 
-		f.swmr_mode = True # Single Writer Multiple Reader, allows h5 file to be read during scan.
-
 		# sample info
 		info = f.create_group('/info')
 		info.attrs['description'] = 'Metadata describing sample, datetime, etc.'
@@ -1008,7 +996,7 @@ class controlGeneric(object):
 		
 		fpath = self._getsavepath(label = label)	#generate filepath for saving data
 
-		with h5py.File(fpath, 'w') as self.f:
+		with h5py.File(fpath, 'w', swmr = True, libver = 'latest') as self.f:
 			
 			info, settings, baseline = self._save_generic(label = label)
 
@@ -1113,7 +1101,7 @@ class controlGeneric(object):
 		
 		fpath = self._getsavepath(label = label)	#generate filepath for saving data
 
-		with h5py.File(fpath, 'w') as f:
+		with h5py.File(fpath, 'w', swmr = True, libver = 'latest') as f:
 			
 			info, settings, baseline = self._save_generic(f, label = label)
 
@@ -1181,7 +1169,7 @@ class controlGeneric(object):
 
 		fpath = self._getsavepath(label = label)	#generate filepath for saving data
 
-		with h5py.File(fpath, 'w') as f:
+		with h5py.File(fpath, 'w', swmr = True, libver = 'latest') as f:
 			
 			info, settings, baseline = self._save_generic(f, label = label)		
 
@@ -1229,7 +1217,7 @@ class controlGeneric(object):
 	def _save_scanLBIC(self, label, x, y, delay, wavelengths, signal, reference):
 		fpath = self._getsavepath(label = label)	#generate filepath for saving data
 
-		with h5py.File(fpath, 'w') as f:
+		with h5py.File(fpath, 'w', swmr = True, libver = 'latest') as f:
 			
 			info, settings = self._save_generic(f, label = label, include_baseline = False)
 
@@ -1302,7 +1290,7 @@ class controlGeneric(object):
 		
 		fpath = self._getSavePath(label = label)	#generate filepath for saving data
 
-		with h5py.File(fpath, 'w') as f:
+		with h5py.File(fpath, 'w', swmr = True, libver = 'latest') as f:
 			
 			info, settings, baseline = self._saveGeneralInformation(f, label = label)
 
@@ -1376,7 +1364,7 @@ class controlGeneric(object):
 		
 		fpath = self._getSavePath(label = label)	#generate filepath for saving data
 
-		with h5py.File(fpath, 'w') as f:
+		with h5py.File(fpath, 'w', swmr = True, libver = 'latest') as f:
 			
 			info, settings, baseline = self._saveGeneralInformation(f, label = label)
 
@@ -1481,7 +1469,7 @@ class controlGeneric(object):
 		
 		fpath = self._getSavePath(label = label)	#generate filepath for saving data
 
-		with h5py.File(fpath, 'w') as f:
+		with h5py.File(fpath, 'w', swmr = True, libver = 'latest') as f:
 			
 			info, settings, baseline = self._saveGeneralInformation(f, label = label)
 
@@ -1549,7 +1537,7 @@ class controlGeneric(object):
 
 		fpath = self._getSavePath(label = label)	#generate filepath for saving data
 
-		with h5py.File(fpath, 'w') as f:
+		with h5py.File(fpath, 'w', swmr = True, libver = 'latest') as f:
 			
 			info, settings, baseline = self._saveGeneralInformation(f, label = label)		
 
@@ -1597,7 +1585,7 @@ class controlGeneric(object):
 	def _save_scanLBIC(self, label, x, y, delay, wavelengths, signal, reference):
 		fpath = self._getSavePath(label = label)	#generate filepath for saving data
 
-		with h5py.File(fpath, 'w') as f:
+		with h5py.File(fpath, 'w', swmr = True, libver = 'latest') as f:
 			
 			info, settings = self._saveGeneralInformation(f, label = label, include_baseline = False)
 
@@ -1719,6 +1707,7 @@ class controlNKT(controlGeneric):
 		self.compact = None
 		self.daq = None
 		self.heater = None
+		self.lia = None #SR830 lock-in amplifier
 		self.connect()
 		self.daq.useExtClock = False	#use external Compact trigger to drive daq, match the laser pulse train
 		self.processPulseTrain = False
@@ -1726,6 +1715,10 @@ class controlNKT(controlGeneric):
 
 	def connect(self):
 		#connect to mono, stage, detector+daq hardware
+		self.lia = SR830('GPIB0::8::INSTR')
+		print("SR830 LIA connected")
+		self.__set_up_lia()
+
 		self.compact = Compact(
 			pulseFrequency = 21505
 			)
@@ -1757,6 +1750,22 @@ class controlNKT(controlGeneric):
 		self.daq.disconnect()
 		self.stage.disable()
 		self.heater.disconnect()
+
+	def __set_up_lia(self):
+		input('Ensure that orange taped "mapper" cables are attached to the appropriate inputs on the SR830 Lock-In Amplifier under the optical table - press Enter to confirm')
+		self.lia.channel1 = 'R'
+		self.lia.filter_slope = 24
+		self.lia.input_config = 'A'
+		self.lia.input_coupling = 'DC'
+		self.lia.input_grounding = 'Float'
+		self.lia.input_notch_config = 'Both'
+		self.lia.sensitivity = 0.05 #5x10 mV
+		self.lia.set_scaling('R',0, 1.0)
+		self.lia.time_constant = .003 #3x1 ms
+		self.lia.reference_source = 'External'
+
+		return True
+
 
 	### internal methods specific to nkt hardware setup
 

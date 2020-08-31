@@ -13,7 +13,7 @@ root = 'D:\\frgmapper'
 # root = 'G:\\My Drive\\FRG\\Projects\\PVRD2 WaRM\\Experiments\\Damp Heat Cell Degradation Testing\\Round 2\\Data'
 
 def plotScanArea(filepath, ax = None):
-	with h5py.File(filepath, 'r') as f:
+	with h5py.File(filepath, 'r', libver = 'latest', swmr = True) as f:
 		avgRef = f['data']['reflectance'][()].mean(axis = 2)	#image to be plotted
 		x = f['data']['x'][()]
 		y = f['data']['y'][()]
@@ -24,11 +24,11 @@ def plotScanArea(filepath, ax = None):
 		showlater = True
 		fig, ax = plt.subplots(1,1)
 
-	img = np.flipud(np.fliplr(avgRef))	#to put in realspace frame of reference when looking at sample from enclosure door side
+	img = avgRef	#to put in realspace frame of reference when looking at sample from enclosure door side
 	# img[img < 0] = 0
-	im = ax.imshow(img, extent = [x[-1], x[0], y[0], y[-1]], vmin = 0, vmax = np.min([0.4, img.max()]))
+	im = ax.imshow(img, origin = 'lower', extent = [x[0], x[-1], y[0], y[-1]], vmin = np.nanmin(img), vmax = np.nanmax(img))
 	cb = plt.colorbar(im, ax = ax, fraction = 0.046)
-	cb.set_label('Average Reflectance (%)')
+	cb.set_label('Average Reflectance')
 
 	sb = ScaleBar(1e-3,
 		color = [1,1,1],
@@ -72,8 +72,8 @@ def plotScanArea(filepath, ax = None):
 	# 	color = [1,1,1],
 	# 	verticalalignment = 'top'
 	# 	)
-	ax.set_xticks([])
-	ax.set_yticks([])
+	# ax.set_xticks([])
+	# ax.set_yticks([])
 
 	if showlater:
 		plt.show()
@@ -85,19 +85,16 @@ def plotScanLine(filepath, ax = None):
 		fig, ax = plt.subplots(1,1)
 
 
-	with h5py.File(filepath, 'r') as d:
+	with h5py.File(filepath, 'r', libver = 'latest', swmr = True) as d:
 		axis = d['settings']['axis'][()].decode('utf-8')
-		x = d['data']['x'][()]
-		y = d['data']['y'][()]
+		pos = d['data']['pos'][()]
+		idlepos = d['data']['idle_pos'][()]
+		idleaxis = d['settomgs']['idle_axis'][()].decode('utf-8')
 		reflectance = d['data']['reflectance'][()]
 		label = d['info']['name'][()].decode('utf-8')
 
-	if axis == 'x':
-		ax.plot(x, 100*reflectance.mean(axis = 1))
-		ax.set_title('{0}\n y = {1}'.format(label, y))
-	else:
-		ax.plot(y, 100*reflectance.mean(axis = 1))
-		ax.set_title('{0}\n x = {1}'.format(label, x))
+	ax.plot(x, 100*reflectance.mean(axis = 1))
+	ax.set_title(f'{label}\n {idleaxis} = {idlepos}')
 
 	ax.set_ylabel('Average Reflectance (%)')
 	ax.set_xlabel('{0} (mm)'.format(axis))
@@ -112,7 +109,7 @@ def plotScanPoint(filepath, ax = None):
 		fig, ax = plt.subplots(1,1)
 
 
-	with h5py.File(filepath, 'r') as d:
+	with h5py.File(filepath, 'r', libver = 'latest', swmr = True) as d:
 		wavelengths = d['data']['wavelengths'][()]
 		reflectance = d['data']['reflectance'][()]
 		label = d['info']['name'][()].decode('utf-8')
@@ -131,7 +128,7 @@ def plotTimeSeries(filepath, ax = None):
 		fig, ax = plt.subplots(1,1)
 
 
-	with h5py.File(filepath, 'r') as d:
+	with h5py.File(filepath, 'r', libver = 'latest', swmr = True) as d:
 		wavelengths = d['data']['wavelengths'][()]
 		reflectance = d['data']['reflectance'][()]
 		delay = d['data']['delay'][()]
@@ -185,13 +182,13 @@ def Viewer(directory = root):
 			self.currentFilepath = self.fileBrowser.model().filePath(index)
 
 			if self.currentFilepath[-3:] == '.h5':
-				with h5py.File(self.currentFilepath, 'r') as d:
+				with h5py.File(self.currentFilepath, 'r', libver = 'latest', swmr = True) as d:
 				# 	self.scanInfo.label.setText(d['info']['name'][()].decode('utf-8'))
 				# 	x = d['data']['x'][()]
 				# 	y = d['data']['y'][()]
 				# 	xsize = x.max() - x.min()
 				# 	ysize = y.max() - y.min()
-					scanType = d['info']['type'][()].decode('utf-8')
+					scanType = str.lower(d['info']['type'][()].decode('utf-8'))
 				# 	self.scanInfo.dimensions.setText('{0} mm x {1} mm'.format(xsize, ysize))
 				# 	if 'fits' in d.keys():
 				# 		fitted = 'True'
@@ -201,13 +198,14 @@ def Viewer(directory = root):
 				# 	self.scanInfo.fitted.setText(fitted)
 
 				self.plotCanvas.reset()
-				if scanType in ['scanArea', 'scanAreaWaRD']:
+				self.plotCanvas.draw()
+				if scanType in ['scanarea', 'scanareaward']:
 					plotScanArea(filepath = self.currentFilepath, ax = self.plotCanvas.ax)
-				elif scanType == 'scanLine':
+				elif scanType == 'scanline':
 					plotScanLine(filepath = self.currentFilepath, ax = self.plotCanvas.ax)
-				elif scanType == 'scanPoint':
+				elif str.lower(scanType) == 'scanpoint':
 					plotScanPoint(filepath = self.currentFilepath, ax = self.plotCanvas.ax)
-				elif scanType == 'timeSeries':
+				elif str.lower(scanType) == 'timeseries':
 					plotTimeSeries(filepath = self.currentFilepath, ax = self.plotCanvas.ax)
 				else:
 					return

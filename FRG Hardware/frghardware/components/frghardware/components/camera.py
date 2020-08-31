@@ -74,6 +74,13 @@ class Hayear:
 		else:
 			return avg
 
+	def save(self, filename, **kwargs):
+		img = self.capture(**kwargs)
+		imsave = img.copy()
+		imsave[:,:,0] = img[:,:,2]
+		imsave[:,:,2] = img[:,:,0]
+		cv2.imwrite(f'{filename}.tif', (imsave*255).astype(int))
+
 	def preview(self):
 		# def animate(i, im):
 		# 	ax.clear()
@@ -101,10 +108,10 @@ class Hayear:
 			ret, frame = self.cap.read()
 			if ret:
 				# Our operations on the frame come here
-				gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-
+				# gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+				# rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 				# Display the resulting frame
-				cv2.imshow('frame',gray)
+				cv2.imshow('frame',frame)
 			if cv2.waitKey(1) & 0xFF == ord('q'):
 				break
 		cv2.destroyAllWindows()
