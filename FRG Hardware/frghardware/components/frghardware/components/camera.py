@@ -14,17 +14,29 @@ from functools import partial
 # import threading
 
 class Hayear:
-	def __init__(self, address = 0):
-		self._resolution = [1080, 1920]
+	def __init__(self, address = 0, api = 0):
+		self.address = address
+		self.api = api
+		self._resolution = [1200, 1600]
 		self.__bufferSize = 5
 		# self.__queue = None
-		self.connect(address = address)
-	
-	def connect(self, address):
-		self.cap = cv2.VideoCapture(address)
+		self.connect()
+		
+	def connect(self):
+		api_list = [
+			cv2.CAP_ANY,
+			cv2.CAP_FFMPEG,
+			cv2.CAP_MSMF,
+			cv2.CAP_DSHOW
+		]
+
+		self.cap = cv2.VideoCapture(self.address + api_list[self.api]) #use different api to communicate with camera, avoids overlap with windows which hogs the MSMF api sometimes
 		self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, self._resolution[1])
 		self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self._resolution[0])	
-	
+		try:
+			self.autoexposure = 0
+		except:
+			pass
 		return True
 
 	def disconnect(self):
@@ -34,6 +46,24 @@ class Hayear:
 			pass
 
 		return True
+
+	@property
+	def autoexposure(self):
+		self.__autoexposure = self.cap.get(cv2.CAP_PROP_AUTO_EXPOSURE)
+		return self.__autoexposure
+	@autoexposure.setter
+	def autoexposure(self, g):
+		self.cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, g)
+		self.__autoexposure = g
+
+	@property
+	def exposure(self):
+		self.__exposure = self.cap.get(cv2.CAP_PROP_EXPOSURE)
+		return self.__exposure
+	@exposure.setter
+	def exposure(self, g):
+		self.cap.set(cv2.CAP_PROP_EXPOSURE, g)
+		self.__exposure = g
 
 	@property
 	def gain(self):
@@ -74,6 +104,13 @@ class Hayear:
 		else:
 			return avg
 
+	def save(self, filename, **kwargs):
+		img = self.capture(**kwargs)
+		imsave = img.copy()
+		imsave[:,:,0] = img[:,:,2]
+		imsave[:,:,2] = img[:,:,0]
+		cv2.imwrite(f'{filename}.tif', (imsave*255).astype(int))
+
 	def preview(self):
 		# def animate(i, im):
 		# 	ax.clear()
@@ -101,10 +138,10 @@ class Hayear:
 			ret, frame = self.cap.read()
 			if ret:
 				# Our operations on the frame come here
-				gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-
+				# gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+				# rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 				# Display the resulting frame
-				cv2.imshow('frame',gray)
+				cv2.imshow('frame',frame)
 			if cv2.waitKey(1) & 0xFF == ord('q'):
 				break
 		cv2.destroyAllWindows()

@@ -132,7 +132,7 @@ class Thorlabs_LTS150_xy(object):
 
 
 class PLStage:
-	def __init__(self, sampleposition = (52.361, 41.000), port = 'COM8'):
+	def __init__(self, sampleposition = None, port = 'COM8'):
 		self.__xlim = (0.500, 172)
 		self.__ylim = (0.500, 178.500)
 		self.position = (None, None)

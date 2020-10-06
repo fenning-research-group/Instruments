@@ -35,7 +35,7 @@ if not os.path.exists(calibrationfolder):
 
 class Control:
 
-	def __init__(self, tecport = 'COM15', kepcoport = 'COM12',laserport = 'COM16', spotmapnumber = None):
+	def __init__(self, tecport = 'COM15', kepcoport = 'COM18',laserport = 'COM17', spotmapnumber = None):
 		# hardware properties
 		self.kepcoport = kepcoport
 		self.laserport = laserport
@@ -69,7 +69,7 @@ class Control:
 		self.__dataBuffer = [] # buffer to hold data files during sequential measurements of single sample. Held until a batch export
 
 		# stage/positioning constants
-		self.__sampleposition = (109, 27.75)	#position where TEC stage is centered in camera FOV, um
+		self.__sampleposition = (109, 30.25)	#position where TEC stage is centered in camera FOV, um
 		self.__detectorposition = (125, 89.5)	#delta position between detector and sampleposition, um.
 		self.__fov = (64, 51.2)	#dimensions of FOV, um
 
@@ -179,11 +179,11 @@ class Control:
 			# return False
 
 
-		result = self.tec.setSetPoint(temperature)
-		if result:
-			self.__temperature = temperature
-		else:
-			print('Error setting TEC temperature')
+		self.temperature = temperature
+		# if result:
+		# self.__temperature = temperature
+		# else:
+		# 	print('Error setting TEC temperature')
 			# return False
 
 
@@ -210,11 +210,11 @@ class Control:
 			self.setMeas(bias = 0, laserpower = 0, note = 'automatic baseline image')
 			self._waitForTemperature()
 			measdatetime = datetime.datetime.now()
-			temperature = self.tec.getTemperature()
+			temperature = self.tec.temperature
 			im, _, _ = self.camera.capture(frames = self.numframes, imputeHotPixels = imputeHotPixels)
 			v, i = self.kepco.read(counts = self.numIV)
 			irradiance = self._getOpticalPower()
-			temperature = (temperature + self.tec.getTemperature()) / 2	#average the temperature from just before and after the measurement. Typically averaging >1 second of time here.
+			temperature = (temperature + self.tec.temperature) / 2	#average the temperature from just before and after the measurement. Typically averaging >1 second of time here.
 			meas = {
 				'sample': 	self.sampleName,
 				'note':		self.note,
@@ -252,12 +252,12 @@ class Control:
 		#take image, take IV meas during image
 		self._waitForTemperature()
 		measdatetime = datetime.datetime.now()
-		temperature = self.tec.getTemperature()
+		temperature = self.tec.temperature
 		im, _, _ = self.camera.capture(frames = self.numframes, imputeHotPixels = imputeHotPixels)
 		v, i = self.kepco.read(counts = self.numIV)
 		#pdb.set_trace()
 		irradiance = self._getOpticalPower()
-		temperature = (temperature + self.tec.getTemperature()) / 2	#average the temperature from just before and after the measurement. Typically averaging >1 second of time here.
+		temperature = (temperature + self.tec.temperature) / 2	#average the temperature from just before and after the measurement. Typically averaging >1 second of time here.
 
 		if self.__laserON and lastmeasurement:
 			self.laser.off()
@@ -809,7 +809,7 @@ class Control:
 
 		startTime = time.time()
 		while (not reachedTemp) and (time.time() - startTime <= self.maxSoakTime):
-			currentTemp = self.tec.getTemperature()
+			currentTemp = self.tec.temperature
 			if np.abs(currentTemp - self.temperature) <= self.temperatureTolerance:
 				reachedTemp = True
 			else:
