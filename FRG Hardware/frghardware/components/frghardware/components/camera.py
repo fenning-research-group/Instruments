@@ -34,6 +34,7 @@ class Hayear:
 		self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, self._resolution[1])
 		self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self._resolution[0])	
 		try:
+			self.fps = 30
 			self.autoexposure = 0
 		except:
 			pass
@@ -82,6 +83,16 @@ class Hayear:
 	def gamma(self, g):
 		self.cap.set(cv2.CAP_PROP_GAMMA, g)
 		self.__gamma = g
+
+	@property
+	def fps(self):
+		self.__fps = self.cap.get(cv2.CAP_PROP_FPS)
+		return self.__fps
+	@gain.setter
+	def gamma(self, g):
+		self.cap.set(cv2.CAP_PROP_FPS, g)
+		self.__fps = g
+
 
 	def capture(self, numframes = 10, imputeHotPixels = False, verbose = False):
 		raw = np.zeros((numframes, self._resolution[0], self._resolution[1], 3))
@@ -132,7 +143,7 @@ class Hayear:
 
 		# plt.ion()
 		# plt.show()
-
+		print('Press "q" with preview window active to close')
 		while(True):
 		# Capture frame-by-frame
 			ret, frame = self.cap.read()
