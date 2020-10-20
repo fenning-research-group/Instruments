@@ -25,7 +25,7 @@ class Omega:
 
 	@property
 	def temperature(self):
-		return __temperature_get()
+		return self.__temperature_get()
 	
 	def connect(self, port, address = 1):
 		self.__handle = serial.Serial()

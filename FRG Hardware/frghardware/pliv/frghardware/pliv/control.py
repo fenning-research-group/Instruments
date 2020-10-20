@@ -7,11 +7,11 @@ import h5py
 import sys
 import matplotlib.pyplot as plt
 from frghardware.components.FLIR import FLIR
-from frgpl.stage import PLStage
-from frgpl.kepco import Kepco
-from frgpl.daq import PLDAQ
-from frgpl.laser import Laser808
-from frgpl.tec import Omega
+from frghardware.components.stage import PLStage
+from frghardware.components.kepco import Kepco
+from frghardware.components.daq import PLDAQ
+from frghardware.components.laser import Laser808
+from frghardware.components.tec import Omega
 import datetime
 import time
 from mpl_toolkits.axes_grid1 import make_axes_locatable
@@ -33,12 +33,13 @@ if not os.path.exists(calibrationfolder):
 	os.mkdir(calibrationfolder)
 
 
-class control:
+class Control:
 
-	def __init__(self, kepcoport = 'COM5',laserport = 'COM1', spotmapnumber = None):
+	def __init__(self, tecport = 'COM15', kepcoport = 'COM18',laserport = 'COM17', spotmapnumber = None):
 		# hardware properties
 		self.kepcoport = kepcoport
 		self.laserport = laserport
+		self.tecport = tecport
 		self.__laserON = False
 		self.__kepcoON = False
 		self.__cameraON = False
@@ -68,9 +69,9 @@ class control:
 		self.__dataBuffer = [] # buffer to hold data files during sequential measurements of single sample. Held until a batch export
 
 		# stage/positioning constants
-		self.__sampleposition = (52000, 56000)	#position where TEC stage is centered in camera FOV, um
-		self.__detectorposition = (68000, 117000)	#delta position between detector and sampleposition, um.
-		self.__fov = (77000, 56000)	#dimensions of FOV, um
+		self.__sampleposition = (109, 30.25)	#position where TEC stage is centered in camera FOV, um
+		self.__detectorposition = (125, 89.5)	#delta position between detector and sampleposition, um.
+		self.__fov = (64, 51.2)	#dimensions of FOV, um
 
 		self.connect()
 		self.loadSpotCalibration(spotmapnumber)
@@ -87,12 +88,12 @@ class control:
 
 	def connect(self):
 		self.camera = FLIR()		# connect to FLIR camera
-		self.kepco = Kepco()		# connect to Kepco
+		self.kepco = Kepco(self.kepcoport)		# connect to Kepco
 		self.kepco.set(voltage=0)   # set voltage to 0, seems to solve current compliance issues
-		self.laser = Laser808()		# Connect to OSTECH Laser
+		self.laser = Laser808(self.laserport)		# Connect to OSTECH Laser
 		self.daq = PLDAQ()			# connect to NI-USB6000 DAQ
 		self.stage = PLStage(sampleposition = self.__sampleposition)		# connect to FRG stage
-		self.tec = Omega()			# connect to omega PID controller, which is driving the TEC stage.
+		self.tec = Omega(self.tecport)			# connect to omega PID controller, which is driving the TEC stage.
 		
 	def disconnect(self):
 		try:
@@ -123,6 +124,11 @@ class control:
 
 
 	### basic use functions
+	def gotosample(self):
+		input('Moving the stage - please ensure stage axes are clear, then press enter to continue')
+		if not c.stage._homed:
+			c.stage.gohome()
+		c.stage.moveto(*self.__sampleposition)
 
 	def setMeas(self, bias = None, laserpower = None, suns = None, saturationtime = None, temperature = None, numIV = None, numframes = None, note = ''):
 
@@ -173,11 +179,11 @@ class control:
 			# return False
 
 
-		result = self.tec.setSetPoint(temperature)
-		if result:
-			self.__temperature = temperature
-		else:
-			print('Error setting TEC temperature')
+		self.temperature = temperature
+		# if result:
+		# self.__temperature = temperature
+		# else:
+		# 	print('Error setting TEC temperature')
 			# return False
 
 
@@ -204,11 +210,11 @@ class control:
 			self.setMeas(bias = 0, laserpower = 0, note = 'automatic baseline image')
 			self._waitForTemperature()
 			measdatetime = datetime.datetime.now()
-			temperature = self.tec.getTemperature()
+			temperature = self.tec.temperature
 			im, _, _ = self.camera.capture(frames = self.numframes, imputeHotPixels = imputeHotPixels)
 			v, i = self.kepco.read(counts = self.numIV)
 			irradiance = self._getOpticalPower()
-			temperature = (temperature + self.tec.getTemperature()) / 2	#average the temperature from just before and after the measurement. Typically averaging >1 second of time here.
+			temperature = (temperature + self.tec.temperature) / 2	#average the temperature from just before and after the measurement. Typically averaging >1 second of time here.
 			meas = {
 				'sample': 	self.sampleName,
 				'note':		self.note,
@@ -246,12 +252,12 @@ class control:
 		#take image, take IV meas during image
 		self._waitForTemperature()
 		measdatetime = datetime.datetime.now()
-		temperature = self.tec.getTemperature()
+		temperature = self.tec.temperature
 		im, _, _ = self.camera.capture(frames = self.numframes, imputeHotPixels = imputeHotPixels)
 		v, i = self.kepco.read(counts = self.numIV)
 		#pdb.set_trace()
 		irradiance = self._getOpticalPower()
-		temperature = (temperature + self.tec.getTemperature()) / 2	#average the temperature from just before and after the measurement. Typically averaging >1 second of time here.
+		temperature = (temperature + self.tec.temperature) / 2	#average the temperature from just before and after the measurement. Typically averaging >1 second of time here.
 
 		if self.__laserON and lastmeasurement:
 			self.laser.off()
@@ -803,7 +809,7 @@ class control:
 
 		startTime = time.time()
 		while (not reachedTemp) and (time.time() - startTime <= self.maxSoakTime):
-			currentTemp = self.tec.getTemperature()
+			currentTemp = self.tec.temperature
 			if np.abs(currentTemp - self.temperature) <= self.temperatureTolerance:
 				reachedTemp = True
 			else:

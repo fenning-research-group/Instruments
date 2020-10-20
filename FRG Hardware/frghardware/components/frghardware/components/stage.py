@@ -1,12 +1,15 @@
-import thorlabs_apt as apt
 import time
 import threading
-
+import serial
+try:
+	import thorlabs_apt as apt
+except:
+	print('Thorlabs APT did not load properly - if needed, ensure that DLL has been installed!')
 class Thorlabs_LTS150_xy(object):
 
 	def __init__(self, xMotorAddress = 45992790, yMotorAddress = 45951900):
-		self.x = apt.Motor(xMotorAddress)
-		self.y = apt.Motor(yMotorAddress)
+		self.x = self.apt.Motor(xMotorAddress)
+		self.y = self.apt.Motor(yMotorAddress)
 		self.position = (self.x.position, self.y.position)
 
 		self.x.enable()
@@ -129,9 +132,9 @@ class Thorlabs_LTS150_xy(object):
 
 
 class PLStage:
-	def __init__(self, sampleposition = (523.61, 41.000), port = 'COM8'):
-		self.__xlim = (0.500, 205.500)
-		self.__ylim = (0.500, 194.500)
+	def __init__(self, sampleposition = None, port = 'COM8'):
+		self.__xlim = (0.500, 172)
+		self.__ylim = (0.500, 178.500)
 		self.position = (None, None)
 		self.connect(port = port)	
 		self._homed = False
@@ -205,28 +208,17 @@ class PLStage:
 			return False
 
 		if x is not self.position[0]:
-			self.__handle.write('4/1/{0:d}/'.format(x*1000).encode()) #stage controller works in um, not mm!
+			self.__handle.write('4/1/{0:d}/'.format(int(x*1000)).encode()) #stage controller works in um, not mm!
 			self.waitforstage()
 		if y is not self.position[1]:
-			self.__handle.write('4/2/{0:d}/'.format(y*1000).encode()) #stage controller works in um, not mm!
+			self.__handle.write('4/2/{0:d}/'.format(int(y*1000)).encode()) #stage controller works in um, not mm!
 			self.waitforstage()
 
 		self.postmove(x, y)
 		return True
 
 	def moverel(self, x = 0, y = 0):
-		if not self.premove(x = self.position[0] + x, y = self.position[1] + y):
-			return False
-
-		if x:
-			self.__handle.write('2/1/{0:d}/'.format(x*1000).encode()) #stage controller works in um, not mm!
-			self.waitforstage()
-		if y:
-			self.__handle.write('2/2/{0:d}/'.format(y*1000).encode()) #stage controller works in um, not mm!
-			self.waitforstage()
-
-		self.postmove(self.position[0] + x, self.position[1] + y)
-		return True
+		return self.moveto(self.position[0] + x, self.position + y)
 
 	def waitforstage(self):
 		#method to pause until the stage has finished moving.

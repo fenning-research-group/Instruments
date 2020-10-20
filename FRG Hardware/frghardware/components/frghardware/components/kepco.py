@@ -6,14 +6,17 @@ import numpy as np
 import pdb
 
 class Kepco:
-	def __init__(self, port = 'COM12'):
+	def __init__(self, port):
 		self.__maxcurrent = 5
 		self.__maxvoltage = 1
 		self.__mode = 'VOLT'
 		self.__on = False
-		self.connect(port = port)	
+		self.port = port
+		self.connect()	
 
-	def connect(self, port = 'COM12'):
+	def connect(self, port = None):
+		if port is None:
+			port = self.port
 		self.__handle = serial.Serial(port,timeout=8)
 		self.__handle.write('SYST:REM ON\n'.encode())
 		self.__handle.write('VOLT:RANG {0:.2f}\n'.format(self.__maxvoltage).encode())
