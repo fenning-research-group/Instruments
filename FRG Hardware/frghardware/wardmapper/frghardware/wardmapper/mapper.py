@@ -116,6 +116,7 @@ class controlGeneric(object):
 			reference = rawdata.create_dataset('referenceRaw', data = dummy1d)
 			reference.attrs['description'] = 'Raw signal for reference detector. (V)'
 
+			f.swmr_mode = True # Single Writer Multiple Reader, allows h5 file to be read during scan.
 			return signal, reference, reflectance
 
 		wavelengths = self._cleanwavelengthinput(wavelengths)

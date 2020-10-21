@@ -8,8 +8,8 @@ except:
 class Thorlabs_LTS150_xy(object):
 
 	def __init__(self, xMotorAddress = 45992790, yMotorAddress = 45951900):
-		self.x = self.apt.Motor(xMotorAddress)
-		self.y = self.apt.Motor(yMotorAddress)
+		self.x = apt.Motor(xMotorAddress)
+		self.y = apt.Motor(yMotorAddress)
 		self.position = (self.x.position, self.y.position)
 
 		self.x.enable()
