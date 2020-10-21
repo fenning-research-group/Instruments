@@ -24,7 +24,7 @@ import time
 
 class Compact(object):
 
-	def __init__(self, port = 'COM13', pulseFrequency = 21505):		# TODO: add compact port here as default
+	def __init__(self, port = 'COM16', pulseFrequency = 21505):		# TODO: add compact port here as default
 		self.__handle = None	#will be overwritten upon connecting, set back to None upon disconnecting
 		self.triggerMode = None
 		self.triggerSetPoint = None
@@ -35,7 +35,7 @@ class Compact(object):
 
 		self.emissionOn = False
 		self.lightWarmupTime = 5	#seconds to wait after laser is turned on for laser to stabilize. Without lockin, 3 seconds is sufficient. Higher to allow lockin to find the frequency
-	def connect(self, port = 'COM13'):
+	def connect(self, port = 'COM16'):
 		nktdll.openPorts(port, 1 ,1)
 		result, devList = nktdll.deviceGetAllTypes(port)
 		for devId in devList:
@@ -223,7 +223,7 @@ class Compact(object):
 
 class Select(object):
 
-	def __init__(self, port = 'COM13'):		
+	def __init__(self, port = 'COM16'):		
 		self.__handle = None	#will be overwritten upon connecting, set back to None upon disconnecting
 		self.__defaultWavelengths = [1700, 1750, 1800, 1850, 1900, 1902, 1950, 2000]	#default values to assign to unspecified wavelength selections
 		self._wavelengths = [None] * 8
@@ -234,14 +234,14 @@ class Select(object):
 		self.rfOn = None
 		self.currentAOTF = None
 		self.wlDelay = 0.1	#need at least 40 ms for Select communication to execute. Important when changing wavelengths during scans
-		if self.connect():
+		if self.connect(port = port):
 			self.off()	#turn off RF to allow AOTF selection
 			self.selectAOTF(1)	#set to IR AOTF. 
 			self.setAOTF(wavelength = self.__defaultWavelengths, amplitude = [1] + [0] * 7)
 			self.on()	#turn on RF
 			self.setWavelengthRange()	#set range to default range
 		
-	def connect(self, port = 'COM13'):
+	def connect(self, port = 'COM16'):
 		nktdll.openPorts(port, 1 ,1)
 		result, devList = nktdll.deviceGetAllTypes(port)
 		success = 0

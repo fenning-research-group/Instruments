@@ -1685,16 +1685,16 @@ class controlMono(controlGeneric):
 	### internal methods specific to mono hardware setup
 
 	def _goToWavelength(self, wavelength):
-		self.mono.goToWavelength(wavelength)
+		self.mono.wavelength = wavelength
 
 	def _lightOn(self):
 		if not self.mono.shutterOpenStatus:
-			self.mono.openShutter()
+			self.mono.open_shutter()
 		return True
 
 	def _lightOff(self):
 		if self.mono.shutterOpenStatus:
-			self.mono.closeShutter()
+			self.mono.close_shutter()
 		return True
 
 class controlNKT(controlGeneric):
@@ -1720,11 +1720,14 @@ class controlNKT(controlGeneric):
 		self.__set_up_lia()
 
 		self.compact = Compact(
+			port = 'COM16',
 			pulseFrequency = 21505
 			)
 		print("compact connected")
 
-		self.select = Select()
+		self.select = Select(
+			port = 'COM16'
+			)
 		self.select.setAOTF(1700, 0.6)
 		print("select+rf driver connected")
 
