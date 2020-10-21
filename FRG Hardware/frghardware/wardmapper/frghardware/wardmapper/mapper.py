@@ -94,7 +94,7 @@ class controlGeneric(object):
 		self.__baselineTaken = True
 		self.__flushinterval = DEFAULT_FLUSH_INTERVAL
 
-	def scanpoint(self, label, wavelengths):
+	def scanpoint(self, label, wavelengths = None):
 		def preparefile(f):
 			dummy1d = np.full(wavelengths.shape, np.nan)
 
@@ -131,7 +131,7 @@ class controlGeneric(object):
 			self.__flushinterval = DEFAULT_FLUSH_INTERVAL
 			reflectance[()] = self._baselinecorrectionroutine(wavelengths, signal, reference)
 
-	def scanline(self, label, wavelengths, axis, pmin, pmax, steps, p0 = None):
+	def scanline(self, label, axis, pmin, pmax, steps, wavelengths = None, p0 = None):
 		def preparefile(f):
 			dummy1d =  np.full((steps, ), np.nan)
 			dummy2d =  np.full((steps, len(wavelengths)), np.nan)
@@ -203,14 +203,14 @@ class controlGeneric(object):
 			print('Error: axis must equal \'x\' or \'y\': user provided {0}'.format(axis))
 			return
 
-		x0, y0 = self.stage.position
+		x0, y0 = self.stage.position #if no p0 specified, assume coordinates are relative to current position
 		if p0 is None:
 			if axis == 'x':
 				p0 = x0
 			else:
 				p0 = y0
 
-		allpts = np.linspace(p0 - pmin, p0 + pmax, steps)
+		allpts = np.linspace(p0 + pmin, p0 + pmax, steps) #coordinates are relative to center coordinate p0
 		if axis == 'x':
 			xval = allpts
 			yval = y0
@@ -315,7 +315,7 @@ class controlGeneric(object):
 		self.__flushinterval = DEFAULT_FLUSH_INTERVAL
 		return center, size
 
-	def scanarea(self, label, wavelengths, xmin, xmax, xsteps, ymin, ymax, ysteps, x0 = None, y0 = None, export = True):
+	def scanarea(self, label, xmin, xmax, xsteps, ymin, ymax, ysteps, wavelengths = None, x0 = None, y0 = None, export = True):
 		def preparefile(f):
 			dummy2d =  np.full((ysteps, xsteps), np.nan)
 			dummy3d =  np.full((ysteps, xsteps, len(wavelengths)), np.nan)
@@ -389,7 +389,7 @@ class controlGeneric(object):
 		# clean up wavelengths input
 		wavelengths = self._cleanwavelengthinput(wavelengths)
 
-		currentx, currenty = self.stage.position # return position
+		currentx, currenty = self.stage.position # unless otherwise specified, assume center coordinates x0,y0 are current position
 		if x0 is None:
 			x0 = currentx
 		if y0 is None:
@@ -438,7 +438,7 @@ class controlGeneric(object):
 		self.stage.moveto(x = x0, y = y0)	#go back to map center position
 		self._lightOff()
 
-	def flyscanarea(self, label, wavelengths, xsize, ysize, xsteps = 21, ysteps = 21, x0 = None, y0 = None, export = True):
+	def flyscanarea(self, label, xsize, ysize, wavelengths = None, xsteps = 21, ysteps = 21, x0 = None, y0 = None, export = True):
 		# clean up wavelengths input
 		wavelengths = self._cleanwavelengthinput(wavelengths)
 
@@ -501,7 +501,7 @@ class controlGeneric(object):
 				reflectance = data
 				)
 
-	def timeseries(self, label, wavelengths, duration, interval, logtemperature = False, export = True):
+	def timeseries(self, label, duration, interval, wavelengths = None, logtemperature = False, export = True):
 		### records a reflectance spectrum for a given duration (seconds) at set intervals (seconds)
 		#	TODO: I don't think this will work for single wavelength inputs
 
@@ -886,6 +886,8 @@ class controlGeneric(object):
 		return center, rng
 
 	def _cleanwavelengthinput(self, wavelength):
+		if wavelength is None:
+			wavelength = self.__baseline['Wavelengths'] #if no wavelengths specified, assume scanning over baseline wavelengths.
 		# clean up wavelengths input
 		if type(wavelength) is np.ndarray:
 			if wavelength.shape == ():
@@ -1791,7 +1793,7 @@ class controlNKT(controlGeneric):
 
 	def preCheck(self):
 		goodToGo = False
-
+		self.compact.resetInterlock()  # this will "press the reset button on the front panel". interlock will stay unsatisfied if door is open.
 		while not goodToGo:
 			if self.select.checkShutter() and self.compact.checkInterlock():
 				goodToGo = True

@@ -71,6 +71,7 @@ class Compact(object):
 		return interlockStatus
 
 	def on(self):
+		self.resetInterlock() # this will "press the reset button on the front panel". interlock will stay unsatisfied if door is open.
 		if self.checkInterlock():
 			result = nktdll.registerWriteU8(self.__handle, self.__address, 0x30, 1, -1) # check whether 1 should be sent as an hexadecimal value. Might need to make a function to convert to hex values
 			if result == 0:
@@ -195,6 +196,13 @@ class Compact(object):
 				success = False
 
 		return success
+
+	def resetInterlock(self):
+		"""
+		resets the interlock to enable laser emission. 
+		note that this only works if the door is closed (equivalent to pressing the reset button on the Compact's front panel) 
+		"""
+		result = nktdll.registerWriteU16(self.__handle, self.__address, 0x32, 1, -1)
 
 	def getStatusBits(self):
 		#### Bit Key ###
