@@ -122,47 +122,6 @@ class DAQ(object):
 		if self.useExtClock:
 			# scan_options = ScanOptions.FOREGROUND | ScanOptions.SCALEDATA | ScanOptions.EXTCLOCK
 			scan_options = ScanOptions.FOREGROUND | ScanOptions.SCALEDATA | ScanOptions.EXTTRIGGER # | ScanOptions.RETRIGMODE
-			# num_chans = len(self.channels['Number'])
-			# channelList = ['Trigger'] + self.channels['Label']
-			channelList = [x for x in self.channels['Label']]
-			channelList.append(channelList[1])
-			channelList[1] = 'Dummy'	#dummy channel A1, since we cycle from A0-A2 
-			num_chans = len(channelList)
-
-			# ul.set_config(
-			# 	info_type = InfoType.BOARDINFO,
-			# 	board_num = self.board_num,
-			# 	dev_num = 0,	#value here is ignored
-			# 	config_item = BoardInfo.ADTRIGCOUNT,
-			# 	config_val = self.countsPerTrigger * num_chans	#number of samples to take per trigger. This is total number of samples, ie 150 samples over 3 channels = 50 samples per channel
-			# 	)
-
-			# ul.daq_set_trigger(
-			# 		board_num = self.board_num, 
-			# 		trig_source = TriggerSource.EXTTTL,
-			# 		trig_sense = TriggerSensitivity.FALLING_EDGE,
-			# 		trig_chan = self.channels['Number'][1], 
-			# 		chan_type = self.channels['Type'][1],
-			# 		gain = self.channels['Gain'][1],
-			# 		level = 2, 
-			# 		variance = 0, 
-			# 		trig_event = TriggerEvent.START
-			# 		)
-
-
-			# Set the stop trigger settings
-			# Code doesn't run with this command - error = "Error 1015: Invalid trigger event specified"
-			# ul.daq_set_trigger(
-			# 		board_num = self.board_num, 
-			# 		trig_source = TriggerSource.SCANCOUNT,
-			# 		trig_sense = TriggerSensitivity.ABOVE_LEVEL,
-			# 		trig_chan = self.channels['Number'][0], 
-			# 		chan_type = self.channels['Type'][0],	#  not sure if these
-			# 		gain = self.channels['Gain'][0],		#  arguments matter here
-			# 		level = 2, 	#number of scans to stop after?
-			# 		variance = 0,
-			# 		trig_event = TriggerEvent.STOP
-			# 		)
 		else:
 			scan_options = ScanOptions.FOREGROUND | ScanOptions.SCALEDATA
 			ul.set_config(
@@ -172,43 +131,35 @@ class DAQ(object):
 				config_item = BoardInfo.ADTRIGCOUNT,
 				config_val = 0	#number of samples to take per trigger. 0 = continuous triggering
 				)
-			channelList = [x for x in self.channels['Label']]
-			channelList.append(channelList[1])
-			channelList[1] = 'Dummy'	#dummy channel A1, since we cycle from A0-A2 
-			num_chans = len(channelList)
+
+		channelList = []
+		channelNumbers = []
+		low_chan = min(self.channels['Number'])
+		high_chan = max(self.channels['Number'])
+		for cnum in range(low_chan, high_chan+1):
+			if cnum in self.channels['Number']:
+				cidx = self.channels['Number'].index(cnum)
+				cname = self.channels['Label'][cidx]
+			else:
+				cname = 'Dummy'
+			channelList.append(cname)
+		num_chans = len(channelList)
 
 		totalCount =  num_chans * self.__countsPerChannel
 		memhandle = ul.scaled_win_buf_alloc(totalCount)
 		ctypesArray = ctypes.cast(memhandle, ctypes.POINTER(ctypes.c_double))
 
-		# ul.a_load_queue(
-		# 	board_num = self.board_num,
-		# 	chan_list = self.channels['Number'],
-		# 	gain_list = self.channels['Gain'],
-		# 	count = num_chans
-		# 	)
 		ul.a_in_scan(
         	board_num = self.board_num,
-        	low_chan = 0,
-        	high_chan = 2,
+        	low_chan = low_chan,
+        	high_chan = high_chan,
         	num_points = totalCount,
         	rate = self.__rate,
         	ul_range = ULRange.BIP5VOLTS,
         	memhandle = memhandle,
 			options = scan_options
 			)
-		# ul.daq_in_scan(
-		# 	board_num = self.board_num,
-		# 	chan_list = self.channels['Number'],
-		# 	chan_type_list = self.channels['Type'],
-		# 	gain_list = self.channels['Gain'],
-		# 	chan_count = num_chans,
-		# 	rate = self.__rate,
-		# 	pretrig_count = 0,
-		# 	total_count = totalCount,
-		# 	memhandle = memhandle,
-		# 	options = scan_options
-		# 	)
+
 		data = {}
 		for ch in channelList:
 			data[ch] = {
@@ -222,8 +173,9 @@ class DAQ(object):
 			for ch in channelList:
 				data[ch]['Raw'].append(ctypesArray[dataIndex])
 				dataIndex += 1
+		data.pop('Dummy') #toss dummy data from middle channels
 
-		for ch in channelList:
+		for ch in data.keys():
 			data[ch]['Mean'] = np.mean(data[ch]['Raw'])
 			data[ch]['Std'] = np.std(data[ch]['Raw'])
 

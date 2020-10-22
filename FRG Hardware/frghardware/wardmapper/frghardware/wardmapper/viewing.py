@@ -9,7 +9,7 @@ from PyQt5.QtCore import pyqtSignal
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
 # import time
-root = 'D:\\frgmapper'
+root = 'D:\\frgmapper\\Data'
 # root = 'G:\\My Drive\\FRG\\Projects\\PVRD2 WaRM\\Experiments\\Damp Heat Cell Degradation Testing\\Round 2\\Data'
 
 def plotScanArea(filepath, ax = None):
@@ -89,7 +89,7 @@ def plotScanLine(filepath, ax = None):
 		axis = d['settings']['axis'][()].decode('utf-8')
 		pos = d['data']['pos'][()]
 		idlepos = d['data']['idle_pos'][()]
-		idleaxis = d['settomgs']['idle_axis'][()].decode('utf-8')
+		idleaxis = d['settings']['idle_axis'][()].decode('utf-8')
 		reflectance = d['data']['reflectance'][()]
 		label = d['info']['name'][()].decode('utf-8')
 

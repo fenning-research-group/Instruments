@@ -7,7 +7,7 @@ class Mono(object):
 		self.pauseTime = 0.015	#time to pause between subsequent communication to mono, in seconds. set to 10 ms on 2019-09-10
 		#self.handle = pyvisa.ResourceManager().open_resource(monoAddress)
 		if self.connect(monoAddress = monoAddress):
-			self.handle.write('OUTPORT 1')	#select output port (1 = inline, 2 = axial)
+			# self.handle.write('OUTPORT 1')	#select output port (1 = inline, 2 = axial)
 			self.currentWavelength = float(self.handle.query('WAVE?'))
 			self.currentFilter = int(self.handle.query('FILTER?'))
 			self.currentGrating = int(self.handle.query('GRAT?')[0])
@@ -15,8 +15,16 @@ class Mono(object):
 		self.wavelengthTolerance = 0.1 #nm
 
 		self.shutterOpenStatus = None
-		self.closeShutter()
+		self.close_shutter()
 
+	@property
+	def wavelength(self):
+		self.__wavelength = float(self.handle.query('WAVE?'))
+		return self.__wavelength
+	@wavelength.setter
+	def wavelength(self, wl):
+		self.goToWavelength(wl)
+	
 	def connect(self, monoAddress):
 		self.handle = pyvisa.ResourceManager().open_resource(monoAddress)
 		self.handle.timeout=10000 # set timeout to 10 s (input value in ms)
@@ -29,22 +37,30 @@ class Mono(object):
 		self.handle.close()	#not sure if this line works
 		return True
 
-	def openShutter(self):
+	def open_shutter(self):
 		if not self.shutterOpenStatus:
 			self.handle.write('SHUTTER O')
 		self.shutterOpenStatus = True
 		return True
 
-	def closeShutter(self):
+	def close_shutter(self):
 		if self.shutterOpenStatus:
 			self.handle.write('SHUTTER C')
 		self.shutterOpenStatus = False
 		return True
 
+	def select_port(self, port):
+		if port in [1, 'inline']:
+			self.handle.write('OUTPORT 1')	#select output port (1 = inline, 2 = axial)
+		elif port in [2, 'axial']:
+			self.handle.write('OUTPORT 2')
+		else:
+			raise Exception('Invalid port selected - valid inputs are "inline" or "axial"')
+		return True
+
 	def goToWavelength(self, targetWavelength):
 		#check to see if we even need to change wavelengths - if we are already at target, don't waste time on further communication with mono
-		self.currentWavelength = float(self.handle.query('WAVE?'))
-		if (abs(self.currentWavelength-targetWavelength)<self.wavelengthTolerance):
+		if (abs(self.wavelength - targetWavelength) < self.wavelengthTolerance):
 			return True
 
 		if targetWavelength < 350: # No filter
@@ -93,11 +109,10 @@ class Mono(object):
 		timer = 0
 		while waitingForMonoMove:
 			time.sleep(self.pauseTime)
-			self.currentWavelength = float(self.handle.query('WAVE?'))
 			self.currentFilter = int(self.handle.query('FILTER?'))
 			self.currentGrating = int(self.handle.query('GRAT?')[0])
 
-			if (abs(self.currentWavelength-targetWavelength)<self.wavelengthTolerance) and (self.currentFilter==targetFilter) and (self.currentGrating==targetGrating):
+			if (abs(self.wavelength-targetWavelength)<self.wavelengthTolerance) and (self.currentFilter==targetFilter) and (self.currentGrating==targetGrating):
 				waitingForMonoMove = False
 
 			timer = timer + 1
