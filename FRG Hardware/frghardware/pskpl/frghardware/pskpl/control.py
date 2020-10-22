@@ -62,7 +62,9 @@ class Control2:
 
 	def connect(self):
 		self.cam550 = Hayear(self.camid_550)
+		self.cam550.exposure = -5
 		self.cam720 = Hayear(self.camid_720)
+		self.cam720.exposure = -5
 		# self.camera = FLIR()		# connect to FLIR camera
 		# self.kepco = Kepco()		# connect to Kepco
 		# self.kepco.set(voltage=0)   # set voltage to 0, seems to solve current compliance issues
@@ -98,14 +100,20 @@ class Control2:
 
 
 	### basic use functions
-	def capture(self, samplename = None, frames = 10, note = '', save_img = False):
+	def capture(self, samplename, frames = 10, note = '', save_img = False):
 		im550 = self.cam550.capture(frames)
 		im720 = self.cam550.capture(frames)
 
-		self.save(im550,im720, samplename, note, save_img = save_img)
+		self.save(
+			samplename,
+			im550,
+			im720, 
+			note = note,
+			save_img = save_img
+			)
 
 
-	def save(self, img1, img2, samplename = None, note = '', outputdirectory = None, reset = True, save_img = False):
+	def save(self, samplename, img1, img2, x = None, y = None, note = '', outputdirectory = None, reset = True, save_img = False):
 
 		## figure out the sample directory, name, total filepath
 		if samplename is not None:
@@ -115,6 +123,11 @@ class Control2:
 			self.outputDirectory = outputdirectory
 		if not os.path.exists(self.outputDirectory):
 			os.mkdir(self.outputDirectory)
+
+		if x is None:
+			x = self.stage.position[0]
+		if y is None:
+			y = self.stage.position[1]
 
 		fids = os.listdir(self.outputDirectory)
 		sampleNumber = 1
@@ -195,15 +208,6 @@ class Control2:
 			# temp = settings.create_dataset('tempsp', data = np.array(data['temperature_setpoint']))
 			# temp.attrs['description'] = 'TEC stage temperature setpoint for each measurement.'
 
-
-			if self.stage.position[0] is None:
-				stagepos = self.__sampleposition
-			else:
-				stagepos = self.stage.position
-
-			temp = settings.create_dataset('position', data = np.array(stagepos))
-			temp.attrs['description'] = 'Stage position during measurement.'
-
 			# calibrations
 			calibrations = f.create_group('/calibrations')
 			calibrations.attrs['description'] = 'Instrument calibrations to be used for data analysis.'
@@ -220,6 +224,12 @@ class Control2:
 			# raw data
 			rawdata = f.create_group('/data')
 			rawdata.attrs['description'] = 'Raw measurements taken during imaging'
+
+			temp = rawdata.create_dataset('x', data = np.array(x))
+			temp.attrs['description'] = 'Stage x position during measurement. Low x = right side of sample/left side of chamber'
+
+			temp = rawdata.create_dataset('y', data = np.array(y))
+			temp.attrs['description'] = 'Stage y position during measurement. Low y = top of sample/back of chamber'
 
 			temp = rawdata.create_dataset('img1', data = img1, chunks = True, compression = 'gzip')
 			temp.attrs['description'] = 'Raw images acquired for each measurement.'
@@ -248,7 +258,7 @@ class Control2:
 		return fpath
 
 	### tile imaging
-	def tileImages(self, xmin, xmax, numx, ymin, ymax, numy, frames = 100):
+	def tile(self, samplename, xmin, xmax, numx, ymin, ymax, numy, frames = 10):
 		x0, y0 = self.stage.position
 		xp = [int(x) for x in np.linspace(x0+xmin, x0+xmax, numx)]
 		yp = [int(y) for y in np.linspace(y0+ymin, y0+ymax, numy)]
@@ -258,7 +268,7 @@ class Control2:
 		self.stage.moveto(x = xp[0], y = yp[0])
 		time.sleep(5) #sometimes stage says its done moving too early, expect that on first move which is likely a longer travel time
 
-		flip = False #for snaking
+		flip = False #for snaking. currently always false! backlash in stage makes stitching hard if snaking
 		for m, y in tqdm(enumerate(yp), total = numy, desc = 'Y', leave = False):
 			if flip:
 				flip = False
@@ -274,10 +284,19 @@ class Control2:
 					xx = x
 				self.stage.moveto(x = xx)
 				ims1[m,nn] = self.cam550.capture(frames)
-				ims2[m,nn] = self.cam550.capture(frames)
+				ims2[m,nn] = self.cam720.capture(frames)
 
 		self.stage.moveto(x = x0, y = y0)
-		return ims1, ims2, xp, yp
+
+		self.save(
+			samplename,
+			ims1,
+			ims2, 
+			x = xp,
+			y = yp,
+			note = note,
+			save_img = False
+			)
 
 	### calibration methods
 

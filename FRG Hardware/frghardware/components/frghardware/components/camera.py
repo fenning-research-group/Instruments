@@ -88,8 +88,8 @@ class Hayear:
 	def fps(self):
 		self.__fps = self.cap.get(cv2.CAP_PROP_FPS)
 		return self.__fps
-	@gain.setter
-	def gamma(self, g):
+	@fps.setter
+	def fps(self, g):
 		self.cap.set(cv2.CAP_PROP_FPS, g)
 		self.__fps = g
 
