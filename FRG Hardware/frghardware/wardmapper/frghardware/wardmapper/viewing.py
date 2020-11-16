@@ -93,7 +93,7 @@ def plotScanLine(filepath, ax = None):
 		reflectance = d['data']['reflectance'][()]
 		label = d['info']['name'][()].decode('utf-8')
 
-	ax.plot(x, 100*reflectance.mean(axis = 1))
+	ax.plot(pos, 100*reflectance.mean(axis = 1))
 	ax.set_title(f'{label}\n {idleaxis} = {idlepos}')
 
 	ax.set_ylabel('Average Reflectance (%)')

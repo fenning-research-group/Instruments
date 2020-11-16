@@ -22,7 +22,7 @@ datafolder = os.path.join(root, 'Data')
 if not os.path.exists(datafolder):
 	os.mkdir(datafolder)
 
-DEFAULT_FLUSH_INTERVAL = 30
+DEFAULT_FLUSH_INTERVAL = 10
 ### Settings for different PDA10DT Bandwidths:
 
 # 1k: 
@@ -158,7 +158,7 @@ class controlGeneric(object):
 			temp = settings.create_dataset('axis', data = axis.encode('utf-8'))
 			temp.attrs['description'] = 'Axis scanned (x or y)'
 
-			temp = settings.create_dataset('idle_axis', data = axis.encode('utf-8'))
+			temp = settings.create_dataset('idle_axis', data = idle_axis.encode('utf-8'))
 			temp.attrs['description'] = 'Axis not scanned (x or y)'
 
 			## measured data 
@@ -190,6 +190,7 @@ class controlGeneric(object):
 			delay.attrs['description'] = 'Time (seconds) that each scan was acquired at. Measured as seconds since first scan point.'			
 
 			f.swmr_mode = True # Single Writer Multiple Reader, allows h5 file to be read during scan.
+			f.flush()
 
 			return reflectance, signal, reference, delay
 
@@ -197,8 +198,10 @@ class controlGeneric(object):
 
 		if str.lower(axis) == 'x':
 			axis = 'x'
+			idle_axis = 'y'
 		elif str.lower(axis) == 'y':
 			axis = 'y'
+			idle_axis = 'x'
 		else:
 			print('Error: axis must equal \'x\' or \'y\': user provided {0}'.format(axis))
 			return
@@ -684,6 +687,123 @@ class controlGeneric(object):
 				reference_full = reference_full
 				)
 
+	def scanareaWaRD_2(self, label, wavelengths, wavelengths_full = None, xsize = 52, ysize = 52, xsteps = 27, ysteps = 27, x0 = None, y0 = None, position = None, export = True):
+		x0s = [113.8, 41.4, 41.4, 113.8]	## UPDATE PROPER LOCATIONS - topright, topleft, bottomleft, bottomright
+		y0s = [119.6, 119.6, 56.7, 56.7]
+
+		# fullScanCoordinates = [		#spiral pattern to sample pts at varying distance from map center
+		# 	[2,28],
+		# 	[15,2],
+		# 	[19,14],
+		# 	[19,28],
+		# 	[23,43],
+		# 	[26,26],
+		# 	[28,23],
+		# 	[36,30],
+		# 	[41,12],
+		# 	[49,31]
+		# ]
+		fullScanCoordinates = []
+		for m in range(5):
+			for n in range(5):
+				fullScanCoordinates.append([m*6 + 2, n*6 + 2]) #take full scans on a 6x6 grid, every 12 mm apart. Nearly centered, 4mm offset from inside of the cell
+
+		if position is not None:
+			if position < 1 or position > 4:
+				print('Error: Position must hold a value from 1-4. User provided {0}. Scanning centered at current stage position'.format(position))
+			else:
+				x0 = x0s[position-1]
+				y0 = y0s[position-1]
+
+		currentx, currenty = self.stage.position # return position
+		if x0 is None:
+			x0 = currentx
+		if y0 is None:
+			y0 = currenty
+
+		wavelengths = self._cleanwavelengthinput(wavelengths)
+		if wavelengths_full is not None:
+			wavelengths_full = self._cleanwavelengthinput(wavelengths_full)
+		else:
+			wavelengths_full = np.linspace(1700, 2000, 151).astype(int)
+
+		allx = np.linspace(x0 - xsize/2, x0 + xsize/2, xsteps)
+		ally = np.linspace(y0 - ysize/2, y0 + ysize/2, ysteps)
+
+		data = np.zeros((ysteps, xsteps, len(wavelengths)))
+		signal = np.zeros((ysteps, xsteps, len(wavelengths)))
+		reference = np.zeros((ysteps, xsteps, len(wavelengths)))
+		delay = np.zeros((ysteps, xsteps))
+
+		data_full = np.zeros((len(fullScanCoordinates), len(wavelengths_full)))
+		signal_full = np.zeros((len(fullScanCoordinates), len(wavelengths_full)))
+		reference_full = np.zeros((len(fullScanCoordinates), len(wavelengths_full)))
+		delay_full = np.zeros((len(fullScanCoordinates),))
+		x_full = np.zeros((len(fullScanCoordinates),))
+		y_full = np.zeros((len(fullScanCoordinates),))
+
+		fullScanIdx = 0
+
+		firstscan = True
+		lastscan = False
+		reverse= -1 # for snaking
+		startTime = time.time()
+		for xidx, x in tqdm(enumerate(allx), desc = 'Scanning X', total = allx.shape[0], leave = False):
+			reverse=reverse*(-1)
+			for yidx, y in tqdm(enumerate(ally), desc = 'Scanning Y', total = ally.shape[0], leave = False):
+				if xidx == xsteps-1 and yidx == ysteps-1:
+					lastScan = True
+				# Condition to map in a snake pattern rather than coming back to first x point
+				wlThread = threading.Thread(target = self._goToWavelength, args = (wavelengths[0],))
+				wlThread.start()
+
+				if reverse > 0: #go in the forward direction
+					yyidx = yidx
+				else:			# go in reverse direction
+					yyidx = ysteps-1-yidx
+
+				moveThread = threading.Thread(target = self.stage.moveto, args = (x, ally[yyidx]))
+				moveThread.start()
+				wlThread.join()
+				moveThread.join()
+
+				signal[yyidx, xidx, :], reference[yyidx, xidx, :] = self._scanroutine(wavelengths = wavelengths, firstscan = firstscan, lastscan = lastscan, flush = False)
+				data[yyidx, xidx, :] = self._baselinecorrectionroutine(wavelengths, signal[yyidx, xidx, :], reference[yyidx, xidx, :])
+				delay[yyidx, xidx] = time.time() - startTime #time in seconds since scan began
+				firstscan = False
+
+				if [yyidx, xidx] in fullScanCoordinates:	#we've reached a coordinate to perform a full spectrum WaRD scan
+					signal_full[fullScanIdx, :], reference_full[fullScanIdx, :] = self._scanroutine(wavelengths = wavelengths_full, firstscan = firstscan, lastscan = lastscan, flush = False)
+					data_full[fullScanIdx, :] = self._baselinecorrectionroutine(wavelengths_full, signal_full[fullScanIdx, :], reference_full[fullScanIdx, :])
+					delay_full[fullScanIdx] = time.time() - startTime
+					x_full[fullScanIdx] = x
+					y_full[fullScanIdx] = ally[yyidx]
+
+					fullScanIdx = fullScanIdx + 1
+
+		self.stage.moveto(x = x0, y = y0)	#go back to map center position
+		self._lightOff()
+
+		if export:
+			# export as a hfile
+			self._save_scanareaWaRD(
+				label = label,
+				x = allx, 
+				y = ally, 
+				delay = delay, 
+				wavelengths = wavelengths, 
+				reflectance = data, 
+				signal = signal, 
+				reference = reference,
+				x_full = x_full,
+				y_full = y_full,
+				delay_full = delay_full,
+				wavelengths_full = wavelengths_full,
+				reflectance_full = data_full,
+				signal_full = signal_full,
+				reference_full = reference_full
+				)
+
 	def scanLBIC(self, label, wavelengths, xsize, ysize, xsteps, ysteps, x0 = None, y0 = None, export = True):
 		# clean up wavelengths input
 		wavelengths = self._cleanwavelengthinput(wavelengths)
@@ -747,7 +867,7 @@ class controlGeneric(object):
 				)
 
 	# internal methods
-	def _scanroutine(self, wavelengths, firstscan = True, lastscan = True):
+	def _scanroutine(self, wavelengths, firstscan = True, lastscan = True, flush = True):
 		self._goToWavelength(wavelengths[0])
 		if firstscan:
 			self._lightOn()
@@ -757,7 +877,7 @@ class controlGeneric(object):
 		ratio = np.zeros(wavelengths.shape)
 		for idx, wl in tqdm(enumerate(wavelengths), total = wavelengths.shape[0], desc = 'Scanning {0:.1f}-{1:.1f} nm'.format(wavelengths[0], wavelengths[-1]), leave = False):
 			self.__flushcounter += 1
-			if self.__flushcounter >= self.__flushinterval:
+			if self.__flushcounter >= self.__flushinterval and flush:
 				self.f.flush()
 				self.__flushcounter = 0
 
@@ -1001,11 +1121,7 @@ class controlGeneric(object):
 
 		with h5py.File(fpath, 'w', swmr = True, libver = 'latest') as self.f:
 			
-			info, settings, baseline = self._save_generic(label = label)
-
-			## add scan type to info
-			temp = info.create_dataset('type', data = 'scanareaWaRD'.encode('utf-8'))
-			temp.attrs['description'] = 'Type of measurement held in this file.'		
+			info, settings, baseline = self._save_generic(f = self.f, label = label, scantype = 'scanareaWaRD')
 
 			## add scan parameters to settings
 			temp = settings.create_dataset('numx', data = np.array(x.shape[0]))
@@ -1040,7 +1156,7 @@ class controlGeneric(object):
 			temp.attrs['description'] = 'Average step size (mm) in x and y. If either axis has length 1 (ie line scan), only consider step size in the other axis. If both axes have length 0 (point scan, although not a realistic outcome for .scanarea()), leave stepsize as 0 '			
 
 			## measured data 
-			rawdata = f.create_group('/data')
+			rawdata = self.f.create_group('/data')
 			rawdata.attrs['description'] = 'Data acquired during area scan.'
 
 			temp = rawdata.create_dataset('x', data = np.array(x))
@@ -1365,15 +1481,11 @@ class controlGeneric(object):
 
 	def _save_scanAreaWaRD(self, label, x, y, delay, wavelengths, reflectance, signal, reference, x_full, y_full, delay_full, wavelengths_full, reflectance_full, signal_full, reference_full):
 		
-		fpath = self._getSavePath(label = label)	#generate filepath for saving data
+		fpath = self._getsavepath(label = label)	#generate filepath for saving data
 
 		with h5py.File(fpath, 'w', swmr = True, libver = 'latest') as f:
 			
-			info, settings, baseline = self._saveGeneralInformation(f, label = label)
-
-			## add scan type to info
-			temp = info.create_dataset('type', data = 'scanAreaWaRD'.encode('utf-8'))
-			temp.attrs['description'] = 'Type of measurement held in this file.'		
+			info, settings, baseline = self._save_generic(f, label = label, scantype = 'scanareaWaRD')
 
 			## add scan parameters to settings
 			temp = settings.create_dataset('numx', data = np.array(x.shape[0]))
