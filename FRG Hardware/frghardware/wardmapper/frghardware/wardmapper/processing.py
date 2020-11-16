@@ -172,11 +172,11 @@ def fitFullWaRD(file, celltype = 'Not Inputted', plot = False):
 	    name = d['info']['name'][()]
 	    x = d['data']['relx'][()]
 	    y = d['data']['rely'][()]
-	    realx = d['data']['x'][()]
-	    realy = d['data']['y'][()]
-	    wl = d['data']['wavelengths'][()]
-	    ref = d['data']['reflectance'][()]
-	    time = d['data']['delay'][()]
+	    realx = d['data']['x_full'][()]
+	    realy = d['data']['y_full'][()]
+	    wl = d['data']['wavelengths_full'][()]
+	    ref = d['data']['reflectance_full'][()]
+	    time = d['data']['delay_full'][()]
 	
 	ab = -np.log(ref)	#convert reflectance values to absorbance
 
@@ -193,23 +193,23 @@ def fitFullWaRD(file, celltype = 'Not Inputted', plot = False):
 		return
 
 	h2o = np.zeros(time.shape)
-	for m,n in np.ndindex(h2o.shape):
-		h2o[m,n] = FullSpectrumFit(wl[m,n], ref[m,n], plot = False)
+	for m in np.ndindex(h2o.shape):
+		h2o[m] = fit_fullspectrum(wl, ref[m], plot = False)
 	# h2o[h2o < 0] = 0	
 
 
 	## Avg Reflectance Fitting
-	avgRef = np.mean(ref, axis = 2)
+	avgRef = np.mean(ref, axis = 1)
 
 	# h2o_reg_imputed = RegisterToDummy(
 	# 		ImputeWater(h2o, avgRef > avgRef.mean()*1.2),
 	# 		avgRef
 	# 	)
 
-	h2o_reg_imputed = RegisterToDummy(
-			h2o,
-			avgRef
-		)
+	# h2o_reg_imputed = RegisterToDummy(
+	# 		h2o,
+	# 		avgRef
+	# 	)
 
 	## write fits to h5 file
 	with h5py.File(file, 'a') as d:
@@ -218,14 +218,9 @@ def fitFullWaRD(file, celltype = 'Not Inputted', plot = False):
 		else:
 			fits = d.create_group('/fits')
 
-		_fillDataset(d['fits'], 'water', h2o, 'Water content (mg/cm^3) measured by WaRD.')
-		_fillDataset(d['fits'], 'celltype', celltype.encode('utf-8'), 'Cell architecture assumed during fitting.')
-		_fillDataset(d['fits'], 'wl_eva', wl_eva, 'Wavelength used as EVA absorbance point.')
-		_fillDataset(d['fits'], 'wl_h2o', wl_h2o, 'Wavelength used as water absorbance point.')
-		_fillDataset(d['fits'], 'wl_ref', wl_ref, 'Wavelength used as reference absorbance point.')
-		_fillDataset(d['fits'], 'poly', [0,0], 'Polynomial fit coefficients used to convert absorbances to water content. From highest to lowest order.')
-		_fillDataset(d['fits'], 'avgref', avgRef, 'Average reflectance at each point')
-		_fillDataset(d['fits'], 'water_reg', h2o_reg_imputed, 'Water map after registration to dummy mask + imputing to replace finger regions')
+		_fillDataset(d['fits'], 'water_full', h2o, 'Water content (mg/cm^3) measured by WaRD.')
+		_fillDataset(d['fits'], 'celltype_full', celltype.encode('utf-8'), 'Cell architecture assumed during fitting.')
+		_fillDataset(d['fits'], 'avgref_full', avgRef, 'Average reflectance at each point')
 	## Plotting
 	if plot:
 		fig, ax = plt.subplots(1,2, figsize = (10, 8))
