@@ -706,7 +706,7 @@ class controlGeneric(object):
 		fullScanCoordinates = []
 		for m in range(5):
 			for n in range(5):
-				fullScanCoordinates.append([m*6 + 2, n*6 + 2]) #take full scans on a 6x6 grid, every 12 mm apart. Nearly centered, 4mm offset from inside of the cell
+				fullScanCoordinates.append([m*4 + 4, n*4 + 4]) #take full scans on a 5x5 grid, every 8 mm apart. Nearly centered, 8mm offset map corner
 
 		if position is not None:
 			if position < 1 or position > 4:
@@ -1877,9 +1877,9 @@ class controlNKT(controlGeneric):
 		self.lia.input_coupling = 'DC'
 		self.lia.input_grounding = 'Float'
 		self.lia.input_notch_config = 'Both'
-		self.lia.sensitivity = 0.05 #5x10 mV
+		self.lia.sensitivity = 0.02 #2x10 mV
 		self.lia.set_scaling('R',0, 1.0)
-		self.lia.time_constant = .003 #3x1 ms
+		self.lia.time_constant = .001 #1x1 ms
 		self.lia.reference_source = 'External'
 
 		return True
