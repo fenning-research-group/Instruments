@@ -519,7 +519,7 @@ class ControlGeneric(object):
 					delay.append(time.time() - startTime)
 					if logtemperature:
 						temperature.append(self.heater.getTemperature())
-					sig, ref, ratio = self._scanroutine(wavelengths, lastscan = False)
+					sig, ref, ratio = self._scanroutine(wavelengths, lastscan = False, flush = False)
 					reflectance.append(self._baselinecorrectionroutine(wavelengths, sig, ref, ratio))
 					signal.append(sig)
 					reference.append(ref)
@@ -751,6 +751,15 @@ class ControlGeneric(object):
 		ref = np.zeros(wavelengths.shape)
 		ratio = np.zeros(wavelengths.shape)
 		for idx, wl in tqdm(enumerate(wavelengths), total = wavelengths.shape[0], desc = 'Scanning {0:.1f}-{1:.1f} nm'.format(wavelengths[0], wavelengths[-1]), leave = False):
+<<<<<<< Updated upstream:FRG Hardware/frgmapper/frgmapper/mapper.py
+=======
+			self.__flushcounter += 1
+			if self.__flushcounter >= self.__flushinterval and flush:
+				self.f.flush() #tell h5py to flush data in memory to disk. Moves data to OS write buffer
+				os.fsync() #tell operating system to actually process the buffer, push data to disk.
+				self.__flushcounter = 0
+
+>>>>>>> Stashed changes:FRG Hardware/frghardware/wardmapper/frghardware/wardmapper/mapper.py
 			self._goToWavelength(wl)
 			out = self.daq.read()
 			signal[idx] = out['IntSphere']['Mean']
