@@ -1,8 +1,10 @@
 setup.py
 frgpl/__init__.py
 frgpl/camera.py
+frgpl/checkPLmaps.py
 frgpl/control.py
 frgpl/daq.py
+frgpl/keithley.py
 frgpl/kepco.py
 frgpl/laser.py
 frgpl/processing.py

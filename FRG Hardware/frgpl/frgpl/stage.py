@@ -126,7 +126,7 @@ class stage:
 				if update == (str(52) + '\n').encode():
 					print('Error flagged by arduino, movement not executed')
 					return
-			time.sleep(1)
+			time.sleep(0.5)
 
 		# print('Moving!')
 
@@ -139,7 +139,15 @@ class stage:
 					if update == ('0\n').encode():
 						moving = False
 						break
-			time.sleep(1)
+			time.sleep(0.5)
+
+		communicationcomplete = False
+		while not communicationcomplete:
+			if self.__handle.in_waiting > 0:
+				if self.__handle.readline() == 'S\n'.encode():
+					communicationcomplete = True
+		time.sleep(0.3)
+
 
 
 	def stagegui(self):

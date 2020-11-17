@@ -1,0 +1,3 @@
+frghardware.components
+numpy
+thorlabs_apt
