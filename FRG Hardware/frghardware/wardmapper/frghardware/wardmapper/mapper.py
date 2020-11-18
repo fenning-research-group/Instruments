@@ -117,6 +117,8 @@ class controlGeneric(object):
 			reference.attrs['description'] = 'Raw signal for reference detector. (V)'
 
 			f.swmr_mode = True # Single Writer Multiple Reader, allows h5 file to be read during scan.
+			f.flush()
+
 			return signal, reference, reflectance, completed
 
 		wavelengths = self._cleanwavelengthinput(wavelengths)
@@ -521,10 +523,6 @@ class controlGeneric(object):
 
 			info, settings, baseline, completed = self._save_generic(f, label = label, scantype = 'timeseries')		
 
-			## add scan type to info
-			temp = info.create_dataset('type', data = 'timeseries'.encode('utf-8'))
-			temp.attrs['description'] = 'Type of measurement held in this file.'
-
 			## add scan parameters to settings
 			temp = settings.create_dataset('duration', data = np.array(duration))
 			temp.attrs['description'] = 'Total time (s) desired for time series.'			
@@ -560,21 +558,24 @@ class controlGeneric(object):
 			temperature = rawdata.create_dataset('temperature', data = dummy1d, maxshape = (None, ))
 			temperature.attrs['description'] = 'Temperature (C) of heating pad in slot 2 at the time that each scan was acquired at.'
 
-			return reflectance, signal, reference, delay, temperature
+			f.swmr_mode = True # Single Writer Multiple Reader, allows h5 file to be read during scan.
+			f.flush()
+			
+			return reflectance, signal, reference, delay, temperature, completed
 
 		def h5_extend_append(dset, data):
 			'''
 			timeseries has an undetermined number of datapoints. this function
 			appends data to the h5 datasets.
 			'''
-			rows, cols = dset.shape
+			rows = dset.shape[0]
 			dset.resize(rows + 1, axis = 0)
 			dset[-1] = data
 
 		if logtemperature:
 			print('Note: Temperature control/logging is only valid on slot 2!')
 
-		wavelength = self._cleanwavelengthinput(wavelength)
+		wavelengths = self._cleanwavelengthinput(wavelengths)
 		startTime = time.time()
 		pbarPercent = 0
 		fpath = self._getsavepath(label = label)	#generate filepath for saving data
@@ -587,8 +588,8 @@ class controlGeneric(object):
 						h5_extend_append(delay, time.time() - startTime)
 						if logtemperature:
 							h5_extend_append(temperature, self.heater.getTemperature())
-						sig, ref, ratio = self._scanroutine(wavelengths, lastscan = False)
-						h5_extend_append(reflectance, self._baselinecorrectionroutine(wavelengths, sig, ref, ratio))
+						sig, ref = self._scanroutine(wavelengths, lastscan = False)
+						h5_extend_append(reflectance, self._baselinecorrectionroutine(wavelengths, sig, ref))
 						h5_extend_append(signal, sig)
 						h5_extend_append(reference, ref)
 					else:	#if we have some time to wait between scans, close the shutter and go to the starting wavelength
