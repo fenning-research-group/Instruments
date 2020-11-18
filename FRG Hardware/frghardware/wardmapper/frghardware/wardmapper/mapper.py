@@ -98,7 +98,7 @@ class controlGeneric(object):
 		def preparefile(f):
 			dummy1d = np.full(wavelengths.shape, np.nan)
 
-			info, settings, baseline = self._save_generic(f, label = label, scantype = 'scanpoint')
+			info, settings, baseline, completed = self._save_generic(f, label = label, scantype = 'scanpoint')
 
 			# raw data
 			rawdata = f.create_group('/data')
@@ -117,19 +117,21 @@ class controlGeneric(object):
 			reference.attrs['description'] = 'Raw signal for reference detector. (V)'
 
 			f.swmr_mode = True # Single Writer Multiple Reader, allows h5 file to be read during scan.
-			return signal, reference, reflectance
+			return signal, reference, reflectance, completed
 
 		wavelengths = self._cleanwavelengthinput(wavelengths)
 		fpath = self._getsavepath(label = label)	#generate filepath for saving data
 
 		with h5py.File(fpath, 'w', swmr = True, libver = 'latest') as self.f:
-			signal, reference, reflectance = preparefile(self.f)
+			signal, reference, reflectance, completed = preparefile(self.f)
 
 			self.__flushcounter = 0
 			self.__flushinterval = 5
 			signal[()], reference[()] = self._scanroutine(wavelengths)
 			self.__flushinterval = DEFAULT_FLUSH_INTERVAL
 			reflectance[()] = self._baselinecorrectionroutine(wavelengths, signal, reference)
+
+			completed = 1
 
 	def scanline(self, label, axis, pmin, pmax, steps, wavelengths = None, p0 = None):
 		def preparefile(f):
@@ -144,7 +146,7 @@ class controlGeneric(object):
 				idleaxis = 'x'
 
 
-			info, settings, baseline = self._save_generic(f, label = label, scantype = 'scanline')
+			info, settings, baseline, completed = self._save_generic(f, label = label, scantype = 'scanline')
 
 			## add scan parameters to settings
 			temp = settings.create_dataset('num', data = np.array(allpts.shape[0]))
@@ -192,7 +194,7 @@ class controlGeneric(object):
 			f.swmr_mode = True # Single Writer Multiple Reader, allows h5 file to be read during scan.
 			f.flush()
 
-			return reflectance, signal, reference, delay
+			return reflectance, signal, reference, delay, completed
 
 		wavelengths = self._cleanwavelengthinput(wavelengths)
 
@@ -224,7 +226,7 @@ class controlGeneric(object):
 		fpath = self._getsavepath(label = label)	#generate filepath for saving data
 		self.__flushcounter = 0
 		with h5py.File(fpath, 'w', swmr = True, libver = 'latest') as self.f:
-			reflectance, signal, reference, delay = preparefile(self.f)
+			reflectance, signal, reference, delay, completed = preparefile(self.f)
 
 			firstscan = True
 			lastscan = False
@@ -249,6 +251,7 @@ class controlGeneric(object):
 
 				firstscan = False
 
+			completed = 1
 		self.stage.moveto(x = x0, y = y0)	#go back to map center position
 		self._lightOff()
 
@@ -323,7 +326,7 @@ class controlGeneric(object):
 			dummy2d =  np.full((ysteps, xsteps), np.nan)
 			dummy3d =  np.full((ysteps, xsteps, len(wavelengths)), np.nan)
 
-			info, settings, baseline = self._save_generic(f, label = label, scantype = 'scanarea')
+			info, settings, baseline, completed = self._save_generic(f, label = label, scantype = 'scanarea')
 
 			## add scan parameters to settings
 			temp = settings.create_dataset('numx', data = np.array(allx.shape[0]))
@@ -387,7 +390,7 @@ class controlGeneric(object):
 
 			f.swmr_mode = True # Single Writer Multiple Reader, allows h5 file to be read during scan.
 
-			return reflectance, signal, reference, delay
+			return reflectance, signal, reference, delay, completed
 
 		# clean up wavelengths input
 		wavelengths = self._cleanwavelengthinput(wavelengths)
@@ -405,7 +408,7 @@ class controlGeneric(object):
 		fpath = self._getsavepath(label = label)	#generate filepath for saving data
 		self.__flushcounter = 0
 		with h5py.File(fpath, 'w', swmr = True, libver = 'latest') as self.f:
-			reflectance, signal, reference, delay = preparefile(self.f)
+			reflectance, signal, reference, delay, completed = preparefile(self.f)
 
 			firstscan = True
 			lastscan = False
@@ -437,6 +440,8 @@ class controlGeneric(object):
 					delay[yidx, xidx_] = time.time() - startTime #time in seconds since scan began
 				
 					firstscan = False
+
+			completed = 1
 
 		self.stage.moveto(x = x0, y = y0)	#go back to map center position
 		self._lightOff()
@@ -509,70 +514,99 @@ class controlGeneric(object):
 		#	TODO: I don't think this will work for single wavelength inputs
 
 		# clean up wavelengths input
+		def preparefile(f):
+			dummy1d =  np.full((0,), np.nan)
+			dummy2d =  np.full((0, len(wavelengths)), np.nan)
+
+
+			info, settings, baseline, completed = self._save_generic(f, label = label, scantype = 'timeseries')		
+
+			## add scan type to info
+			temp = info.create_dataset('type', data = 'timeseries'.encode('utf-8'))
+			temp.attrs['description'] = 'Type of measurement held in this file.'
+
+			## add scan parameters to settings
+			temp = settings.create_dataset('duration', data = np.array(duration))
+			temp.attrs['description'] = 'Total time (s) desired for time series.'			
+
+			temp = settings.create_dataset('interval', data = np.array(interval))
+			temp.attrs['description'] = 'Time (s) desired between subsequent scans.'
+
+			if logtemperature:
+				temp = settings.create_dataset('temperatureLogged', data = 1)
+			else:
+				temp = settings.create_dataset('temperatureLogged', data = 0)
+			temp.attrs['description'] = 'Temperature logged during measurements. Note that this is the temperature of the heating pad in slot 2, actual sample temperature may vary.'
+
+			## measured data 
+			rawdata = f.create_group('/data')
+			rawdata.attrs['description'] = 'Data acquired during area scan.'
+
+			temp = rawdata.create_dataset('wavelengths', data = np.array(wavelengths))
+			temp.attrs['description'] = 'Wavelengths (nm) scanned per point.'
+
+			reflectance = rawdata.create_dataset('reflectance', data = dummy2d, maxshape = (None,len(wavelengths)))
+			reflectance.attrs['description'] = 'Baseline-corrected reflectance measured. Stored as [timestep, wl]. Stored as fraction (0-1), not percent!'
+			
+			signal = rawdata.create_dataset('signalRaw', data = dummy2d, maxshape = (None, len(wavelengths)))
+			signal.attrs['description'] = 'Raw signal for integrating sphere detector. (V)'
+
+			reference = rawdata.create_dataset('referenceRaw', data = dummy2d, maxshape = (None, len(wavelengths)))
+			reference.attrs['description'] = 'Raw signal for reference detector. (V)'
+			
+			delay = rawdata.create_dataset('delay', data = dummy1d, maxshape = (None, ))
+			delay.attrs['description'] = 'Time (seconds) that each scan was acquired at. Measured as seconds since first scan point.'			
+
+			temperature = rawdata.create_dataset('temperature', data = dummy1d, maxshape = (None, ))
+			temperature.attrs['description'] = 'Temperature (C) of heating pad in slot 2 at the time that each scan was acquired at.'
+
+			return reflectance, signal, reference, delay, temperature
+
+		def h5_extend_append(dset, data):
+			'''
+			timeseries has an undetermined number of datapoints. this function
+			appends data to the h5 datasets.
+			'''
+			rows, cols = dset.shape
+			dset.resize(rows + 1, axis = 0)
+			dset[-1] = data
+
 		if logtemperature:
 			print('Note: Temperature control/logging is only valid on slot 2!')
 
-		wavelengths = np.array(wavelengths)
-
-		reflectance = []
-		signal = []
-		reference = []
-		delay = []
-		temperature = []
+		wavelength = self._cleanwavelengthinput(wavelength)
 		startTime = time.time()
 		pbarPercent = 0
-		with tqdm(total = 100, desc = 'Scanning every {0} s for {1} s'.format(interval, duration), leave = False) as pbar:
-			while (time.time() - startTime) <= duration:
-				if (time.time()-startTime) >= (interval*len(delay)):	#time for the next scan
-					delay.append(time.time() - startTime)
-					if logtemperature:
-						temperature.append(self.heater.getTemperature())
-					sig, ref, ratio = self._scanroutine(wavelengths, lastscan = False)
-					reflectance.append(self._baselinecorrectionroutine(wavelengths, sig, ref, ratio))
-					signal.append(sig)
-					reference.append(ref)
-				else:	#if we have some time to wait between scans, close the shutter and go to the starting wavelength
-					self._lightOff()
-					self._goToWavelength(wavelength = wavelengths[0])
-				
-				currentPercent = round(100*(time.time()-startTime)/duration)
-				if currentPercent > 100:
-						currentPercent = 100
+		fpath = self._getsavepath(label = label)	#generate filepath for saving data
+		self.__flushcounter = 0
+		with h5py.File(fpath, 'w', swmr = True, libver = 'latest') as self.f:
+			reflectance, signal, reference, delay, temperature, completed = preparefile(self.f)
+			with tqdm(total = 100, desc = 'Scanning every {0} s for {1} s'.format(interval, duration), leave = False) as pbar:
+				while (time.time() - startTime) <= duration:
+					if (time.time()-startTime) >= (interval*len(delay)):	#time for the next scan
+						h5_extend_append(delay, time.time() - startTime)
+						if logtemperature:
+							h5_extend_append(temperature, self.heater.getTemperature())
+						sig, ref, ratio = self._scanroutine(wavelengths, lastscan = False)
+						h5_extend_append(reflectance, self._baselinecorrectionroutine(wavelengths, sig, ref, ratio))
+						h5_extend_append(signal, sig)
+						h5_extend_append(reference, ref)
+					else:	#if we have some time to wait between scans, close the shutter and go to the starting wavelength
+						self._lightOff()
+						self._goToWavelength(wavelength = wavelengths[0])
+					
+					currentPercent = round(100*(time.time()-startTime)/duration)
+					if currentPercent > 100:
+							currentPercent = 100
 
-				if currentPercent > pbarPercent:
-					pbar.update(currentPercent - pbarPercent)
-					pbarPercent = currentPercent
+					if currentPercent > pbarPercent:
+						pbar.update(currentPercent - pbarPercent)
+						pbarPercent = currentPercent
 
-				time.sleep(interval/100)	#we can hit our interval within 1% accuracy, but give the cpu some rest
-		
+					time.sleep(interval/100)	#we can hit our interval within 1% accuracy, but give the cpu some rest
+			
+			completed = 1
 		self._lightOff()
-
-		reflectance = np.array(reflectance)
-		delay = np.array(delay)
-		signal = np.array(signal)
-		reference = np.array(reference)
-		temperature = np.array(temperature)
-
-		if export:
-			self._save_timeseries(
-				label = label, 
-				wavelengths = wavelengths, 
-				reflectance = reflectance, 
-				delay = delay, 
-				duration = duration, 
-				interval = interval,
-				signal = signal,
-				reference = reference,
-				temperature = temperature,
-				logtemperature = logtemperature
-				)
-
-		# if plot:
-		# 	plt.plot(data['Wavelengths'],data['Reflectance'])
-		# 	plt.xlabel('Wavelength (nm)')
-		# 	plt.ylabel('Reflectance')
-		# 	plt.title(label)
-		# 	plt.show()
 	
 	def scanareaWaRD(self, label, wavelengths, wavelengths_full = None, xsize = 52, ysize = 52, xsteps = 53, ysteps = 53, x0 = None, y0 = None, position = None, export = True):
 		x0s = [33, 106, 106, 33]	## UPDATE PROPER LOCATIONS
@@ -1089,6 +1123,9 @@ class controlGeneric(object):
 		temp = settings.create_dataset('position', data = np.array(self.stage.position))
 		temp.attrs['description'] = 'Stage position (x,y) during scan.'
 
+		completed = settings.create_dataset('scan_completed', data = 0)
+		completed.attrs['description'] = 'Flag indicating whether scan was run to completion. 0 if cancelled/interrupted.'
+
 		# baseline measurement
 		baseline = f.create_group('/settings/baseline')
 
@@ -1113,7 +1150,7 @@ class controlGeneric(object):
 		temp = baseline.create_dataset('ratio_dark', data = np.array(self.__baseline['Dark']))
 		temp.attrs['description'] = 'Ratio of sphere/reference counts during illuminated baseline measurement. This number is considered 0\% reflectance. Single point, independent of wavelength.'
 
-		return info, settings, baseline
+		return info, settings, baseline, completed
 
 	def _save_scanareaWaRD(self, label, x, y, delay, wavelengths, reflectance, signal, reference, x_full, y_full, delay_full, wavelengths_full, reflectance_full, signal_full, reference_full):
 		
