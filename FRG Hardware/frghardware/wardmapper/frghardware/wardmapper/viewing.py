@@ -134,11 +134,13 @@ def plotTimeSeries(filepath, ax = None):
 		delay = d['data']['delay'][()]
 		label = d['info']['name'][()].decode('utf-8')
 
-	numpts = delay.shape[0]
+	numpts = reflectance.shape[0]
+	if numpts == 0:
+		return
 	for i in range(numpts):
 		ax.plot(wavelengths, reflectance[i], color = plt.cm.viridis(i/numpts))
 	ax.set_title('Blue -> Yellow = 0 - {0:.2f} minutes'.format(delay.max()/60))
-	ax.set_ylabel('Reflectance (%)')
+	ax.set_ylabel('Reflectance')
 	ax.set_xlabel('Wavelength (nm)')
 
 	if showlater:

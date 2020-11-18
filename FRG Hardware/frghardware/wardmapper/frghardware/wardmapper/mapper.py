@@ -592,6 +592,7 @@ class controlGeneric(object):
 						h5_extend_append(reflectance, self._baselinecorrectionroutine(wavelengths, sig, ref))
 						h5_extend_append(signal, sig)
 						h5_extend_append(reference, ref)
+						self.f.flush() #flush after every scan
 					else:	#if we have some time to wait between scans, close the shutter and go to the starting wavelength
 						self._lightOff()
 						self._goToWavelength(wavelength = wavelengths[0])
