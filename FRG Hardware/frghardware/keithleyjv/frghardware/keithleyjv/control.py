@@ -9,7 +9,7 @@ class Control:
 	def __init__(self, area = 24.01):
 		self.area = 24.01
 		self.pause = 0.05
-		self.counts = 50
+		self.counts = 2
 
 		self.connect()
 
@@ -25,6 +25,7 @@ class Control:
 		self.keithley.compliance_current = 1.05
 		self.souce_voltage = 0
 
+		self.keithley.buffer_points = 2
 		# self.shutter = serial.Serial(shutter_port)
 		# self.close_shutter()
 
@@ -135,22 +136,23 @@ class Control:
 	def darkjv(self, name, vmin = -0.2, vmax = 0.7, steps = 50):
 		self._source_voltage_measure_current()
 		self.keithley.source_voltage = vmin
-		self._set_buffer(npts = steps)
+		# self._set_buffer(npts = steps)
 		v = np.linspace(vmin, vmax, steps)
+		vmeas = np.zeros((steps,))
+		i = np.zeros((steps,))
 
 		self.keithley.enable_source()
-		self.close_shutter()
+		self.open_shutter()
 		for m, v_ in enumerate(v):
 			self.keithley.source_voltage = v_
-			time.sleep(self.pause)
-			self.keithley.start_buffer()
+			vmeas[m], i[m], _ = self.measure()
+		self.close_shutter()
 		self.keithley.disable_source()
-
-		i = self._parse_buffer(npts = steps)['mean']
 		j = i*1000/self.area #amps to mA/cm2
+
 		logj = np.log(np.abs(j))
 		data = pd.DataFrame({
-		    'Voltage (V)': voltages,
+		    'Voltage (V)': v,
 		    'Current Density (mA/cm2)': j,
 		    'Current (A)': i,
 		    'Log Current Density': logj
