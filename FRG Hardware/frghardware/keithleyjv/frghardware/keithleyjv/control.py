@@ -10,8 +10,11 @@ class Control:
 		self.area = 24.01
 		self.pause = 0.05
 		self.counts = 2
+		self.__previewFigure = None
+		self.__previewAxes = None
 
 		self.connect()
+
 
 
 	def connect(self, keithley_address = 'GPIB0::20::INSTR', shutter_port = 'COM3'):
@@ -32,11 +35,11 @@ class Control:
 	def disconnect(self):
 		self.keithley.shutdown()
 
-
 	def open_shutter(self):
 		# self.shutter.write(b'1')
 		# self._shutteropen = True
 		return
+	
 	def close_shutter(self):
 		# self.shutter.write(b'0')
 		# self._shutteropen = False
@@ -71,6 +74,28 @@ class Control:
 			'mean':means,
 			'std':stds
 		}
+	
+	def _preview(self, v, j, label):
+		def handle_close(evt, self):
+			self.__previewFigure = None
+			self.__previewAxes = None
+		
+		if self.__previewFigure is None:	#preview window is not created yet, lets make it
+			plt.ioff()
+			self.__previewFigure, self.__previewAxes[0] = plt.subplots()
+			plt.legend()
+			divider = make_axes_locatable(self.__previewAxes[0])
+			self.__previewFigure.canvas.mpl_connect('close_event', lambda x: handle_close(x, self))	# if preview figure is closed, lets clear the figure/axes handles so the next preview properly recreates the handles
+			plt.ion()
+			plt.show()
+
+		# for ax in self.__previewAxes:	#clear the axes
+		# 	ax.clear()
+		self.__previewAxes.plot(v,j, label = label)
+		self.__previewFigure.canvas.draw()
+		self.__previewFigure.canvas.flush_events()
+		time.sleep(1e-4)		#pause allows plot to update during series of measurements 
+
 	def measure(self):
 		"""
 		returns voltage, current, and resistance measured
@@ -108,7 +133,7 @@ class Control:
 
 		return voc
 
-	def jv(self, name, vmin = -0.2, vmax = 0.7, steps = 50):
+	def jv(self, name, vmin = -0.2, vmax = 0.7, steps = 50, preview = True):
 		self._source_voltage_measure_current()
 		self.keithley.source_voltage = vmin
 		# self._set_buffer(npts = steps)
@@ -133,7 +158,10 @@ class Control:
 		})
 		data.to_csv(f'{name}_light.csv')
 
-	def darkjv(self, name, vmin = -0.2, vmax = 0.7, steps = 50):
+		if preview:
+			self._preview(v, j, f'{name}_light')
+
+	def darkjv(self, name, vmin = -0.2, vmax = 0.7, steps = 50, preview = True):
 		self._source_voltage_measure_current()
 		self.keithley.source_voltage = vmin
 		# self._set_buffer(npts = steps)
@@ -158,4 +186,7 @@ class Control:
 		    'Log Current Density': logj
 		})
 		data.to_csv(f'{name}_dark.csv')
+
+		if preview:
+			self._preview(v, j, f'{name}_dark')
 
