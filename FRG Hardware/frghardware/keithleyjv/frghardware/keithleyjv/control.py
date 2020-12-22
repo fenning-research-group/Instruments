@@ -82,9 +82,7 @@ class Control:
 		
 		if self.__previewFigure is None:	#preview window is not created yet, lets make it
 			plt.ioff()
-			self.__previewFigure, self.__previewAxes[0] = plt.subplots()
-			plt.legend()
-			divider = make_axes_locatable(self.__previewAxes[0])
+			self.__previewFigure, self.__previewAxes = plt.subplots()
 			self.__previewFigure.canvas.mpl_connect('close_event', lambda x: handle_close(x, self))	# if preview figure is closed, lets clear the figure/axes handles so the next preview properly recreates the handles
 			plt.ion()
 			plt.show()
@@ -92,6 +90,7 @@ class Control:
 		# for ax in self.__previewAxes:	#clear the axes
 		# 	ax.clear()
 		self.__previewAxes.plot(v,j, label = label)
+		self.__previewAxes.legend()
 		self.__previewFigure.canvas.draw()
 		self.__previewFigure.canvas.flush_events()
 		time.sleep(1e-4)		#pause allows plot to update during series of measurements 
