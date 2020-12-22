@@ -16,7 +16,6 @@ class Control:
 		self.connect()
 
 
-
 	def connect(self, keithley_address = 'GPIB0::20::INSTR', shutter_port = 'COM3'):
 		self.keithley = Keithley2400(keithley_address)
 		self.keithley.reset()
@@ -146,6 +145,7 @@ class Control:
 		for m, v_ in enumerate(v):
 			self.keithley.source_voltage = v_
 			vmeas[m], i[m], _ = self.measure()
+			i[m] *= -1 #illuminated jv current sign convention is flipped
 		self.close_shutter()
 		self.keithley.disable_source()
 		j = i*1000/self.area #amps to mA/cm2
