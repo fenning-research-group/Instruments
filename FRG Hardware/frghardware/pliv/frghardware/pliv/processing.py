@@ -10,10 +10,13 @@ from skimage.filters import threshold_otsu #, threshold_adaptive
 from scipy import ndimage
 from tqdm import tqdm
 import time
-from multiprocessing import Pool
 import scipy.linalg as la
 import threading
 from matplotlib.widgets import Button
+from scipy.optimize import lsq_linear
+import multiprocessing as mp
+
+
 
 
 def fitRsEL(file, area = 24.01, plot = False):
@@ -215,7 +218,7 @@ def fitPLIV(fpath, area = 24.01):
 	with h5py.File(fpath, 'r') as d:
 		idx = [i for i, x in enumerate(d['settings']['notes'][()]) if b'PLIV' in x]
 		measCurr = d['data']['i'][idx]
-		measVolt = d['data']['v'][idx]
+		measVolt = -d['data']['v'][idx] #solar cell convention
 		imgs = d['data']['image_bgc'][idx]
 		suns = d['settings']['suns'][idx]
 		setVolt = d['settings']['vbias'][idx]
@@ -230,39 +233,27 @@ def fitPLIV(fpath, area = 24.01):
 			correctionImgs[suns_] = img_.copy()
 			correctionJscs[suns_] = measCurr_/area
 			dataIdx.append(False)
-		elif setVolt_ <= 0.55 and suns_ <= 0.4:
+		elif setVolt_ <= 0.55 and suns_ <= 0.4: #images with low luminescence add noise, dont affect fits (especiall since shunt is ignored)
 			dataIdx.append(False)
 		else:
 			dataIdx.append(True)
 	#### remove background from all images, find Voc and Mpp 1 sun images. discard correction images from the dataset		
+	for idx, suns_ in enumerate(suns):
+	    imgs[idx] = imgs[idx] - correctionImgs[suns_] #remove baseline counts from longpass filter leakage, etc.
+	imgs[imgs<=0] = 1e-4	#avoid breaking log functions down the road
+
 	# find Voc image
-	imgVoc = imgs[0].copy() - correctionImgs[suns_.max()]
+	imgVoc = imgs[0].copy()
 	
 	# find MPP image
 	allSetVolts = np.unique(setVolt)
 	allSetVolts.sort()
 	mppVolt = allSetVolts[1] #second value of sorted list of bias voltages (first value = 0 for short circuit images)
 	allmppIdx = np.where(setVolt == mppVolt)
-	oneSunIdx = np.where(suns == 1.0)
+	oneSunIdx = np.where(suns == suns.max()) #max should be 1 sun, but in some cases PLIV hardware can only reach ~= 1 sun (0.98 suns, etc). 
 	mppIdx = np.intersect1d(allmppIdx, oneSunIdx)[0]
-	imgMPP = imgs[mppIdx].copy() - correctionImgs[suns_.max()]
+	imgMPP = imgs[mppIdx].copy()
 	voltMPP = measVolt[mppIdx].copy()
-	# voltMPP = measVolt[mppIdx]
-
-	imgVoc[imgVoc < 0] = 0
-	imgMPP[imgMPP < 0] = 0
-
-
-	numimgs = imgs.shape[0]
-	numrows = 5
-	numcols = np.ceil(numimgs/numrows).astype(int)
-
-	fig, ax = plt.subplots(numrows, numcols, figsize = (12,12))
-
-	# for idx, img_, suns_, ax_ in zip(range(suns.shape[0]), imgs, suns, ax.ravel()):
-	# 	imgs[idx] = img_ - correctionImgs[suns_]
-	# 	imgs[idx][imgs[idx] < 0] = 0
-	# 	ax_.imshow(imgs[idx])
 
 	# throw away short circuit images
 	imgs = imgs[dataIdx]
@@ -277,18 +268,22 @@ def fitPLIV(fpath, area = 24.01):
 	M = np.ones((imgs.shape[1], imgs.shape[2], imgs.shape[0], 4))
 	N = np.ones((imgs.shape[1], imgs.shape[2], imgs.shape[0]))
 	for idx, img_, suns_, measV_, measC_, setV_ in zip(range(suns.shape[0]), imgs, suns, measVolt, measCurr, setVolt):
-		M[:,:,idx,1] = -suns_*correctionJscs[suns_]
+		M[:,:,idx,1] = correctionJscs[suns_]
 		# img_[img_<= 0] = 0
-		M[:,:,idx,2] = img_
-		M[:,:,idx,3] = np.sqrt(img_)
+		M[:,:,idx,2] = -img_
+		M[:,:,idx,3] = -np.sqrt(img_)
 		# img_[img_<= 0] = 1e-20
 		N[:,:,idx] = Vt * np.log(img_) - measV_
 
 	# solve matrix, process into each fit
 	x = np.full((imgs.shape[1], imgs.shape[2], 4), np.nan)
 
+	bounds = [
+            [-np.inf, 0, 0, 0],
+            [np.inf, np.inf, np.inf, np.inf]
+            ] #C, Rs, J01, J02
 	for p,q in tqdm(np.ndindex(imgs[0].shape), total = imgs[0].ravel().shape[0]):
-		x[p,q] = np.linalg.lstsq(M[p,q], N[p,q], rcond = 0)[0]
+		x[p,q] = lsq_linear(M[p,q], N[p,q], bounds = bounds)['x']
 		# Q,R,perm = la.qr(M[p,q], pivoting = True)
 		# print(perm)
 		# Qb = np.matmul(Q.T, N[p,q])
@@ -298,7 +293,7 @@ def fitPLIV(fpath, area = 24.01):
 
 
 	C = np.exp(x[:,:,0]/Vt)
-	Rs = x[:,:,1]*1e4	#convert to ohm cm^2
+	Rs = x[:,:,1]	#ohm cm^2
 	J01 = x[:,:,2]*C/Rs
 	J02 = x[:,:,3]*np.sqrt(C)/Rs
 
@@ -307,20 +302,20 @@ def fitPLIV(fpath, area = 24.01):
 
 	Jmpp1sun = -J01*(np.exp(Vmpp1sun/Vt) - 1) - J02*(np.exp(Vmpp1sun/(2*Vt))-1) + correctionJscs[suns.max()]
 	FF1sun = (voltMPP*Jmpp1sun) / (correctionJscs[suns.max()]*Voc1sun)
-	nu1sun = Vmpp1sun*-Jmpp1sun / (1e3)	#divided by incident power, assuming 1000 w/m2
+	nu1sun = Vmpp1sun*Jmpp1sun / (1e-1)	#divided by incident power, assuming 0.1 W/cm2
 
 
 	result = {
 		'x': x,
 		'C': C,
-		'Rs': Rs,
-		'J01': -J01,
-		'J02': -J02,
+		'Rs': Rs, #ohm cm2
+		'J01': J01 * 1e3, #convert A/cm2 -> mA/cm2
+		'J02': J02 * 1e3, #convert A/cm2 -> mA/cm2
 		'Voc': Voc1sun,
 		'Vmpp': Vmpp1sun,
-		'Jmpp': -Jmpp1sun * 0.1, #convert A/m2 -> mA/cm2
+		'Jmpp': Jmpp1sun * 1e3, #convert A/cm2 -> mA/cm2
 		'FF': FF1sun * 100, #convert to percent
-		'Efficiency': nu1sun,
+		'Efficiency': nu1sun * 100, #percent
 		'imgVoc': imgVoc,
 		'imgMPP': imgMPP
 	}
@@ -403,7 +398,52 @@ def BatchManualRegistrationSelection(directory, overwrite = False, **kwargs):
 		except:
 			print('Error fitting {0}'.format(f))
 
-# def BatchManualRegistrationSelection(directory, overwrite = False, **kwargs):
+
+def BatchPLIVFit(directory, overwrite = False):
+	def traverse_files(f, files = [], first = True):
+		if first:
+			for f_ in tqdm(os.listdir(f)):
+				f__ = os.path.join(f, f_)
+				if os.path.isdir(f__):
+					files = traverse_files(f__, files, first = False)
+				else:
+					if f__[-3:] == '.h5':
+						try:
+							with h5py.File(f__, 'r') as d:
+								if 'fits/registrationpoints' not in d or overwrite == True:
+									files.append(f__)
+						except:
+							pass
+		else:
+			for f_ in os.listdir(f):
+				f__ = os.path.join(f, f_)
+				if os.path.isdir(f__):
+					files = traverse_files(f__, files, first = False)
+				else:
+					if f__[-3:] == '.h5':
+						try:
+							with h5py.File(f__, 'r') as d:
+								if 'fits/registrationpoints' not in d or overwrite == True:
+									files.append(f__)
+						except:
+							pass			
+		return files
+
+	# for f in tqdm(traverse_files(directory)):
+	# 	try:
+	# 		fitPLIV(f, **kwargs)
+	# 	except:
+	# 		print('Error fitting {0}'.format(f))# def BatchManualRegistrationSelection(directory, overwrite = False, **kwargs):
+	def f(filepath):
+		try:
+			fitPLIV(filepath, **kwargs)
+		except:
+			print('Error fitting {0}'.format(f))# def BatchManualRegistrationSelection(directory, overwrite = False, **kwargs):
+	p = mp.Pool(mp.cpu_count())
+	p.map(f, traverse_files(directory))
+	p.close()
+	p.join()
+
 # 	class fobject():
 # 		def __init__(self, directory = directory):
 # 			self.rootdir = directory
