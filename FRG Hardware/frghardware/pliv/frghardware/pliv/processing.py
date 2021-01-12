@@ -217,8 +217,8 @@ def fitPLIV(fpath, area = 24.01):
 	###load PLIV data
 	with h5py.File(fpath, 'r') as d:
 		idx = [i for i, x in enumerate(d['settings']['notes'][()]) if b'PLIV' in x]
-		measCurr = d['data']['i'][idx]
-		measVolt = -d['data']['v'][idx] #solar cell convention
+		measCurr = -d['data']['i'][idx] #solar cell convention
+		measVolt = d['data']['v'][idx] 
 		imgs = d['data']['image_bgc'][idx]
 		suns = d['settings']['suns'][idx]
 		setVolt = d['settings']['vbias'][idx]
