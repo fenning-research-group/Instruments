@@ -398,6 +398,11 @@ def BatchManualRegistrationSelection(directory, overwrite = False, **kwargs):
 		except:
 			print('Error fitting {0}'.format(f))
 
+def loopme(filepath):
+		try:
+			fitPLIV(filepath)
+		except:
+			print('Error fitting {0}'.format(filepath))# def BatchManualRegistrationSelection(directory, overwrite = False, **kwargs):
 
 def BatchPLIVFit(directory, overwrite = False):
 	def traverse_files(f, files = [], first = True):
@@ -434,15 +439,9 @@ def BatchPLIVFit(directory, overwrite = False):
 	# 		fitPLIV(f, **kwargs)
 	# 	except:
 	# 		print('Error fitting {0}'.format(f))# def BatchManualRegistrationSelection(directory, overwrite = False, **kwargs):
-	def f(filepath):
-		try:
-			fitPLIV(filepath, **kwargs)
-		except:
-			print('Error fitting {0}'.format(f))# def BatchManualRegistrationSelection(directory, overwrite = False, **kwargs):
-	p = mp.Pool(mp.cpu_count())
-	p.map(f, traverse_files(directory))
-	p.close()
-	p.join()
+	
+	with mp.Pool(mp.cpu_count()) as p:
+		p.map(loopme, traverse_files(directory))
 
 # 	class fobject():
 # 		def __init__(self, directory = directory):

@@ -15,8 +15,6 @@ class Control:
 
 		self.connect()
 
-
-
 	def connect(self, keithley_address = 'GPIB0::20::INSTR', shutter_port = 'COM3'):
 		self.keithley = Keithley2400(keithley_address)
 		self.keithley.reset()
@@ -133,27 +131,17 @@ class Control:
 		return voc
 
 	def jv(self, name, vmin = -0.2, vmax = 0.7, steps = 50, preview = True):
-		self._source_voltage_measure_current()
-		self.keithley.source_voltage = vmin
-		# self._set_buffer(npts = steps)
-		v = np.linspace(vmin, vmax, steps)
-		vmeas = np.zeros((steps,))
-		i = np.zeros((steps,))
-
-		self.keithley.enable_source()
 		self.open_shutter()
-		for m, v_ in enumerate(v):
-			self.keithley.source_voltage = v_
-			vmeas[m], i[m], _ = self.measure()
+		out = self._scanjv(vmin, vmax, steps)
 		self.close_shutter()
 		self.keithley.disable_source()
-		j = i*1000/self.area #amps to mA/cm2
+		j = -out['i']*1000/self.area #amps to mA/cm2. sign flip for solar cell current convention
 
 		data = pd.DataFrame({
-		    'Voltage (V)': v,
+		    'Voltage (V)': out['v_set'],
 		    'Current Density (mA/cm2)': j,
-		    'Current (A)': i,
-		    'Measured Voltage (V)': vmeas
+		    'Current (A)': out['i'],
+		    'Measured Voltage (V)': out['v']
 		})
 		data.to_csv(f'{name}_light.csv')
 
@@ -189,3 +177,24 @@ class Control:
 		if preview:
 			self._preview(v, j, f'{name}_dark')
 
+	def _scanjv(self, vmin, vmax, steps):
+		self._source_voltage_measure_current()
+		self.keithley.source_voltage = vmin
+		# self._set_buffer(npts = steps)
+		v = np.linspace(vmin, vmax, steps)
+		vmeas = np.zeros((steps,))
+		i = np.zeros((steps,))
+
+		self.keithley.enable_source()
+		for m, v_ in enumerate(v):
+			self.keithley.source_voltage = v_
+			vmeas[m], i[m], _ = self.measure()
+		self.keithley.disable_source()
+
+		return {
+				'v_set': v,
+				'v': vmeas, 
+				'i':i
+				}
+	
+	def calibrate(self):
