@@ -42,12 +42,15 @@ class Spectrometer:
         """
         captures a spectrum from the usb spectrometer
         """
-        spectrum = sn.array_spectrum(self.id, self.wl__)
+        spectrum = sn.array_spectrum(self.id, self.__wl)
         return spectrum
 
     def autogain(
-        self, wlmin=-np.inf, wlmax=np.inf, target: float = 0.8, iterations: int = 10
+        self, wlmin=-np.inf, wlmax=np.inf, target: float = 0.8
     ):
+    """
+    finds dwell time to hit desired fraction of detector max signal in a given wavelength range
+    """
         if target > 1 or target < 0:
             raise ValueError(
                 "Target counts must be between 0-1 (fraction of saturated counts)"
@@ -58,11 +61,11 @@ class Spectrometer:
         def objective(integrationtime):
             self.integrationtime = integrationtime
             spectrum = self.capture()
-            return spectrum[mask, 1].max() - target
+            return spectrum[mask, 1].max()
 
-        integrationtime0 = self.__integrationtime.copy()
-        results = minimize(
-            objective, integrationtime0, bounds=[(100, 10000)]  # 0.1 - 10 seconds
-        )
-        self.integrationtime = integrationtime0
-        return results.x[0]
+        integrationtime_guesses = np.array([100,200,400,800])
+        counts = np.array([objective(it) for it in integrationtime_guesses])
+        peakedmask = counts >= (2**16) * 0.95
+        p = np.polyfit(integrationtime_guesses[~peakedmask], counts[~peakedmask])
+
+        return np.polyval(p, target).astype(int)
