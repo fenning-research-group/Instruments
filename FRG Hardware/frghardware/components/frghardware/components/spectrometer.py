@@ -48,9 +48,9 @@ class Spectrometer:
     def autogain(
         self, wlmin=-np.inf, wlmax=np.inf, target: float = 0.8
     ):
-    """
-    finds dwell time to hit desired fraction of detector max signal in a given wavelength range
-    """
+        """
+        finds dwell time to hit desired fraction of detector max signal in a given wavelength range
+        """
         if target > 1 or target < 0:
             raise ValueError(
                 "Target counts must be between 0-1 (fraction of saturated counts)"
