@@ -8,6 +8,8 @@ from thorlabs_tsi_sdk.tl_camera import TLCameraSDK
 from thorlabs_tsi_sdk.tl_mono_to_color_processor import MonoToColorProcessorSDK
 from thorlabs_tsi_sdk.tl_mono_to_color_enums import COLOR_SPACE
 from thorlabs_tsi_sdk.tl_color_enums import FORMAT
+from thorlabs_tsi_sdk.tl_camera_enums import SENSOR_TYPE
+
 import numpy as np
 
 """
@@ -16,35 +18,30 @@ import numpy as np
     once. 
 """
 
-
-def discover_cameras():
-    with TLCameraSDK() as camera_sdk:
-        available_cameras = camera_sdk.discover_available_cameras()
-        if len(available_cameras) < 1:
-            raise ValueError("no cameras detected")
-    return available_cameras
-
-
 class ThorcamHost:
     def __init__(self):
         self.camera_sdk = TLCameraSDK()
+        self.discover_cameras()
         self.mono2color_sdk = MonoToColorProcessorSDK()
 
     def discover_cameras(self):
         self.available_cameras = self.camera_sdk.discover_available_cameras()
-        if len(available_cameras) < 1:
+        if len(self.available_cameras) < 1:
             raise ValueError("no cameras detected")
 
     def spawn_camera(self, camid=None):
         if camid is None:
-            camid = self.__user_select_camera()
+            if len(self.available_cameras) == 1:
+                camid = self.available_cameras[0]
+            else:
+                camid = self.__user_select_camera()
         return Thorcam(camid, host=self)
 
     def __user_select_camera(self):
         print("Select camera:")
         for i, sn in enumerate(self.available_cameras):
             print(f"\t{i}: {sn}")
-        selection = input("Enter index of camera you want: ")
+        selection = int(input("Enter index of camera you want: "))
         if selection >= len(self.available_cameras):
             raise ValueError(
                 f"Index {selection} is out of range (0-{len(self.available_cameras)})!"
@@ -60,7 +57,7 @@ class Thorcam:
         self.connect()
 
     def connect(self):
-        self.camera = self.__host.open_camera(self.__id)
+        self.camera = self.__host.camera_sdk.open_camera(self.__id)
         self.camera.image_poll_timeout_ms = 1000  # 1 second polling timeout
         self.__image_width = self.camera.image_width_pixels
         self.__image_height = self.camera.image_height_pixels
@@ -71,12 +68,13 @@ class Thorcam:
             self.camera.get_default_white_balance_matrix(),
             self.camera.bit_depth,
         )
-
+        self.frames = 1
+        
     @property
     def exposure(self):
         return self.camera.exposure_time_us
 
-    @property.setter
+    @exposure.setter
     def exposure(self, exposure: int):
         """
         Args:
@@ -89,7 +87,7 @@ class Thorcam:
         self.__frames = self.camera.frames_per_trigger_zero_for_unlimited
         return self.__frames
 
-    @property.setter
+    @frames.setter
     def frames(self, frames: int):
         """Set the number of frames to average per image capture
 
@@ -107,7 +105,7 @@ class Thorcam:
         frames = np.stack(
             [
                 self.camera.get_pending_frame_or_null().image_buffer
-                for f in self.__frames
+                for f in range(self.__frames)
             ]
         )  # currently throwing away timing info
         self.camera.disarm()
@@ -154,11 +152,13 @@ class Thorcam:
                         for f in frames
                     ]
                 )
-            if self.__frames > 1:  ##this may be redundant
-                averaged_image = frames.mean(axis=0)
-            else:
-                averaged_image = frames[0]
+        if self.__frames > 1:  ##this may be redundant
+            averaged_image = frames.mean(axis=0)
+        else:
+            averaged_image = frames[0]
 
+
+        averaged_image = averaged_image/(2**16) #normalize 16 bit depth to 0-1
         return averaged_image
 
     def preview(self):
@@ -166,7 +166,7 @@ class Thorcam:
         print("Generating app...")
         root = tk.Tk()
         root.title(self.camera.name)
-        image_acquisition_thread = ImageAcquisitionThread(self.camera)
+        image_acquisition_thread = ImageAcquisitionThread(self)
         camera_widget = LiveViewCanvas(
             parent=root, image_queue=image_acquisition_thread.get_output_queue()
         )
@@ -187,10 +187,9 @@ class Thorcam:
         image_acquisition_thread.join()
 
         print("Closing resources...")
-        self.camera.frames_per_trigger_zero_for_unlimited = (
-            self.camera.__frames
-        )  # put frames back to normal
-        self._camera.camera.image_poll_timeout_ms = 1000  # back to default
+        self.camera.disarm()
+        self.camera.frames_per_trigger_zero_for_unlimited = self.__frames # put frames back to normal
+        self.camera.image_poll_timeout_ms = 1000  # back to default
 
 
 ### Camera Preview Code from Thorlabs SDK Example
@@ -247,15 +246,15 @@ class ImageAcquisitionThread(threading.Thread):
         self._previous_timestamp = 0
 
         # setup color processing if necessary
-        if self._camera.camera_sensor_type != SENSOR_TYPE.BAYER:
+        if self._camera.camera.camera_sensor_type != SENSOR_TYPE.BAYER:
             # Sensor type is not compatible with the color processing library
             self._is_color = False
         else:
-            self._mono_to_color_sdk = self._camera.__host
-            self._image_width = self._camera.camera.__image_width_pixels
-            self._image_height = self._camera.camera.__image_height_pixels
+            self._mono_to_color_sdk = self._camera._Thorcam__host
+            self._image_width = self._camera.camera.image_width_pixels
+            self._image_height = self._camera.camera.image_height_pixels
             self._mono_to_color_processor = (
-                self._mono_to_color_sdk.create_mono_to_color_processor(
+                self._camera._Thorcam__host.mono2color_sdk.create_mono_to_color_processor(
                     SENSOR_TYPE.BAYER,
                     self._camera.camera.color_filter_array_phase,
                     self._camera.camera.get_color_correction_matrix(),
@@ -265,7 +264,7 @@ class ImageAcquisitionThread(threading.Thread):
             )
             self._is_color = True
 
-        self._bit_depth = camera.bit_depth
+        self._bit_depth = self._camera.camera.bit_depth
         self._camera.camera.image_poll_timeout_ms = (
             0  # Do not want to block for long periods of time
         )
@@ -309,7 +308,7 @@ class ImageAcquisitionThread(threading.Thread):
     def run(self):
         while not self._stop_event.is_set():
             try:
-                frame = self._camera.get_pending_frame_or_null()
+                frame = self._camera.camera.get_pending_frame_or_null()
                 if frame is not None:
                     if self._is_color:
                         pil_image = self._get_color_image(frame)
@@ -329,4 +328,4 @@ class ImageAcquisitionThread(threading.Thread):
         print("Image acquisition has stopped")
         if self._is_color:
             self._mono_to_color_processor.dispose()
-            self._mono_to_color_sdk.dispose()
+            # self._mono_to_color_sdk.dispose()
