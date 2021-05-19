@@ -1,8 +1,11 @@
+import sys
+import os
+sys.path.append(os.path.dirname(__file__))
+
 import time
 import numpy as np
 import stellarnet_driver3 as sn  # usb driver
 from scipy.optimize import minimize
-
 
 class Spectrometer:
     def __init__(self, address=0):

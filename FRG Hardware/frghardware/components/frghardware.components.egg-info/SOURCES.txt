@@ -15,5 +15,7 @@ frghardware/components/kepco.py
 frghardware/components/laser.py
 frghardware/components/mono.py
 frghardware/components/nkt.py
+frghardware/components/spectrometer.py
 frghardware/components/stage.py
 frghardware/components/tec.py
+frghardware/components/thorcam.py
