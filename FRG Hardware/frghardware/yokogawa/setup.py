@@ -6,6 +6,6 @@ setup(
     version="0.1.0",
     packages=['yokogawa_SMU']
     # namespace_packages=['yokogawa_SMU'],
-    packages=[microlib_name],
-    install_requires=['numpy', 'pymeasure', 'pyserial', 'pandas', 'time', 'pyvisa', 'matplotlib', 'serial']
+    # packages=[microlib_name],
+    # install_requires=['numpy', 'pymeasure', 'pyserial', 'pandas', 'time', 'pyvisa', 'matplotlib', 'serial']
 )
