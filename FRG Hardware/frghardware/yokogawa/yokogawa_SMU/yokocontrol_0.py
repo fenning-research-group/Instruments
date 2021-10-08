@@ -1,11 +1,9 @@
 # to run in terminal:
-# 1. cd "C:\Users\dcaka\Documents\GitHub\Instruments\FRG Hardware\frghardware\keithleyjv\frghardware\keithleyjv"
-# 2. from frghardware.keithleyjv import yokocontrol1
-# 3. c = yokocontrol1.Control()
+# 1. from frghardware.yokogawa import yokocontrol_0
+# 2. c = yokocontrol_0.Control()
 
 # for fast iteration on the code you can load:
-# 1. import importlib
-# 2. importlib.reload(yokocontrol1)
+# 1. importlib.reload(yokocontrol_0)
 
 
 import pyvisa
