@@ -1,9 +1,11 @@
 # to run in terminal:
-# 1. from frghardware.yokogawa import yokocontrol_0
-# 2. c = yokocontrol_0.Control()
+# 1. cd "C:\Users\dcaka\Documents\GitHub\Instruments\FRG Hardware\frghardware\keithleyjv\frghardware\keithleyjv"
+# 2. from frghardware.keithleyjv import yokocontrol1
+# 3. c = yokocontrol1.Control()
 
 # for fast iteration on the code you can load:
-# 1. importlib.reload(yokocontrol_0)
+# 1. import importlib
+# 2. importlib.reload(yokocontrol1)
 
 
 import pyvisa
@@ -20,16 +22,17 @@ mpl.rcParams.update(mpl.rcParamsDefault)
 class Control:
 	def __init__(self):
 		self.delay = 0.05
-		# self.counts = 2 
 		self.__previewFigure = None
 		self.__previewAxes = None
 		self.connect()
+
 
 	# Connect to yoko
 	def connect(self, yoko_address = 'GPIB0::1::INSTR'):
 		rm = pyvisa.ResourceManager()
 		self.yoko = rm.open_resource(yoko_address)
 		self.yoko.timeout = 1000000 
+
 
 	# Turn measurment on: Init settings for source V, measure I
 	def jv_settings_0(self):
@@ -49,6 +52,7 @@ class Control:
 		tempdelay = ':SENS:DEL ' + str(self.delay) + ' ms'
 		self.yoko.write(tempdelay) # Measure delay set in __init__
 		self.yoko.write(':OUTP:STAT ON') # Output ON
+
 
 	# Turn measurment on: Init settings for source I, measure V
 	def voc_settings(self):
@@ -74,22 +78,26 @@ class Control:
 	def output_off(self): 
 		self.yoko.write(':OUTP:STAT OFF')
 
+
 	# Get output as string regardless of source/measure
 	def TrigRead(self): 
 		self.TrigReadAsString = self.yoko.query(':INIT;*TRG;:FETC?') # initializes, apllies trigger, fetches value
 		self.TrigReadAsFloat = float(self.TrigReadAsString) # convert to Float 
+
 
 	# Set Voltage
 	def volt_command(self):
 		tempstr = ':SOUR:VOLT:LEV ' + str(self.v_point) +'V' 
 		self.yoko.write(tempstr)
 
+
 	# Set Current
 	def current_command(self):
 		tempstr = ':SOUR:CURR:LEV ' + str(self.a_point) +'A'
 		self.yoko.write(tempstr)
 
-	# Calculate Voc --> returns None right now
+
+	# Calculate Voc
 	def voc(self):
 		self.voc_settings()
 		self.a_point = 0
@@ -97,6 +105,17 @@ class Control:
 		self.TrigRead()
 		voc = self.TrigReadAsFloat
 		return voc
+
+
+	# Calculate Jsc 
+	def jsc(self):
+		self.jsc_settings()
+		self.v_point = 0
+		self.volt_command()
+		self.TrigRead()
+		jsc = self.TrigReadAsFloat
+		return jsc
+
 
 	# Sweep from vmin to vmax with steps #steps using device area 3 cm^2
 	def jv(self, name, vmin=-0.1,vmax=1,steps=500, reverse = True, area = 3, preview=True):
@@ -175,6 +194,62 @@ class Control:
 		# return data_fwd
 
 
+# New code
+
+	def jv2(self, name, vmin=-0.1, vmax=1, steps=500, area = 3, reverse = True, forward = True, preview=True):
+		
+		# load JV settings
+		if reverse:
+			self.jv_settings_0()
+			rev_jv = self.do_jv_sweep(name,vmax,vmin,steps,'rev')
+			time.sleep(1)
+		if forward:
+			self.jv_settings_0()
+			fwd_jv = self.do_jv_sweep(name,vmin,vmax,steps,'fwd')
+			time.sleep(1)
+		
+		# we can manage data later here
+		# data = pd.concat(rev_jv,fwd_jv)
+
+
+
+	def do_jv_sweep(self,name,vstart,vend,steps,direction):
+		
+		# create voltage and current arrays
+		v = np.linspace(vstart, vend, steps) 
+		i = np.zeros(steps) 
+
+		# set voltage, measure current
+		for idx, v_point in enumerate(v): 
+			self.v_point = v_point 
+			self.volt_command()
+			self.TrigRead()  
+			i[idx] = self.TrigReadAsFloat
+
+		# turn off output/measurement
+		self.output_off() 
+
+		# store in dataframe
+		data = pd.DataFrame({
+			    'voltage': v,
+			    'current': i
+			})
+
+		# print data to csv
+		data.to_csv(f'{name}_{direction}.csv') # could probably comnbine fwd and rev into 1 csv
+
+		# preview sweeped data
+		if preview:
+			j = -1*i/area/.001
+			self._preview(v, j, f'{name}_{direction}')
+
+		return data
+
+
+# end new code
+
+
+
 	# Manages preview
 	def _preview(self, v, j, label): #
 		def handle_close(evt, self):
@@ -198,46 +273,3 @@ class Control:
 		self.__previewFigure.canvas.draw() # draw plot
 		self.__previewFigure.canvas.flush_events()
 		time.sleep(1e-4) # pause to allow plot to update
-
-
-
-# old stuff:
-
-	# # Hardcode setup
-	# def setup_slow_points(self):
-	# 	self.yoko.write('*RST') #Reset Factory#
-	# 	self.yoko.write(':SOUR:FUNC VOLT') # Source function Voltage
-	# 	self.yoko.write(':SOUR:VOLT:RANG 2V') # Source range setting 2 V
-	# 	self.yoko.write(':SOUR:CURR:PROT:LINK ON') # ‘ Limiter tracking ON
-	# 	self.yoko.write(':SOUR:CURR:PROT:ULIM 2mA') #‘ Limiter 50 mA
-	# 	self.yoko.write(':SOUR:CURR:PROT:STAT ON') # ‘ Limiter ON
-	# 	self.yoko.write(':SOUR:VOLT:LEV 3V') # ‘ Source level –1.5 VOLT
-	# 	self.yoko.write(':SENS:STAT ON') #‘ Measurement ON
-	# 	self.yoko.write(':SENS:FUNC CURR') #‘ Measurement function Current
-	# 	self.yoko.write(':SENS:ITIM MIN') #‘ Integration time Minimum
-	# 	self.yoko.write(':SENS:AZER:STAT OFF') # ‘ Auto zero OFF
-	# 	self.yoko.write(':TRIG:SOUR EXT') #‘ Trigger source External trigger
-	# 	self.yoko.write(':SOUR:DEL MIN') #‘ Source delay Minimum
-	# 	self.yoko.write(':SENS:DEL 1 PLC') #‘ Measure delay 3s
-	# 	self.yoko.write(':OUTP:STAT ON') #‘ Output ON
-
-	# # Hardcode sweep
-	# def Do_Slow_Sweep():
-	# 	volt_reading = []
-	# 	current_reading = []
-	# 	setup_slow_points(inst=inst) # Set to Setup 2
-	# 	self.yoko.write(':SOUR:VOLT:LEV 0.1V') # Set the level to 0.1 V
-	# 	volt_reading.append(0.1)
-	# 	TrigRead()
-	# 	current_reading.append(self.TrigReadAsFloat2) # Generate a trigger and read the result
-	# 	self.yoko.write(':SOUR:VOLT:LEV 0.2V') # Set the level to 0.2 V
-	# 	volt_reading.append(0.2)
-	# 	TrigRead()
-	# 	current_reading.append(TrigReadAsDouble(inst))
-	# 	self.yoko.write(':OUTP:STAT OFF') # Turn the output OFF
-	# 	data = pd.DataFrame({
-	# 			    'voltage': volt_reading,
-	# 			    'current': current_reading
-	# 			})
-
-	# 	return data
