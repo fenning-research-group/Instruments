@@ -198,22 +198,24 @@ class Control:
 
 	def jv2(self, name, vmin=-0.1, vmax=1, steps=500, area = 3, reverse = True, forward = True, preview=True):
 		
+		self.area = area
+		self.reverse = reverse
+		self.forward = forward
+		self.preview = preview
 		# load JV settings
 		if reverse:
 			self.jv_settings_0()
-			rev_jv = self.do_jv_sweep(name,vmax,vmin,steps,'rev')
+			rev_jv = self.do_jv_sweep(name,vstart=vmax,vend=vmin,steps=steps,area = area, direction='rev', preview=preview)
 			time.sleep(1)
 		if forward:
 			self.jv_settings_0()
-			fwd_jv = self.do_jv_sweep(name,vmin,vmax,steps,'fwd')
+			fwd_jv = self.do_jv_sweep(name,vstart=vmin,vend=vmax,steps=steps,area = area, direction='fwd', preview=preview)
 			time.sleep(1)
 		
 		# we can manage data later here
 		# data = pd.concat(rev_jv,fwd_jv)
 
-
-
-	def do_jv_sweep(self,name,vstart,vend,steps,direction):
+	def do_jv_sweep(self,name,vstart,vend,steps,area, direction, preview):
 		
 		# create voltage and current arrays
 		v = np.linspace(vstart, vend, steps) 
@@ -243,7 +245,7 @@ class Control:
 			j = -1*i/area/.001
 			self._preview(v, j, f'{name}_{direction}')
 
-		return data
+		# return data
 
 
 # end new code
