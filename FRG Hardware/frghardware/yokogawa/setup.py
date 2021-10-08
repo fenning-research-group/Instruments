@@ -1,6 +1,6 @@
 from setuptools import setup
 
-microlib_name = 'frghardware.yokogawa'
+microlib_name = 'frghardware.yokogawa_SMU'
 setup(
     name=microlib_name,
     version="0.1.0",
