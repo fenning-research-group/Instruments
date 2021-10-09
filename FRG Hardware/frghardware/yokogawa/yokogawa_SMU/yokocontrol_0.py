@@ -158,9 +158,9 @@ class Control:
 	def do_jv_sweep(self,name,vstart,vend,steps,area, direction, preview):
 		
 		# create voltage and current arrays
-		v = np.linspace(vstart, vend, steps) 
 		i = np.zeros(steps) 
 
+		v = np.linspace(vstart, vend, steps) 
 		# set voltage, measure current
 		for idx, v_point in enumerate(v): 
 			self.v_point = v_point 
@@ -188,9 +188,13 @@ class Control:
 		# return data
 
 
-# end new code
+	def tseries_jv(self, name, vmin=-0.1, vmax=1, steps=500, area = 3, reverse = True, forward = True, preview=True, totaltime=3600, breaktime=60)
+		
+		steps = totaltime  / breaktime
 
-
+		for n in range(steps):
+			self.jv(name, vmin, vmax, steps, area, reverse, forward, preview)
+			time.sleep(breaktime)
 
 	# Manages preview
 	def _preview(self, v, j, label): #
