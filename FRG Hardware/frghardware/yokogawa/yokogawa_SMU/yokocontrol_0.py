@@ -136,85 +136,7 @@ class Control:
 
 
 	# Sweep from vmin to vmax with steps #steps using device area 3 cm^2
-	def jv(self, name, vmin=-0.1,vmax=1,steps=500, reverse = True, area = 3, preview=True):
-		# load JV settings
-		self.jv_settings_0()
-
-		# scans reverse first if scanning both rev and fwd
-		if reverse:
-			# create arrays to hold voltage and current
-			v = np.linspace(vmax, vmin, steps) 
-			i = np.zeros(steps) 
-
-			# set voltage, measure current
-			for idx, v_point in enumerate(v): # cycle through v array
-				self.v_point = v_point # load v_point
-				self.volt_command() # use volt_command to set voltage
-
-				self.TrigRead() # read the output of the measured parameter 
-
-				i[idx] = self.TrigReadAsFloat # set the value of current in i
-
-			self.output_off() # turn off measurment
-
-			# store data in data frame
-			data = pd.DataFrame({
-				    'voltage': v,
-				    'current': i
-				})
-
-			# print data to csv
-			data.to_csv(f'{name}_rev.csv')
-
-			# preview data
-			if preview:
-				j = -1*i/area/.001
-				self._preview(v, j, f'{name}_rev')
-
-			# return pandas dataframe
-			# return data_rev
-			time.sleep(1)
-
-
-		# load JV settings
-		self.jv_settings_0()
-
-		# create arrays to hold voltage and current
-		v = np.linspace(vmin, vmax, steps) 
-		i = np.zeros(steps) 
-
-		# set voltage, measure current
-		for idx, v_point in enumerate(v): # cycle through v array
-			self.v_point = v_point # load v_point
-			self.volt_command() # use volt_command to set voltage
-
-			self.TrigRead() # read the output of the measured parameter 
-
-			i[idx] = self.TrigReadAsFloat # set the value of current in i
-
-		self.output_off() # turn off measurment
-
-		# store data in dataframe
-		data = pd.DataFrame({
-			    'voltage': v,
-			    'current': i
-			})
-
-		# print data to csv
-		data.to_csv(f'{name}_fwd.csv') # could probably comnbine fwd and rev into 1 csv
-
-		# preview sweeped data
-		if preview:
-			j = -1*i/area/.001
-			self._preview(v, j, f'{name}_fwd')
-
-		# return pandas dataframe
-		# return data_fwd
-
-
-# New code
-
-	def jv2(self, name, vmin=-0.1, vmax=1, steps=500, area = 3, reverse = True, forward = True, preview=True):
+	def jv(self, name, vmin=-0.1, vmax=1, steps=500, area = 3, reverse = True, forward = True, preview=True):
 		
 		self.area = area
 		self.reverse = reverse
@@ -293,3 +215,82 @@ class Control:
 		self.__previewFigure.canvas.draw() # draw plot
 		self.__previewFigure.canvas.flush_events()
 		time.sleep(1e-4) # pause to allow plot to update
+
+
+	# def jv(self, name, vmin=-0.1,vmax=1,steps=500, reverse = True, area = 3, preview=True):
+	# 	# load JV settings
+	# 	self.jv_settings_0()
+
+	# 	# scans reverse first if scanning both rev and fwd
+	# 	if reverse:
+	# 		# create arrays to hold voltage and current
+	# 		v = np.linspace(vmax, vmin, steps) 
+	# 		i = np.zeros(steps) 
+
+	# 		# set voltage, measure current
+	# 		for idx, v_point in enumerate(v): # cycle through v array
+	# 			self.v_point = v_point # load v_point
+	# 			self.volt_command() # use volt_command to set voltage
+
+	# 			self.TrigRead() # read the output of the measured parameter 
+
+	# 			i[idx] = self.TrigReadAsFloat # set the value of current in i
+
+	# 		self.output_off() # turn off measurment
+
+	# 		# store data in data frame
+	# 		data = pd.DataFrame({
+	# 			    'voltage': v,
+	# 			    'current': i
+	# 			})
+
+	# 		# print data to csv
+	# 		data.to_csv(f'{name}_rev.csv')
+
+	# 		# preview data
+	# 		if preview:
+	# 			j = -1*i/area/.001
+	# 			self._preview(v, j, f'{name}_rev')
+
+	# 		# return pandas dataframe
+	# 		# return data_rev
+	# 		time.sleep(1)
+
+
+	# 	# load JV settings
+	# 	self.jv_settings_0()
+
+	# 	# create arrays to hold voltage and current
+	# 	v = np.linspace(vmin, vmax, steps) 
+	# 	i = np.zeros(steps) 
+
+	# 	# set voltage, measure current
+	# 	for idx, v_point in enumerate(v): # cycle through v array
+	# 		self.v_point = v_point # load v_point
+	# 		self.volt_command() # use volt_command to set voltage
+
+	# 		self.TrigRead() # read the output of the measured parameter 
+
+	# 		i[idx] = self.TrigReadAsFloat # set the value of current in i
+
+	# 	self.output_off() # turn off measurment
+
+	# 	# store data in dataframe
+	# 	data = pd.DataFrame({
+	# 		    'voltage': v,
+	# 		    'current': i
+	# 		})
+
+	# 	# print data to csv
+	# 	data.to_csv(f'{name}_fwd.csv') # could probably comnbine fwd and rev into 1 csv
+
+	# 	# preview sweeped data
+	# 	if preview:
+	# 		j = -1*i/area/.001
+	# 		self._preview(v, j, f'{name}_fwd')
+
+	# 	# return pandas dataframe
+	# 	# return data_fwd
+
+
+# New code		
