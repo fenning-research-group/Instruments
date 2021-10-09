@@ -193,7 +193,7 @@ class Control:
 		steps = int(np.round(totaltime  / breaktime,1))
 
 
-		for n in range(steps):
+		for n in range(steps+1):
 			current_time = int(breaktime * n) 
 			name = name.split('_')[0]
 			name = (f'{name}_time{current_time}')
