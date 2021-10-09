@@ -190,7 +190,7 @@ class Control:
 
 	def tseries_jv(self, name, vmin=-0.1, vmax=1, steps=500, area = 3, reverse = True, forward = True, preview=True, totaltime=3600, breaktime=60):
 		
-		steps = np.round(totaltime  / breaktime,1)
+		steps = int(np.round(totaltime  / breaktime,1))
 
 
 		for n in range(steps):
