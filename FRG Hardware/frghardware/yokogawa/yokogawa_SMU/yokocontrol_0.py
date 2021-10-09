@@ -195,6 +195,7 @@ class Control:
 
 		for n in range(steps):
 			current_time = int(steps * n) 
+			name = name.split('_')[0]
 			name = (f'{name}_{current_time}')
 			self.jv(name, vmin, vmax, steps, area, reverse, forward, preview)
 			time.sleep(breaktime)
