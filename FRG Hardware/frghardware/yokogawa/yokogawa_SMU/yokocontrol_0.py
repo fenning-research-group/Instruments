@@ -193,7 +193,7 @@ class Control:
 		steps = totaltime  / breaktime
 
 		for n in range(steps):
-			current_time = steps * n 
+			current_time = int(steps * n) 
 			name = (f'{name}_{current_time}')
 			self.jv(name, vmin, vmax, steps, area, reverse, forward, preview)
 			time.sleep(breaktime)
