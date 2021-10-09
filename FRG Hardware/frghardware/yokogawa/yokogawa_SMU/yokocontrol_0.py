@@ -52,6 +52,25 @@ class Control:
 		self.yoko.write(tempdelay) # Measure delay set in __init__
 		self.yoko.write(':OUTP:STAT ON') # Output ON
 
+	def isc_settings(self):
+		self.yoko.write('*RST') # Reset Factory
+		self.yoko.write(':SOUR:FUNC VOLT') # Source function Voltage
+		self.yoko.write(':SOUR:VOLT:RANG 1V') # Source range setting 1 V
+		self.yoko.write(':SOUR:CURR:PROT:LINK ON') # Limiter tracking ON
+		self.yoko.write(':SOUR:CURR:PROT:ULIM 50mA') # Limiter 50 mA
+		self.yoko.write(':SOUR:CURR:PROT:STAT ON') # Limiter ON
+		self.yoko.write(':SOUR:VOLT:LEV 0V') # Source level 0 VOLT
+		self.yoko.write(':SENS:STAT ON') # Measurement ON
+		self.yoko.write(':SENS:FUNC CURR') # Measurement function Current
+		self.yoko.write(':SENS:ITIM MIN') # Integration time Minimum
+		self.yoko.write(':SENS:AZER:STAT OFF') # Auto zero OFF
+		self.yoko.write(':TRIG:SOUR EXT') # Trigger source External trigger
+		self.yoko.write(':SOUR:DEL MIN') # Source delay Minimum
+		tempdelay = ':SENS:DEL ' + str(self.delay) + ' ms'
+		self.yoko.write(tempdelay) # Measure delay set in __init__
+		self.yoko.write(':OUTP:STAT ON') # Output ON
+
+
 
 	# Turn measurment on: Init settings for source I, measure V
 	def voc_settings(self):
@@ -107,13 +126,13 @@ class Control:
 
 
 	# Calculate Jsc 
-	def jsc(self):
-		self.jsc_settings()
+	def isc(self):
+		self.isc_settings()
 		self.v_point = 0
 		self.volt_command()
 		self.TrigRead()
-		jsc = self.TrigReadAsFloat
-		return jsc
+		isc = self.TrigReadAsFloat
+		return isc
 
 
 	# Sweep from vmin to vmax with steps #steps using device area 3 cm^2
