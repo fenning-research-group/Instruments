@@ -163,6 +163,16 @@ class Control:
 			self.fwd_j = self.j
 			time.sleep(1e-3)
 
+		#Option: here we caluclate MPP & set voltage to MPP for aging.
+		"""
+		p_fwd = self.fwd_j*self.fwd_v
+		vmpp_fwd = self.v[np.argmax(p_fwd)]
+		p_rev = self.rev_j*self.fwd_v[::-1]
+		vmp_rev = self.v[np.argmax(p_rev)]
+		vmp = (vmp_fwd+vmp_rev)/2
+		self.yoko.write(':SOUR:VOLT:LEV '+str(vmpp)+'V') # Source level MPP
+		"""
+
 		# have options to save data if its just a single time
 		if singletime:
 			data_IV = pd.DataFrame({
