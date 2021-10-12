@@ -140,7 +140,7 @@ class Control:
 
 	# Sweep from vmin to vmax with steps #steps using device area 3 cm^2
 	def jv(self, name, vmin=-0.1, vmax=1, steps=500, area = 3, reverse = True, forward = True, preview=True, singletime=True):
-		
+		self.steps = steps
 		self.area = area
 		self.reverse = reverse
 		self.forward = forward
@@ -217,75 +217,9 @@ class Control:
 			self._preview(self.v, self.j, f'{name}_{direction}')
 
 
-	# eventually this will get slow due to huge dataframe and constantly resaving the whole thing
-	# we want to save each scan and then dump memory
-	def tseries_jv(self, name, vmin=-0.1, vmax=1, steps=500, area = 3, reverse = True, forward = True, preview=True, totaltime=3600, breaktime=60):
-		
-		# Create easier to understand time variables & Parameter File
-		# -> leaving this here instead of in new function as it would be ideal to put at top of CSV
-		hours_tottime = math.floor(totaltime/(60*60))
-		min_tottime = math.floor((totaltime-hours_tottime*60*60)/60)
-		sec_tottime = math.floor((totaltime-hours_tottime*60*60-min_tottime*60))
-
-		hours_breaktime = math.floor(breaktime/(60*60))
-		min_breaktime = math.floor((breaktime-hours_breaktime*60*60)/60)
-		sec_breaktime = math.floor((breaktime-hours_breaktime*60*60-min_breaktime*60))
-
-		scan_info = ('########## HEADER START ##########\n'
-			f'name = {name}\n'
-			f'EPOCH Start = {time.time()}\n'
-			f'area = {area} cm²\n'
-			f'vmin = {vmin} V\n'
-			f'vmax = {vmax} V\n'
-			f'steps = {steps}\n'
-			f'reverse scan = {reverse}\n'
-			f'forward scan = {forward}\n'
-			f'totaltime = {totaltime} sec ({hours_tottime} h {min_tottime} m {sec_tottime} s)\n'
-			f'breaktime = {breaktime} sec ({hours_breaktime} h {min_breaktime} m {sec_breaktime} s)\n'
-			'########## HEADER END ##########\n'
-			)
-
-		f = open(f'{name}_IV_Timeseries_Paramerters','w')
-		f.write(scan_info)
-		f.close()
-
-
-		# Create file/df for data, write voltage info
-		voltage_fwd = np.linspace(vmin, vmax, steps)
-		output_IV = pd.DataFrame({
-				'V' : voltage_fwd
-			})
-		output_IV.to_csv(f'{name}_IV_Timeseries.csv') 
-		
-		# iterate through using machine time (sleep doesnt account for time to run)
-		scanning = True
-		tstart = time.time()
-		tend = tstart+totaltime
-		tnext = tstart
-		
-		while scanning:
-			current_time = int(tnext-tstart)
-			name = name.split('_')[0]
-			namelong = (f'{name}_{current_time}s')
-			self.jv(namelong, vmin, vmax, steps, area, reverse, forward, preview, False)
-			output_IV[f'I_rev_{current_time}'] = self.rev_i
-			output_IV[f'I_fwd_{current_time}'] = self.fwd_i
-			output_IV.to_csv(f'{name}_IV_Timeseries.csv')
-			tnext += breaktime
-			
-			if tnext > tend:
-				scanning = False
-
-			while time.time() < tnext:
-				time.sleep(1)
-
-
-	# eventually the above program will get slow due to huge dataframe and constantly resaving the whole thing
-	# this version is to open file, save info, close and repeat for larger data sets
-	# due to limitations of the csv package (or my knowledge and googling skills) this requires V,I1,I2... as rows
-	# i think this would eventually be faster if we moved away from np, but that requires editing other subprograms
 	def tseries_jv2(self, name, vmin=-0.1, vmax=1, steps=500, area = 3, reverse = True, forward = True, preview=True, totaltime=3600, breaktime=60):
-		
+		self.filename = f'{name}_IV_Timeseries2.csv'
+
 		# Create easier to understand time variables for header
 		hours_tottime = math.floor(totaltime/(60*60))
 		min_tottime = math.floor((totaltime-hours_tottime*60*60)/60)
@@ -294,29 +228,9 @@ class Control:
 		min_breaktime = math.floor((breaktime-hours_breaktime*60*60)/60)
 		sec_breaktime = math.floor((breaktime-hours_breaktime*60*60-min_breaktime*60))
 
-		# Create file, write header/scan info and voltage info
-
-
-
-# self.storage = {'Date':[self.now],
-#                         'Count':[self.Count], 
-#                         'V_cell uL':[self.V_cell],
-#                         'Solv_d g/mL':[self.Solv_d],
-#                         'totalsolv_vol':[self.totalsolv_vol],
-
-# 		results = {
-# 			'jo1': best_vals[0],
-# 			'jo2': best_vals[1],
-# 			'rs': best_vals[2],
-# 			'rsh': best_vals[3],
-# 			'jl': best_vals[4],
-# 			'covar': covar
-# 		}
-
 
 		voltage_fwd = np.linspace(vmin, vmax, steps)
 		with open(f'{name}_IV_Timeseries2.csv','w',newline='') as f:
-			self.filename = f'{name}_IV_Timeseries2.csv'
 			JVFile = csv.writer(f)
 			JVFile.writerows([['### Header Start ###']])
 			JVFile.writerows([['Name',f'{name}']])
@@ -347,10 +261,10 @@ class Control:
 			#deal with time and name, call jv function
 			self.current_time = int(tnext-tstart)
 			name = name.split('_')[0]
-			namelong = (f'{name}_{current_time}s')
+			namelong = (f'{name}_{self.current_time}s')
 			self.jv(namelong, vmin, vmax, steps, area, reverse, forward, preview, False)
 			
-			if first_scan =0:
+			if first_scan ==0:
 				self.save_step_0()
 
 			self.save_step_1()
@@ -408,7 +322,7 @@ class Control:
 	    f'I_{self.current_time}_rev': self.rev_i,
 		}).T
 
-		data_df.to_csv(filename, mode='a',header=False,sep=',')
+		data_df.to_csv(self.filename, mode='a',header=False,sep=',')
 
 	def save_step_1(self):
 		new_data_df = pd.DataFrame({
@@ -416,7 +330,7 @@ class Control:
 	    f'I_{self.current_time}_rev': self.rev_i,
 		}).T
 
-		new_data_df.to_csv(filename, mode='a', header=False, sep=',')
+		new_data_df.to_csv(self.filename, mode='a', header=False, sep=',')
 
 
 		# def save_step_0(self):
@@ -437,3 +351,62 @@ class Control:
 
 
 
+	# def tseries_jv(self, name, vmin=-0.1, vmax=1, steps=500, area = 3, reverse = True, forward = True, preview=True, totaltime=3600, breaktime=60):
+		
+	# 	# Create easier to understand time variables & Parameter File
+	# 	# -> leaving this here instead of in new function as it would be ideal to put at top of CSV
+	# 	hours_tottime = math.floor(totaltime/(60*60))
+	# 	min_tottime = math.floor((totaltime-hours_tottime*60*60)/60)
+	# 	sec_tottime = math.floor((totaltime-hours_tottime*60*60-min_tottime*60))
+
+	# 	hours_breaktime = math.floor(breaktime/(60*60))
+	# 	min_breaktime = math.floor((breaktime-hours_breaktime*60*60)/60)
+	# 	sec_breaktime = math.floor((breaktime-hours_breaktime*60*60-min_breaktime*60))
+
+	# 	scan_info = ('########## HEADER START ##########\n'
+	# 		f'name = {name}\n'
+	# 		f'EPOCH Start = {time.time()}\n'
+	# 		f'area = {area} cm²\n'
+	# 		f'vmin = {vmin} V\n'
+	# 		f'vmax = {vmax} V\n'
+	# 		f'steps = {steps}\n'
+	# 		f'reverse scan = {reverse}\n'
+	# 		f'forward scan = {forward}\n'
+	# 		f'totaltime = {totaltime} sec ({hours_tottime} h {min_tottime} m {sec_tottime} s)\n'
+	# 		f'breaktime = {breaktime} sec ({hours_breaktime} h {min_breaktime} m {sec_breaktime} s)\n'
+	# 		'########## HEADER END ##########\n'
+	# 		)
+
+	# 	f = open(f'{name}_IV_Timeseries_Paramerters','w')
+	# 	f.write(scan_info)
+	# 	f.close()
+
+
+	# 	# Create file/df for data, write voltage info
+	# 	voltage_fwd = np.linspace(vmin, vmax, steps)
+	# 	output_IV = pd.DataFrame({
+	# 			'V' : voltage_fwd
+	# 		})
+	# 	output_IV.to_csv(f'{name}_IV_Timeseries.csv') 
+		
+	# 	# iterate through using machine time (sleep doesnt account for time to run)
+	# 	scanning = True
+	# 	tstart = time.time()
+	# 	tend = tstart+totaltime
+	# 	tnext = tstart
+		
+	# 	while scanning:
+	# 		self.current_time = int(tnext-tstart)
+	# 		name = name.split('_')[0]
+	# 		namelong = (f'{name}_{self.current_time}s')
+	# 		self.jv(namelong, vmin, vmax, steps, area, reverse, forward, preview, False)
+	# 		output_IV[f'I_rev_{self.current_time}'] = self.rev_i
+	# 		output_IV[f'I_fwd_{self.current_time}'] = self.fwd_i
+	# 		output_IV.to_csv(f'{name}_IV_Timeseries.csv')
+	# 		tnext += breaktime
+			
+	# 		if tnext > tend:
+	# 			scanning = False
+
+	# 		while time.time() < tnext:
+	# 			time.sleep(1)
