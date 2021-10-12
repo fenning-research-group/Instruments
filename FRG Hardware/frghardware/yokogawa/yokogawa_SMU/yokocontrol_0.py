@@ -217,7 +217,7 @@ class Control:
 			self._preview(self.v, self.j, f'{name}_{direction}')
 
 
-	def tseries_jv2(self, name, vmin=-0.1, vmax=1, steps=500, area = 3, reverse = True, forward = True, preview=True, totaltime=3600, breaktime=60):
+	def tseries_jv(self, name, vmin=-0.1, vmax=1, steps=500, area = 3, reverse = True, forward = True, preview=True, totaltime=3600, breaktime=60):
 		self.filename = f'{name}_IV_Timeseries2.csv'
 
 		# Create easier to understand time variables for header
