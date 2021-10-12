@@ -295,8 +295,28 @@ class Control:
 		sec_breaktime = math.floor((breaktime-hours_breaktime*60*60-min_breaktime*60))
 
 		# Create file, write header/scan info and voltage info
+
+
+
+# self.storage = {'Date':[self.now],
+#                         'Count':[self.Count], 
+#                         'V_cell uL':[self.V_cell],
+#                         'Solv_d g/mL':[self.Solv_d],
+#                         'totalsolv_vol':[self.totalsolv_vol],
+
+# 		results = {
+# 			'jo1': best_vals[0],
+# 			'jo2': best_vals[1],
+# 			'rs': best_vals[2],
+# 			'rsh': best_vals[3],
+# 			'jl': best_vals[4],
+# 			'covar': covar
+# 		}
+
+
 		voltage_fwd = np.linspace(vmin, vmax, steps)
 		with open(f'{name}_IV_Timeseries2.csv','w',newline='') as f:
+			self.filename = f'{name}_IV_Timeseries2.csv'
 			JVFile = csv.writer(f)
 			JVFile.writerows([['### Header Start ###']])
 			JVFile.writerows([['Name',f'{name}']])
@@ -304,15 +324,15 @@ class Control:
 			JVFile.writerows([['Device Area',f'{area}']])
 			JVFile.writerows([['Min Voltage',f'{vmin}']])
 			JVFile.writerows([['Max Voltage',f'{vmax}']])
-			JVFile.writerows([['Voltasge Steps',f'{steps}']])
+			JVFile.writerows([['Voltage Steps',f'{steps}']])
 			JVFile.writerows([['Reverse Scan',f'{reverse}']])
 			JVFile.writerows([['Forward Scan',f'{forward}']])
 			JVFile.writerows([['Total Time',f'{totaltime} sec ({hours_tottime} h {min_tottime} m {sec_tottime} s)']])
 			JVFile.writerows([['Time Between Scan',f'{breaktime} sec ({hours_breaktime} h {min_breaktime} m {sec_breaktime} s)']])
 			JVFile.writerows([['### Header End ###']])
-			JVFile.writerows([['']])
+			# JVFile.writerows([['']])
 
-			JVFile.writerows([['V'] + voltage_fwd.tolist()])
+			# JVFile.writerows([['V'] + voltage_fwd.tolist()])
 
 		
 		# iterate through using machine time (sleep doesnt account for time to run)
@@ -320,20 +340,29 @@ class Control:
 		tstart = time.time()
 		tend = tstart+totaltime
 		tnext = tstart
-		
+		first_scan = 0
+
 		# loop to manage time steps
 		while scanning:
 			#deal with time and name, call jv function
-			current_time = int(tnext-tstart)
+			self.current_time = int(tnext-tstart)
 			name = name.split('_')[0]
 			namelong = (f'{name}_{current_time}s')
 			self.jv(namelong, vmin, vmax, steps, area, reverse, forward, preview, False)
 			
+			if first_scan =0:
+				self.save_step_0()
+
+			self.save_step_1()
+
+			first_scan += 1
+
+
 			# open file and append row for fwd and another for rev
-			with open(f'{name}_IV_Timeseries2.csv','a',newline='') as f:
-				JVFile = csv.writer(f)
-				JVFile.writerows([[f'I_rev_{current_time}'] + self.rev_i.tolist()])
-				JVFile.writerows([[f'I_fwd_{current_time}'] + self.fwd_i.tolist()])
+			# with open(f'{name}_IV_Timeseries2.csv','a',newline='') as f:
+			# 	JVFile = csv.writer(f)
+			# 	JVFile.writerows([[f'I_rev_{current_time}'] + self.rev_i.tolist()])
+			# 	JVFile.writerows([[f'I_fwd_{current_time}'] + self.fwd_i.tolist()])
 
 			#iterate/wait or close
 			tnext += breaktime
@@ -369,80 +398,42 @@ class Control:
 		time.sleep(1e-4) # pause to allow plot to update
 
 
-	# def jv(self, name, vmin=-0.1,vmax=1,steps=500, reverse = True, area = 3, preview=True):
-	# 	# load JV settings
-	# 	self.jv_settings_0()
-
-	# 	# scans reverse first if scanning both rev and fwd
-	# 	if reverse:
-	# 		# create arrays to hold voltage and current
-	# 		v = np.linspace(vmax, vmin, steps) 
-	# 		i = np.zeros(steps) 
-
-	# 		# set voltage, measure current
-	# 		for idx, v_point in enumerate(v): # cycle through v array
-	# 			self.v_point = v_point # load v_point
-	# 			self.volt_command() # use volt_command to set voltage
-
-	# 			self.TrigRead() # read the output of the measured parameter 
-
-	# 			i[idx] = self.TrigReadAsFloat # set the value of current in i
-
-	# 		self.output_off() # turn off measurment
-
-	# 		# store data in data frame
-	# 		data = pd.DataFrame({
-	# 			    'voltage': v,
-	# 			    'current': i
-	# 			})
-
-	# 		# print data to csv
-	# 		data.to_csv(f'{name}_rev.csv')
-
-	# 		# preview data
-	# 		if preview:
-	# 			j = -1*i/area/.001
-	# 			self._preview(v, j, f'{name}_rev')
-
-	# 		# return pandas dataframe
-	# 		# return data_rev
-	# 		time.sleep(1)
 
 
-	# 	# load JV settings
-	# 	self.jv_settings_0()
+	def save_step_0(self):
+		data_df = pd.DataFrame({
+	    'index': np.arange(self.steps),
+	    'V__': self.fwd_v,
+	    f'I_{self.current_time}_fwd': self.fwd_i,
+	    f'I_{self.current_time}_rev': self.rev_i,
+		}).T
 
-	# 	# create arrays to hold voltage and current
-	# 	v = np.linspace(vmin, vmax, steps) 
-	# 	i = np.zeros(steps) 
+		data_df.to_csv(filename, mode='a',header=False,sep=',')
 
-	# 	# set voltage, measure current
-	# 	for idx, v_point in enumerate(v): # cycle through v array
-	# 		self.v_point = v_point # load v_point
-	# 		self.volt_command() # use volt_command to set voltage
+	def save_step_1(self):
+		new_data_df = pd.DataFrame({
+	    f'I_{self.current_time}_fwd': self.fwd_i,
+	    f'I_{self.current_time}_rev': self.rev_i,
+		}).T
 
-	# 		self.TrigRead() # read the output of the measured parameter 
-
-	# 		i[idx] = self.TrigReadAsFloat # set the value of current in i
-
-	# 	self.output_off() # turn off measurment
-
-	# 	# store data in dataframe
-	# 	data = pd.DataFrame({
-	# 		    'voltage': v,
-	# 		    'current': i
-	# 		})
-
-	# 	# print data to csv
-	# 	data.to_csv(f'{name}_fwd.csv') # could probably comnbine fwd and rev into 1 csv
-
-	# 	# preview sweeped data
-	# 	if preview:
-	# 		j = -1*i/area/.001
-	# 		self._preview(v, j, f'{name}_fwd')
-
-	# 	# return pandas dataframe
-	# 	# return data_fwd
+		new_data_df.to_csv(filename, mode='a', header=False, sep=',')
 
 
-# New code		
+		# def save_step_0(self):
+ #        code_0 = self.filename_code_0
+ #        code_1 = self.filename_code_1
+ #        code_2 = self.filename_code_2 #etc, 
+
+ #        filename = '{0}_{1}_{2}.csv'.format(code_0, code_1, code_2)
+
+
+
+
+
+
+
+
+
+
+
+
