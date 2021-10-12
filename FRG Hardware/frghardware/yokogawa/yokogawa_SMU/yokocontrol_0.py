@@ -317,7 +317,7 @@ class Control:
 	def save_step_0(self):
 		data_df = pd.DataFrame({
 	    'index': np.arange(self.steps),
-	    'V__': self.fwd_v,
+	    f'V_{self.current_time}_fwd': self.fwd_v,
 	    f'I_{self.current_time}_fwd': self.fwd_i,
 	    f'I_{self.current_time}_rev': self.rev_i,
 		}).T
