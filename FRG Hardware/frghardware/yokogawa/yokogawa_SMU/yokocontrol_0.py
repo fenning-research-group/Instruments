@@ -199,6 +199,7 @@ class Control:
 			self._preview(self.v, self.j, f'{name}_{direction}')
 
 
+	# Code for time series with total time and breaktime defined
 	def tseries_jv(self, name, vmin=-0.1, vmax=1, steps=500, area = 3, reverse = True, forward = True, preview=True, totaltime=3600, breaktime=60):
 		self.filename = f'{name}_IV_Timeseries.csv'
 		self.name = name
@@ -279,6 +280,7 @@ class Control:
 		time.sleep(1e-4) # pause to allow plot to update
 
 
+	# initial save (header + voltage)
 	def save_init(self):
 		with open(f'{self.name}_IV_Timeseries.csv','w',newline='') as f:
 			JVFile = csv.writer(f)
@@ -302,6 +304,7 @@ class Control:
 		del data_df
 
 
+	# append current data
 	def save_append(self):
 		new_data_df = pd.DataFrame({
 	    f'I_{self.current_time}_fwd': self.fwd_i,
