@@ -231,12 +231,12 @@ class Control:
 		self.breaktime = breaktime 
 
 		# Create easier to understand time variables for header
-		self.hours_tottime = math.floor(totaltime/(60*60))
-		self.min_tottime = math.floor((totaltime-hours_tottime*60*60)/60)
-		self.sec_tottime = math.floor((totaltime-hours_tottime*60*60-min_tottime*60))
-		self.hours_breaktime = math.floor(breaktime/(60*60))
-		self.min_breaktime = math.floor((breaktime-hours_breaktime*60*60)/60)
-		self.sec_breaktime = math.floor((breaktime-hours_breaktime*60*60-min_breaktime*60))
+		self.hours_tottime = math.floor(self.totaltime/(60*60))
+		self.min_tottime = math.floor((self.totaltime-self.hours_tottime*60*60)/60)
+		self.sec_tottime = math.floor((self.totaltime-self.hours_tottime*60*60-self.min_tottime*60))
+		self.hours_breaktime = math.floor(self.breaktime/(60*60))
+		self.min_breaktime = math.floor((self.breaktime-self.hours_breaktime*60*60)/60)
+		self.sec_breaktime = math.floor((self.breaktime-self.hours_breaktime*60*60-self.min_breaktime*60))
 
 
 		voltage_fwd = np.linspace(vmin, vmax, steps)
@@ -245,7 +245,7 @@ class Control:
 		# iterate through using machine time (sleep doesnt account for time to run)
 		scanning = True
 		tstart = time.time()
-		tend = tstart+totaltime
+		tend = tstart+self.totaltime
 		tnext = tstart
 		first_scan = 0
 
@@ -263,7 +263,7 @@ class Control:
 
 			self.save_step_2()
 
-			first_scan += 1self.
+			first_scan += 1
 			tnext += breaktime
 			if tnext > tend:
 				scanning = False
@@ -297,7 +297,7 @@ class Control:
 		time.sleep(1e-4) # pause to allow plot to update
 
 	def save_step_0(self):
-		with open(f'{self.name}_IV_Timeseries2.csv','w',newline='') as f:
+		with open(f'{self.name}_IV_Timeseries.csv','w',newline='') as f:
 			JVFile = csv.writer(f)
 			JVFile.writerows([['### Header Start ###']])
 			JVFile.writerows([['Name',f'{self.name}']])
