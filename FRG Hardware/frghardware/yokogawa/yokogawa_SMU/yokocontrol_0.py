@@ -38,25 +38,7 @@ class Control:
 
 
 	# Turn measurment on: Init settings for source V, measure I
-	def jv_settings_0(self):
-		self.yoko.write('*RST') # Reset Factory
-		self.yoko.write(':SOUR:FUNC VOLT') # Source function Voltage
-		self.yoko.write(':SOUR:VOLT:RANG 1V') # Source range setting 1 V
-		self.yoko.write(':SOUR:CURR:PROT:LINK ON') # Limiter tracking ON
-		self.yoko.write(':SOUR:CURR:PROT:ULIM 50mA') # Limiter 50 mA
-		self.yoko.write(':SOUR:CURR:PROT:STAT ON') # Limiter ON
-		self.yoko.write(':SOUR:VOLT:LEV 0V') # Source level 0 VOLT
-		self.yoko.write(':SENS:STAT ON') # Measurement ON
-		self.yoko.write(':SENS:FUNC CURR') # Measurement function Current
-		self.yoko.write(':SENS:ITIM MIN') # Integration time Minimum
-		self.yoko.write(':SENS:AZER:STAT OFF') # Auto zero OFF
-		self.yoko.write(':TRIG:SOUR EXT') # Trigger source External trigger
-		self.yoko.write(':SOUR:DEL MIN') # Source delay Minimum
-		tempdelay = ':SENS:DEL ' + str(self.delay) + ' ms'
-		self.yoko.write(tempdelay) # Measure delay set in __init__
-		self.yoko.write(':OUTP:STAT ON') # Output ON
-
-	def isc_settings(self):
+	def srcV_measI(self):
 		self.yoko.write('*RST') # Reset Factory
 		self.yoko.write(':SOUR:FUNC VOLT') # Source function Voltage
 		self.yoko.write(':SOUR:VOLT:RANG 1V') # Source range setting 1 V
@@ -76,7 +58,7 @@ class Control:
 
 
 	# Turn measurment on: Init settings for source I, measure V
-	def voc_settings(self):
+	def srcI_measV(self):
 		self.yoko.write('*RST') # Reset Factory
 		self.yoko.write(':SOUR:FUNC CURR') # Source function Current
 		self.yoko.write(':SOUR:CURR:RANG 1A') # Source range setting 0 A		
@@ -120,7 +102,7 @@ class Control:
 
 	# Calculate Voc
 	def voc(self):
-		self.voc_settings()
+		self.srcI_measV()
 		self.a_point = 0
 		self.current_command()
 		self.TrigRead()
@@ -130,7 +112,7 @@ class Control:
 
 	# Calculate Jsc 
 	def isc(self):
-		self.isc_settings()
+		self.srcV_measI()
 		self.v_point = 0
 		self.volt_command()
 		self.TrigRead()
@@ -151,13 +133,13 @@ class Control:
 
 		# load JV settings
 		if reverse:
-			self.jv_settings_0()
+			self.srcV_measI()
 			self.do_jv_sweep(name,vstart=vmax,vend=vmin,steps=steps,area = area, direction='rev', preview=preview)
 			self.rev_i = self.i[::-1]
 			self.rev_j = self.j[::-1]
 			time.sleep(1e-3)
 		if forward:
-			self.jv_settings_0()
+			self.srcV_measI()
 			self.do_jv_sweep(name,vstart=vmin,vend=vmax,steps=steps,area = area, direction='fwd', preview=preview)
 			self.fwd_i = self.i
 			self.fwd_j = self.j
@@ -257,11 +239,12 @@ class Control:
 			namelong = (f'{self.name}_{self.current_time}s')
 			self.jv(namelong, vmin, vmax, steps, area, reverse, forward, preview, False)
 			
-			if first_scan ==0:
-				self.save_step_0()		
-				self.save_step_1()
+			if first_scan == 0:
+				#self.save_step_0()		
+				#self.save_step_1()
+				self.save_init()
 
-			self.save_step_2()
+			self.save_append()
 
 			first_scan += 1
 			tnext += breaktime
@@ -270,7 +253,6 @@ class Control:
 			while time.time() < tnext:
 				time.sleep(1)
 
-		       
 
 	# Manages preview
 	def _preview(self, v, j, label): 
@@ -296,7 +278,8 @@ class Control:
 		self.__previewFigure.canvas.flush_events()
 		time.sleep(1e-4) # pause to allow plot to update
 
-	def save_step_0(self):
+
+	def save_init(self):
 		with open(f'{self.name}_IV_Timeseries.csv','w',newline='') as f:
 			JVFile = csv.writer(f)
 			JVFile.writerows([['### Header Start ###']])
@@ -312,18 +295,14 @@ class Control:
 			JVFile.writerows([['Time Between Scan',f'{self.breaktime} sec ({self.hours_breaktime} h {self.min_breaktime} m {self.sec_breaktime} s)']])
 			JVFile.writerows([['### Header End ###']])
 
-	def save_step_1(self):
 		data_df = pd.DataFrame({
-	    'index': np.arange(self.steps),
-	    f'V_{self.current_time}_fwd': self.fwd_v,
-	    f'I_{self.current_time}_fwd': self.fwd_i,
-	    f'I_{self.current_time}_rev': self.rev_i,
-		}).T
-
+			'index': np.arange(self.steps),
+			f'V_{self.current_time}_fwd': self.fwd_v}).T
 		data_df.to_csv(self.filename, mode='a',header=False,sep=',')
 		del data_df
 
-	def save_step_2(self):
+
+	def save_append(self):
 		new_data_df = pd.DataFrame({
 	    f'I_{self.current_time}_fwd': self.fwd_i,
 	    f'I_{self.current_time}_rev': self.rev_i,
@@ -331,3 +310,59 @@ class Control:
 
 		new_data_df.to_csv(self.filename, mode='a', header=False, sep=',')
 		del new_data_df
+
+
+	#OLD CODE
+
+	# def isc_settings(self):
+	# 	self.yoko.write('*RST') # Reset Factory
+	# 	self.yoko.write(':SOUR:FUNC VOLT') # Source function Voltage
+	# 	self.yoko.write(':SOUR:VOLT:RANG 1V') # Source range setting 1 V
+	# 	self.yoko.write(':SOUR:CURR:PROT:LINK ON') # Limiter tracking ON
+	# 	self.yoko.write(':SOUR:CURR:PROT:ULIM 50mA') # Limiter 50 mA
+	# 	self.yoko.write(':SOUR:CURR:PROT:STAT ON') # Limiter ON
+	# 	self.yoko.write(':SOUR:VOLT:LEV 0V') # Source level 0 VOLT
+	# 	self.yoko.write(':SENS:STAT ON') # Measurement ON
+	# 	self.yoko.write(':SENS:FUNC CURR') # Measurement function Current
+	# 	self.yoko.write(':SENS:ITIM MIN') # Integration time Minimum
+	# 	self.yoko.write(':SENS:AZER:STAT OFF') # Auto zero OFF
+	# 	self.yoko.write(':TRIG:SOUR EXT') # Trigger source External trigger
+	# 	self.yoko.write(':SOUR:DEL MIN') # Source delay Minimum
+	# 	tempdelay = ':SENS:DEL ' + str(self.delay) + ' ms'
+	# 	self.yoko.write(tempdelay) # Measure delay set in __init__
+	# 	self.yoko.write(':OUTP:STAT ON') # Output ON
+
+
+
+	# def save_step_0(self):
+	# 	with open(f'{self.name}_IV_Timeseries.csv','w',newline='') as f:
+	# 		JVFile = csv.writer(f)
+	# 		JVFile.writerows([['### Header Start ###']])
+	# 		JVFile.writerows([['Name',f'{self.name}']])
+	# 		JVFile.writerows([['EPOCH Start',f'{time.time()}']])
+	# 		JVFile.writerows([['Device Area',f'{self.area}']])
+	# 		JVFile.writerows([['Min Voltage',f'{self.vmin}']])
+	# 		JVFile.writerows([['Max Voltage',f'{self.vmax}']])
+	# 		JVFile.writerows([['Voltage Steps',f'{self.steps}']])
+	# 		JVFile.writerows([['Reverse Scan',f'{self.reverse}']])
+	# 		JVFile.writerows([['Forward Scan',f'{self.forward}']])
+	# 		JVFile.writerows([['Total Time',f'{self.totaltime} sec ({self.hours_tottime} h {self.min_tottime} m {self.sec_tottime} s)']])
+	# 		JVFile.writerows([['Time Between Scan',f'{self.breaktime} sec ({self.hours_breaktime} h {self.min_breaktime} m {self.sec_breaktime} s)']])
+	# 		JVFile.writerows([['### Header End ###']])
+
+
+	# def save_step_1(self):
+	# 	data_df = pd.DataFrame({
+	#     'index': np.arange(self.steps),
+	#     f'V_{self.current_time}_fwd': self.fwd_v,
+	#     f'I_{self.current_time}_fwd': self.fwd_i,
+	#     f'I_{self.current_time}_rev': self.rev_i,
+	# 	}).T
+
+	# 	data_df.to_csv(self.filename, mode='a',header=False,sep=',')
+	# 	del data_df
+
+
+
+
+
