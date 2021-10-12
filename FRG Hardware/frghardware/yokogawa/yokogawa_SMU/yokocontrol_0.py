@@ -331,3 +331,9 @@ class Control:
 
 		new_data_df.to_csv(self.filename, mode='a', header=False, sep=',')
 		del new_data_df
+
+
+# for reading the saved csv back into pandas in post processing:
+# df = pd.read_csv('filename.csv', header = 5, sep=',').T
+# df.columns = df.iloc[0]
+# df = df.iloc[1: , :]
