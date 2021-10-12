@@ -219,36 +219,29 @@ class Control:
 
 	def tseries_jv(self, name, vmin=-0.1, vmax=1, steps=500, area = 3, reverse = True, forward = True, preview=True, totaltime=3600, breaktime=60):
 		self.filename = f'{name}_IV_Timeseries.csv'
+		self.name = name
+		self.vmin = vmin
+		self.vmax = vmax
+		self.steps = steps
+		self.area = area 
+		self.reverse = reverse
+		self.forward = forward
+		self.preview = preview
+		self.totaltime = totaltime	
+		self.breaktime = breaktime 
 
 		# Create easier to understand time variables for header
-		hours_tottime = math.floor(totaltime/(60*60))
-		min_tottime = math.floor((totaltime-hours_tottime*60*60)/60)
-		sec_tottime = math.floor((totaltime-hours_tottime*60*60-min_tottime*60))
-		hours_breaktime = math.floor(breaktime/(60*60))
-		min_breaktime = math.floor((breaktime-hours_breaktime*60*60)/60)
-		sec_breaktime = math.floor((breaktime-hours_breaktime*60*60-min_breaktime*60))
+		self.hours_tottime = math.floor(totaltime/(60*60))
+		self.min_tottime = math.floor((totaltime-hours_tottime*60*60)/60)
+		self.sec_tottime = math.floor((totaltime-hours_tottime*60*60-min_tottime*60))
+		self.hours_breaktime = math.floor(breaktime/(60*60))
+		self.min_breaktime = math.floor((breaktime-hours_breaktime*60*60)/60)
+		self.sec_breaktime = math.floor((breaktime-hours_breaktime*60*60-min_breaktime*60))
 
 
 		voltage_fwd = np.linspace(vmin, vmax, steps)
-		with open(f'{name}_IV_Timeseries2.csv','w',newline='') as f:
-			JVFile = csv.writer(f)
-			JVFile.writerows([['### Header Start ###']])
-			JVFile.writerows([['Name',f'{name}']])
-			JVFile.writerows([['EPOCH Start',f'{time.time()}']])
-			JVFile.writerows([['Device Area',f'{area}']])
-			JVFile.writerows([['Min Voltage',f'{vmin}']])
-			JVFile.writerows([['Max Voltage',f'{vmax}']])
-			JVFile.writerows([['Voltage Steps',f'{steps}']])
-			JVFile.writerows([['Reverse Scan',f'{reverse}']])
-			JVFile.writerows([['Forward Scan',f'{forward}']])
-			JVFile.writerows([['Total Time',f'{totaltime} sec ({hours_tottime} h {min_tottime} m {sec_tottime} s)']])
-			JVFile.writerows([['Time Between Scan',f'{breaktime} sec ({hours_breaktime} h {min_breaktime} m {sec_breaktime} s)']])
-			JVFile.writerows([['### Header End ###']])
-			# JVFile.writerows([['']])
 
-			# JVFile.writerows([['V'] + voltage_fwd.tolist()])
 
-		
 		# iterate through using machine time (sleep doesnt account for time to run)
 		scanning = True
 		tstart = time.time()
@@ -260,25 +253,17 @@ class Control:
 		while scanning:
 			#deal with time and name, call jv function
 			self.current_time = int(tnext-tstart)
-			name = name.split('_')[0]
-			namelong = (f'{name}_{self.current_time}s')
+			self.name = self.name.split('_')[0]
+			namelong = (f'{self.name}_{self.current_time}s')
 			self.jv(namelong, vmin, vmax, steps, area, reverse, forward, preview, False)
 			
 			if first_scan ==0:
-				self.save_step_0()
+				self.save_step_0()		
+				self.save_step_1()
 
-			self.save_step_1()
+			self.save_step_2()
 
-			first_scan += 1
-
-
-			# open file and append row for fwd and another for rev
-			# with open(f'{name}_IV_Timeseries2.csv','a',newline='') as f:
-			# 	JVFile = csv.writer(f)
-			# 	JVFile.writerows([[f'I_rev_{current_time}'] + self.rev_i.tolist()])
-			# 	JVFile.writerows([[f'I_fwd_{current_time}'] + self.fwd_i.tolist()])
-
-			#iterate/wait or close
+			first_scan += 1self.
 			tnext += breaktime
 			if tnext > tend:
 				scanning = False
@@ -311,10 +296,23 @@ class Control:
 		self.__previewFigure.canvas.flush_events()
 		time.sleep(1e-4) # pause to allow plot to update
 
-
-
-
 	def save_step_0(self):
+		with open(f'{self.name}_IV_Timeseries2.csv','w',newline='') as f:
+			JVFile = csv.writer(f)
+			JVFile.writerows([['### Header Start ###']])
+			JVFile.writerows([['Name',f'{self.name}']])
+			JVFile.writerows([['EPOCH Start',f'{time.time()}']])
+			JVFile.writerows([['Device Area',f'{self.area}']])
+			JVFile.writerows([['Min Voltage',f'{self.vmin}']])
+			JVFile.writerows([['Max Voltage',f'{self.vmax}']])
+			JVFile.writerows([['Voltage Steps',f'{self.steps}']])
+			JVFile.writerows([['Reverse Scan',f'{self.reverse}']])
+			JVFile.writerows([['Forward Scan',f'{self.forward}']])
+			JVFile.writerows([['Total Time',f'{self.totaltime} sec ({self.hours_tottime} h {self.min_tottime} m {self.sec_tottime} s)']])
+			JVFile.writerows([['Time Between Scan',f'{self.breaktime} sec ({self.hours_breaktime} h {self.min_breaktime} m {self.sec_breaktime} s)']])
+			JVFile.writerows([['### Header End ###']])
+
+	def save_step_1(self):
 		data_df = pd.DataFrame({
 	    'index': np.arange(self.steps),
 	    f'V_{self.current_time}_fwd': self.fwd_v,
@@ -325,7 +323,7 @@ class Control:
 		data_df.to_csv(self.filename, mode='a',header=False,sep=',')
 		del data_df
 
-	def save_step_1(self):
+	def save_step_2(self):
 		new_data_df = pd.DataFrame({
 	    f'I_{self.current_time}_fwd': self.fwd_i,
 	    f'I_{self.current_time}_rev': self.rev_i,
