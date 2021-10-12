@@ -312,57 +312,9 @@ class Control:
 		del new_data_df
 
 
-	#OLD CODE
 
-	# def isc_settings(self):
-	# 	self.yoko.write('*RST') # Reset Factory
-	# 	self.yoko.write(':SOUR:FUNC VOLT') # Source function Voltage
-	# 	self.yoko.write(':SOUR:VOLT:RANG 1V') # Source range setting 1 V
-	# 	self.yoko.write(':SOUR:CURR:PROT:LINK ON') # Limiter tracking ON
-	# 	self.yoko.write(':SOUR:CURR:PROT:ULIM 50mA') # Limiter 50 mA
-	# 	self.yoko.write(':SOUR:CURR:PROT:STAT ON') # Limiter ON
-	# 	self.yoko.write(':SOUR:VOLT:LEV 0V') # Source level 0 VOLT
-	# 	self.yoko.write(':SENS:STAT ON') # Measurement ON
-	# 	self.yoko.write(':SENS:FUNC CURR') # Measurement function Current
-	# 	self.yoko.write(':SENS:ITIM MIN') # Integration time Minimum
-	# 	self.yoko.write(':SENS:AZER:STAT OFF') # Auto zero OFF
-	# 	self.yoko.write(':TRIG:SOUR EXT') # Trigger source External trigger
-	# 	self.yoko.write(':SOUR:DEL MIN') # Source delay Minimum
-	# 	tempdelay = ':SENS:DEL ' + str(self.delay) + ' ms'
-	# 	self.yoko.write(tempdelay) # Measure delay set in __init__
-	# 	self.yoko.write(':OUTP:STAT ON') # Output ON
-
-
-
-	# def save_step_0(self):
-	# 	with open(f'{self.name}_IV_Timeseries.csv','w',newline='') as f:
-	# 		JVFile = csv.writer(f)
-	# 		JVFile.writerows([['### Header Start ###']])
-	# 		JVFile.writerows([['Name',f'{self.name}']])
-	# 		JVFile.writerows([['EPOCH Start',f'{time.time()}']])
-	# 		JVFile.writerows([['Device Area',f'{self.area}']])
-	# 		JVFile.writerows([['Min Voltage',f'{self.vmin}']])
-	# 		JVFile.writerows([['Max Voltage',f'{self.vmax}']])
-	# 		JVFile.writerows([['Voltage Steps',f'{self.steps}']])
-	# 		JVFile.writerows([['Reverse Scan',f'{self.reverse}']])
-	# 		JVFile.writerows([['Forward Scan',f'{self.forward}']])
-	# 		JVFile.writerows([['Total Time',f'{self.totaltime} sec ({self.hours_tottime} h {self.min_tottime} m {self.sec_tottime} s)']])
-	# 		JVFile.writerows([['Time Between Scan',f'{self.breaktime} sec ({self.hours_breaktime} h {self.min_breaktime} m {self.sec_breaktime} s)']])
-	# 		JVFile.writerows([['### Header End ###']])
-
-
-	# def save_step_1(self):
-	# 	data_df = pd.DataFrame({
-	#     'index': np.arange(self.steps),
-	#     f'V_{self.current_time}_fwd': self.fwd_v,
-	#     f'I_{self.current_time}_fwd': self.fwd_i,
-	#     f'I_{self.current_time}_rev': self.rev_i,
-	# 	}).T
-
-	# 	data_df.to_csv(self.filename, mode='a',header=False,sep=',')
-	# 	del data_df
-
-	#newpush
-
-
+# for reading the saved csv back into pandas in post processing:
+# df = pd.read_csv('filename.csv', header = 5, sep=',').T
+# df.columns = df.iloc[0]
+# df = df.iloc[1: , :]
 
