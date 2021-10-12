@@ -218,7 +218,7 @@ class Control:
 
 
 	def tseries_jv(self, name, vmin=-0.1, vmax=1, steps=500, area = 3, reverse = True, forward = True, preview=True, totaltime=3600, breaktime=60):
-		self.filename = f'{name}_IV_Timeseries2.csv'
+		self.filename = f'{name}_IV_Timeseries.csv'
 
 		# Create easier to understand time variables for header
 		hours_tottime = math.floor(totaltime/(60*60))
