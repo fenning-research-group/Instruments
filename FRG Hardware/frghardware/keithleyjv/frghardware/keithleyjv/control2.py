@@ -106,6 +106,40 @@ class Control:
 		self.keithley.disable_source()
 		print(f'Voc: {voc*1000:.2f} mV')
 		return voc
+
+	def isc_time(self, totaltime=3600, breaktime=60):
+
+		# Create easier to understand time variables for header
+		self.hours_tottime = math.floor(self.totaltime/(60*60))
+		self.min_tottime = math.floor((self.totaltime-self.hours_tottime*60*60)/60)
+		self.sec_tottime = math.floor((self.totaltime-self.hours_tottime*60*60-self.min_tottime*60))
+		self.hours_breaktime = math.floor(self.breaktime/(60*60))
+		self.min_breaktime = math.floor((self.breaktime-self.hours_breaktime*60*60)/60)
+		self.sec_breaktime = math.floor((self.breaktime-self.hours_breaktime*60*60-self.min_breaktime*60))
+
+
+		
+
+
+
+
+
+
+		self._source_voltage_measure_current()
+		self.source_voltage = 0
+		self.keithley.enable_source()
+		# self.open_shutter()
+		isc = self.measure()[1] #pulls current 
+		# jsc = isc*1000/self.area
+		# self.close_shutter()
+		self.keithley.disable_source()
+		print(f'Isc: {isc:.3f} A')
+		return jsc
+
+
+
+
+
 	def jv(self, name, vmin = -0.2, vmax = 0.7, steps = 50, preview = True):
 		self._source_voltage_measure_current()
 		self.keithley.source_voltage = vmin
