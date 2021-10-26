@@ -129,6 +129,8 @@ class Control:
 		self.name = name
 		self.totaltime = totaltime
 		self.breaktime = breaktime
+		self.filename = f'{name}_Isc_Timeseries.csv'
+
 
 		# Create easier to understand time variables for header
 		self.hours_tottime = math.floor(self.totaltime/(60*60))
@@ -177,7 +179,7 @@ class Control:
 
 	# intial save (just headers)
 	def save_init(self):
-		with open(f'{self.name}_Isc_Timeseries.csv','w',newline='') as f:
+		with open(f'{self.namefile}','w',newline='') as f:
 			JVFile = csv.writer(f)
 
 		data_df = pd.DataFrame(columns = ["Time", "Current"])
