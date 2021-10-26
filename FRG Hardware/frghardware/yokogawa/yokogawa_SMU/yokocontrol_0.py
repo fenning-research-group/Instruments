@@ -320,7 +320,7 @@ class Control:
 	def save_init_old(self):
 		with open(f'{self.name}_IV_Timeseries.csv','w',newline='') as f:
 			JVFile = csv.writer(f)
-			no header for now
+			# no header for now
 			JVFile.writerows([['### Header Start ###']])
 			JVFile.writerows([['Name',f'{self.name}']])
 			JVFile.writerows([['EPOCH Start',f'{time.time()}']])
