@@ -299,8 +299,8 @@ class Control:
 	# append I_epochtime_direction
 	def save_append(self):
 		new_data_df = pd.DataFrame({
-	    f'I_{int(time.time())}_fwd': self.fwd_i,
 	    f'I_{int(time.time())}_rev': self.rev_i,
+	    f'I_{int(time.time())}_fwd': self.fwd_i,
 		}).T
 
 		new_data_df.to_csv(self.filename, mode='a', header=False, sep=',')
