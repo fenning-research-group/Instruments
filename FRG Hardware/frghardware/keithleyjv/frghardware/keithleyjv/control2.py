@@ -17,7 +17,7 @@ class Control:
 		self.__previewAxes = None
 		self.connect()
 
-	def connect(self, keithley_address = 'GPIB0::22::INSTR', shutter_port = 'COM3'):
+	def connect(self, keithley_address = 'GPIB1::22::INSTR'):#, shutter_port = 'COM3'):
 		self.keithley = Keithley2400(keithley_address)
 		self.keithley.reset()
 		# self.keithley.output_off_state = 'HIMP'

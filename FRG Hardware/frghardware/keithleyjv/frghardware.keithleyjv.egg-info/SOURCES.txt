@@ -6,3 +6,4 @@ frghardware.keithleyjv.egg-info/namespace_packages.txt
 frghardware.keithleyjv.egg-info/requires.txt
 frghardware.keithleyjv.egg-info/top_level.txt
 frghardware/keithleyjv/control.py
+frghardware/keithleyjv/control2.py
