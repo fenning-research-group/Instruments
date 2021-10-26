@@ -4,18 +4,20 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import serial
 import time
+import math
+import csv
 
 class Control:
 
-	def __init__(self, area = 24.01):
-		self.area = 24.01
+	def __init__(self, area = 4):
+		self.area = 4
 		self.pause = 0.05
 		self.counts = 2
 		self.__previewFigure = None
 		self.__previewAxes = None
 		self.connect()
 
-	def connect(self, keithley_address = 'GPIB0::20::INSTR', shutter_port = 'COM3'):
+	def connect(self, keithley_address = 'GPIB0::22::INSTR', shutter_port = 'COM3'):
 		self.keithley = Keithley2400(keithley_address)
 		self.keithley.reset()
 		# self.keithley.output_off_state = 'HIMP'
@@ -179,7 +181,7 @@ class Control:
 
 	# intial save (just headers)
 	def save_init(self):
-		with open(f'{self.namefile}','w',newline='') as f:
+		with open(f'{self.filename}','w',newline='') as f:
 			JVFile = csv.writer(f)
 
 		data_df = pd.DataFrame(columns = ["Time", "Current"])
