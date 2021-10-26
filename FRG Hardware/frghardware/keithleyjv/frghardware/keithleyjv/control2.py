@@ -4,7 +4,9 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import serial
 import time
+
 class Control:
+
 	def __init__(self, area = 24.01):
 		self.area = 24.01
 		self.pause = 0.05
@@ -12,6 +14,7 @@ class Control:
 		self.__previewFigure = None
 		self.__previewAxes = None
 		self.connect()
+
 	def connect(self, keithley_address = 'GPIB0::20::INSTR', shutter_port = 'COM3'):
 		self.keithley = Keithley2400(keithley_address)
 		self.keithley.reset()
@@ -24,30 +27,37 @@ class Control:
 		self.keithley.buffer_points = 2
 		# self.shutter = serial.Serial(shutter_port)
 		# self.close_shutter()
+
 	def disconnect(self):
 		self.keithley.shutdown()
+
 	def open_shutter(self):
 		# self.shutter.write(b'1')
 		# self._shutteropen = True
 		return
+
 	def close_shutter(self):
 		# self.shutter.write(b'0')
 		# self._shutteropen = False
 		return
+
 	def _source_voltage_measure_current(self):
 		self.keithley.apply_voltage()
 		self.keithley.measure_current()
 		self.keithley.compliance_current = 1.05
 		self.keithley.souce_voltage = 0
+
 	def _source_current_measure_voltage(self):
 		self.keithley.apply_current()
 		self.keithley.measure_voltage()
 		self.keithley.compliance_voltage = 2
 		self.keithley.souce_current = 0
+
 	def _set_buffer(self, npts):
 		self.keithley.disable_buffer()
 		self.keithley.buffer_points = self.counts
 		self.keithley.reset_buffer()
+
 	def _parse_buffer(self, npts):
 		alldata = self.keithley.buffer_data
 		means = np.zeros((npts,))
@@ -60,6 +70,7 @@ class Control:
 			'mean':means,
 			'std':stds
 		}
+
 	def _preview(self, v, j, label):
 		def handle_close(evt, self):
 			self.__previewFigure = None
@@ -77,6 +88,7 @@ class Control:
 		self.__previewFigure.canvas.draw()
 		self.__previewFigure.canvas.flush_events()
 		time.sleep(1e-4)		#pause allows plot to update during series of measurements 
+	
 	def measure(self):
 		"""
 		returns voltage, current, and resistance measured
@@ -85,6 +97,7 @@ class Control:
 		self.keithley.start_buffer()
 		self.keithley.wait_for_buffer()
 		return self.keithley.means
+	
 	def jsc(self):
 		self._source_voltage_measure_current()
 		self.source_voltage = 0
@@ -96,6 +109,7 @@ class Control:
 		self.keithley.disable_source()
 		print(f'Isc: {isc:.3f} A, Jsc: {jsc:.2f} mA/cm2')
 		return jsc
+
 	def voc(self):
 		self._source_current_measure_voltage()
 		self.souce_current = 0
@@ -107,7 +121,14 @@ class Control:
 		print(f'Voc: {voc*1000:.2f} mV')
 		return voc
 
-	def isc_time(self, totaltime=3600, breaktime=60):
+
+
+	def isc_time(self, name, totaltime=3600, breaktime=60):
+
+		# grab variables
+		self.name = name
+		self.totaltime = totaltime
+		self.breaktime = breaktime
 
 		# Create easier to understand time variables for header
 		self.hours_tottime = math.floor(self.totaltime/(60*60))
@@ -117,25 +138,58 @@ class Control:
 		self.min_breaktime = math.floor((self.breaktime-self.hours_breaktime*60*60)/60)
 		self.sec_breaktime = math.floor((self.breaktime-self.hours_breaktime*60*60-self.min_breaktime*60))
 
+		# iterate through using machine time (sleep doesnt account for time to run)
+		scanning = True
+		tstart = time.time()
+		tend = tstart+self.totaltime
+		tnext = tstart
+		first_scan = 0
 
-		
+		# loop to manage time steps
+		while scanning:
+			#deal with time and name, call jv function
+			self.current_time = int(tnext-tstart)
+
+			# measure isc
+			self._source_voltage_measure_current()
+			self.source_voltage = 0
+			self.keithley.enable_source()
+			# self.open_shutter()
+			self.isc = self.measure()[1] #pulls current 
+			# self.close_shutter()
+			self.keithley.disable_source()
+
+
+			
+			if first_scan == 0:
+				self.save_init()
+
+			self.save_append()
+
+			first_scan += 1
+			tnext += breaktime
+			if tnext > tend:
+				scanning = False
+			while time.time() < tnext:
+				time.sleep(1)
 
 
 
+	# intial save (just headers)
+	def save_init(self):
+		with open(f'{self.name}_Isc_Timeseries.csv','w',newline='') as f:
+			JVFile = csv.writer(f)
 
+		data_df = pd.DataFrame(columns = ["Time", "Current"])
+		data_df.to_csv(self.filename, mode='a',header=False,sep=',')
+		del data_df
 
+	# append T, Isc
+	def save_append(self):
+		new_data_df = pd.DataFrame([int(time.time()),self.isc]).T
 
-		self._source_voltage_measure_current()
-		self.source_voltage = 0
-		self.keithley.enable_source()
-		# self.open_shutter()
-		isc = self.measure()[1] #pulls current 
-		# jsc = isc*1000/self.area
-		# self.close_shutter()
-		self.keithley.disable_source()
-		print(f'Isc: {isc:.3f} A')
-		return jsc
-
+		new_data_df.to_csv(self.filename, mode='a', header=False, sep=',')
+		del new_data_df
 
 
 
