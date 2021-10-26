@@ -199,6 +199,7 @@ class Control:
 			self._preview(self.v, self.j, f'{name}_{direction}')
 
 
+
 	# Code for time series with total time and breaktime defined
 	def tseries_jv(self, name, vmin=-0.1, vmax=1, steps=500, area = 3, reverse = True, forward = True, preview=True, totaltime=3600, breaktime=60):
 		self.filename = f'{name}_IV_Timeseries.csv'
@@ -236,8 +237,9 @@ class Control:
 		while scanning:
 			#deal with time and name, call jv function
 			self.current_time = int(tnext-tstart)
-			self.name = self.name.split('_')[0]
-			namelong = (f'{self.name}_{self.current_time}s')
+			# the name shoould be whatever is fed into it for now
+			#self.name = self.name.split('_')[0]
+			namelong = (f'{self.name}_{self.current_time}')
 			self.jv(namelong, vmin, vmax, steps, area, reverse, forward, preview, False)
 			
 			if first_scan == 0:
@@ -253,6 +255,8 @@ class Control:
 				scanning = False
 			while time.time() < tnext:
 				time.sleep(1)
+
+
 
 
 	# Manages preview
@@ -280,10 +284,43 @@ class Control:
 		time.sleep(1e-4) # pause to allow plot to update
 
 
-	# initial save (header + voltage)
+	# intial save (just voltage)
 	def save_init(self):
 		with open(f'{self.name}_IV_Timeseries.csv','w',newline='') as f:
 			JVFile = csv.writer(f)
+			
+		data_df = pd.DataFrame({
+			'index': np.arange(self.steps),
+			f'V__fwd': self.fwd_v}).T
+		data_df.to_csv(self.filename, mode='a',header=False,sep=',')
+		del data_df
+
+
+	# append I_epochtime_direction
+	def save_append(self):
+		new_data_df = pd.DataFrame({
+	    f'I_{int(time.time())}_fwd': self.fwd_i,
+	    f'I_{int(time.time())}_rev': self.rev_i,
+		}).T
+
+		new_data_df.to_csv(self.filename, mode='a', header=False, sep=',')
+		del new_data_df
+
+
+
+# for reading the saved csv back into pandas in post processing:
+# df = pd.read_csv('filename.csv', header = 5, sep=',').T
+# df.columns = df.iloc[0]
+# df = df.iloc[1: , :]
+
+
+## OLD CODE
+
+# initial save (header + voltage)
+	def save_init_old(self):
+		with open(f'{self.name}_IV_Timeseries.csv','w',newline='') as f:
+			JVFile = csv.writer(f)
+			no header for now
 			JVFile.writerows([['### Header Start ###']])
 			JVFile.writerows([['Name',f'{self.name}']])
 			JVFile.writerows([['EPOCH Start',f'{time.time()}']])
@@ -305,7 +342,7 @@ class Control:
 
 
 	# append current data
-	def save_append(self):
+	def save_append_old(self):
 		new_data_df = pd.DataFrame({
 	    f'I_{self.current_time}_fwd': self.fwd_i,
 	    f'I_{self.current_time}_rev': self.rev_i,
@@ -313,11 +350,4 @@ class Control:
 
 		new_data_df.to_csv(self.filename, mode='a', header=False, sep=',')
 		del new_data_df
-
-
-
-# for reading the saved csv back into pandas in post processing:
-# df = pd.read_csv('filename.csv', header = 5, sep=',').T
-# df.columns = df.iloc[0]
-# df = df.iloc[1: , :]
 
