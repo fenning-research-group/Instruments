@@ -31,7 +31,7 @@ class Control:
 
 
 	# Connect to yoko
-	def connect(self, yoko_address = 'GPIB0::1::INSTR'):
+	def connect(self, yoko_address = 'GPIB1::1::INSTR'):
 		rm = pyvisa.ResourceManager()
 		self.yoko = rm.open_resource(yoko_address)
 		self.yoko.timeout = 1000000 
@@ -320,7 +320,7 @@ class Control:
 	def save_init_old(self):
 		with open(f'{self.name}_IV_Timeseries.csv','w',newline='') as f:
 			JVFile = csv.writer(f)
-			no header for now
+			# no header for now
 			JVFile.writerows([['### Header Start ###']])
 			JVFile.writerows([['Name',f'{self.name}']])
 			JVFile.writerows([['EPOCH Start',f'{time.time()}']])
