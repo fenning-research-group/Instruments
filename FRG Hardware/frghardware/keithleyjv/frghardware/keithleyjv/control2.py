@@ -9,15 +9,15 @@ import csv
 
 class Control:
 
-	def __init__(self, area = 4):
-		self.area = 4
+	def __init__(self, area = 3, address='GPIB2::22::30::INSTR'):
+		self.area = 3
 		self.pause = 0.05
 		self.counts = 2
 		self.__previewFigure = None
 		self.__previewAxes = None
-		self.connect()
+		self.connect(keithley_address=address)
 
-	def connect(self, keithley_address = 'GPIB1::22::INSTR'):#, shutter_port = 'COM3'):
+	def connect(self, keithley_address):
 		self.keithley = Keithley2400(keithley_address)
 		self.keithley.reset()
 		# self.keithley.output_off_state = 'HIMP'
@@ -411,3 +411,4 @@ class Control:
 		data.to_csv(f'{name}_fwd_dark.csv')
 		if preview:
 			self._preview(v, j, f'{name}_dark')
+			
