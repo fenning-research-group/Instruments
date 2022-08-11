@@ -277,7 +277,7 @@ def fitPLIV(fpath, area = 22.04):
 	M = np.ones((imgs.shape[1], imgs.shape[2], imgs.shape[0], 4))
 	N = np.ones((imgs.shape[1], imgs.shape[2], imgs.shape[0]))
 	for idx, img_, suns_, measV_, measC_, setV_ in zip(range(suns.shape[0]), imgs, suns, measVolt, measCurr, setVolt):
-		M[:,:,idx,1] = -suns_*correctionJscs[suns_]
+		M[:,:,idx,1] = -correctionJscs[suns_]
 		# img_[img_<= 0] = 0
 		M[:,:,idx,2] = img_
 		M[:,:,idx,3] = np.sqrt(img_)
