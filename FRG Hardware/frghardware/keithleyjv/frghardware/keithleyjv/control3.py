@@ -273,31 +273,50 @@ class Control:
 				light (boolean = True): boolean to describe status of light
 				preview (boolean = True): boolean to determine if data is plotted
 		"""
-		v, i, j, vmeas, light = self._jv_sweep(vstart = vmin,vend = vmax, vsteps = vsteps, light = True)
 
+		# fwd is going to be from the lower abs v to higher abs v, reverse will be opposite
+		if abs(vmin) < abs(vmax):
+			v0 = vmin
+			v1 = vmax
+		elif abs(vmin) > abs(vmax):
+			v0 = vmax
+			v1 = vmin
+
+		# seperate on call using _jv_sweep and _format_jv functions for light and dark
 		if light:
 			if (direction == 'fwd'):
+				v, i, j, vmeas, light = self._jv_sweep(vstart = v0, vend = v1, vsteps = vsteps, light = True)
 				data = self._format_jv(v=v, i=i, j=j, vmeas=vmeas, light=light, name=name, dir='fwd', scan_number=None)
 			elif (direction == 'rev'):
+				v, i, j, vmeas, light = self._jv_sweep(vstart = v1, vend = v0, vsteps = vsteps, light = True)
 				data = self._format_jv(v=v, i=i, j=j, vmeas=vmeas, light=light, name=name, dir='rev', scan_number=None)
 			elif (direction == 'fwdrev'):
+				v, i, j, vmeas, light = self._jv_sweep(vstart = v0, vend = v1, vsteps = vsteps, light = True)
 				data = self._format_jv(v=v, i=i, j=j, vmeas=vmeas, light=light, name=name, dir='fwd', scan_number=None)
+				v, i, j, vmeas, light = self._jv_sweep(vstart = v1, vend = v0, vsteps = vsteps, light = True)
 				data = self._format_jv(v=v, i=i, j=j, vmeas=vmeas, light=light, name=name, dir='rev', scan_number=None)
 			elif (direction == 'revfwd'):
+				v, i, j, vmeas, light = self._jv_sweep(vstart = v1, vend = v0, vsteps = vsteps, light = True)
 				data = self._format_jv(v=v, i=i, j=j, vmeas=vmeas, light=light, name=name, dir='rev', scan_number=None)
+				v, i, j, vmeas, light = self._jv_sweep(vstart = v0, vend = v1, vsteps = vsteps, light = True)
 				data = self._format_jv(v=v, i=i, j=j, vmeas=vmeas, light=light, name=name, dir='fwd', scan_number=None)
-		
 		if not light:
 			if (direction == 'fwd'):
-				data = self._format_jv(self._jv_sweep(vstart = vmin,vend = vmax, vsteps = vsteps, light = False), name, 'fwd', None)
+				v, i, j, vmeas, light = self._jv_sweep(vstart = v0, vend = v1, vsteps = vsteps, light = False)
+				data = self._format_jv(v=v, i=i, j=j, vmeas=vmeas, light=light, name=name, dir='fwd', scan_number=None)
 			elif (direction == 'rev'):
-				data = self._format_jv(self._jv_sweep(vstart = vmax,vend = vmin, vsteps = vsteps, light = False), name, 'rev', None)
+				v, i, j, vmeas, light = self._jv_sweep(vstart = v1, vend = v0, vsteps = vsteps, light = False)
+				data = self._format_jv(v=v, i=i, j=j, vmeas=vmeas, light=light, name=name, dir='rev', scan_number=None)
 			elif (direction == 'fwdrev'):
-				data = self._format_jv(self._jv_sweep(vstart = vmin,vend = vmax, vsteps = vsteps, light = False), name, 'fwd', None)
-				data = self._format_jv(self._jv_sweep(vstart = vmax,vend = vmin, vsteps = vsteps, light = False), name, 'rev', None)
+				v, i, j, vmeas, light = self._jv_sweep(vstart = v0, vend = v1, vsteps = vsteps, light = False)
+				data = self._format_jv(v=v, i=i, j=j, vmeas=vmeas, light=light, name=name, dir='fwd', scan_number=None)
+				v, i, j, vmeas, light = self._jv_sweep(vstart = v1, vend = v0, vsteps = vsteps, light = False)
+				data = self._format_jv(v=v, i=i, j=j, vmeas=vmeas, light=light, name=name, dir='rev', scan_number=None)
 			elif (direction == 'revfwd'):
-				data = self._format_jv(self._jv_sweep(vstart = vmax,vend = vmin, vsteps = vsteps, light = False), name, 'rev', None)
-				data = self._format_jv(self._jv_sweep(vstart = vmin,vend = vmax, vsteps = vsteps, light = False), name, 'fwd', None)
+				v, i, j, vmeas, light = self._jv_sweep(vstart = v1, vend = v0, vsteps = vsteps, light = False)
+				data = self._format_jv(v=v, i=i, j=j, vmeas=vmeas, light=light, name=name, dir='rev', scan_number=None)
+				v, i, j, vmeas, light = self._jv_sweep(vstart = v0, vend = v1, vsteps = vsteps, light = False)
+				data = self._format_jv(v=v, i=i, j=j, vmeas=vmeas, light=light, name=name, dir='fwd', scan_number=None)
 
 
 	def spo(self, name, vstart, viter, vstep, delay):
@@ -375,8 +394,9 @@ class Control:
 		# Calcuated as needed, create Dataframe
 		j = []
 		for value in i:
-			j.append(-value*1000/self.area) #amps to mA/cm2. sign flip for solar cell current convention)
-		p = i*vmeas
+			j.append(-value*1000/self.area) #amps to mA/cm2. sign flip for solar cell current convention)	
+		p = [num1*num2 for num1, num2 in zip(i,vmeas)]
+
 		data_df = pd.DataFrame({
 			'Voltage (V)': v,
 			'Measured Voltage (V)': vmeas,
