@@ -210,7 +210,7 @@ class Control:
 		else:
 			scan_n = f'_{scan_number}'
 		data.to_csv(f'{name}{scan_n}_{dir}_{light_on_off}.csv')
-		self._preview(v, j, f'{name}{scan_n}_{light_on_off}')
+		self._preview(v, j, f'{name}{scan_n}_{dir}_{light_on_off}')
 		
 		return data
 
@@ -273,19 +273,19 @@ class Control:
 				light (boolean = True): boolean to describe status of light
 				preview (boolean = True): boolean to determine if data is plotted
 		"""
-		
+		v, i, j, vmeas, light = self._jv_sweep(vstart = vmin,vend = vmax, vsteps = vsteps, light = True)
+
 		if light:
 			if (direction == 'fwd'):
-				v, i, j, vmeas, light = *self._jv_sweep(vstart = vmin,vend = vmax, vsteps = vsteps, light = True)
-				data = self._format_jv(v, i, j, vmeas, light, name, 'fwd', None)
+				data = self._format_jv(v=v, i=i, j=j, vmeas=vmeas, light=light, name=name, dir='fwd', scan_number=None)
 			elif (direction == 'rev'):
-				data = self._format_jv(self._jv_sweep(vstart = vmax,vend = vmin, vsteps = vsteps, light = True), name, 'rev', None)
+				data = self._format_jv(v=v, i=i, j=j, vmeas=vmeas, light=light, name=name, dir='rev', scan_number=None)
 			elif (direction == 'fwdrev'):
-				data = self._format_jv(self._jv_sweep(vstart = vmin,vend = vmax, vsteps = vsteps, light = True), name, 'fwd', None)
-				data = self._format_jv(self._jv_sweep(vstart = vmax,vend = vmin, vsteps = vsteps, light = True), name, 'rev', None)
+				data = self._format_jv(v=v, i=i, j=j, vmeas=vmeas, light=light, name=name, dir='fwd', scan_number=None)
+				data = self._format_jv(v=v, i=i, j=j, vmeas=vmeas, light=light, name=name, dir='rev', scan_number=None)
 			elif (direction == 'revfwd'):
-				data = self._format_jv(self._jv_sweep(vstart = vmax,vend = vmin, vsteps = vsteps, light = True), name, 'rev', None)
-				data = self._format_jv(self._jv_sweep(vstart = vmin,vend = vmax, vsteps = vsteps, light = True), name, 'fwd', None)
+				data = self._format_jv(v=v, i=i, j=j, vmeas=vmeas, light=light, name=name, dir='rev', scan_number=None)
+				data = self._format_jv(v=v, i=i, j=j, vmeas=vmeas, light=light, name=name, dir='fwd', scan_number=None)
 		
 		if not light:
 			if (direction == 'fwd'):
