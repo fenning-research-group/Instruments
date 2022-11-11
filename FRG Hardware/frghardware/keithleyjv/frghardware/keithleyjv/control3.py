@@ -276,8 +276,7 @@ class Control:
 		
 		if light:
 			if (direction == 'fwd'):
-				v, i, j, vmeas, light = self._jv_sweep(vstart = vmin,vend = vmax, vsteps = vsteps, light = True)
-				data = self._format_jv(v, i, j, vmeas, light, name, 'fwd', None)
+				data = self._format_jv(*self._jv_sweep(vstart = vmin,vend = vmax, vsteps = vsteps, light = True), name, 'fwd', None)
 			elif (direction == 'rev'):
 				data = self._format_jv(self._jv_sweep(vstart = vmax,vend = vmin, vsteps = vsteps, light = True), name, 'rev', None)
 			elif (direction == 'fwdrev'):
