@@ -100,7 +100,20 @@ class Control:
 		self.keithley.source_current = 0
 
 
-	def _preview(self, v, j, label):
+	def _measure(self):
+		"""
+			Measures voltage, current, and resistance
+			
+			Returns:
+				list(np.ndarray): voltage (V), current (A), resistance (Ohms)
+		"""
+		self.keithley.config_buffer(self.counts)
+		self.keithley.start_buffer()
+		self.keithley.wait_for_buffer()
+		return self.keithley.means
+
+
+	def _preview_jv(self, v, j, label):
 		"""
 			Appends the [voltage,current denisty] arrays to preview window.
 			
@@ -126,19 +139,7 @@ class Control:
 		self.__previewFigure.canvas.flush_events()
 		time.sleep(1e-4)		#pause allows plot to update during series of measurements 
 
-
-	def _measure(self):
-		"""
-			Measures voltage, current, and resistance
-			
-			Returns:
-				list(np.ndarray): voltage (V), current (A), resistance (Ohms)
-		"""
-		self.keithley.config_buffer(self.counts)
-		self.keithley.start_buffer()
-		self.keithley.wait_for_buffer()
-		return self.keithley.means
-
+# preview SPO
 
 	def _jv_sweep(self, vstart, vend, vsteps, light = True):
 		""" 
@@ -171,13 +172,12 @@ class Control:
 		if light:
 			self.close_shutter()
 		self.keithley.disable_source()
-		j = -i*1000/self.area #amps to mA/cm2. sign flip for solar cell current convention
 		
 		# build dataframe and return
-		return v, i, j, vmeas, light
+		return v, i, vmeas, light
 
 
-	def _format_jv(self, v, i, j, vmeas, light, name, dir, scan_number):
+	def _format_jv(self, v, i, vmeas, light, name, dir, scan_number):
 		"""
 			Uses output of _jv_sweep along with crucial info to preview and save JV data
 			
@@ -191,16 +191,22 @@ class Control:
 				dir (string): direction -- fwd or rev
 				scan_number (int): suffix for multiple scans in a row
 		"""
-		
+		# calc param
+		j = []
+		for value in i:
+			j.append(-value*1000/self.area) #amps to mA/cm2. sign flip for solar cell current convention)	
+		p = [num1*num2 for num1, num2 in zip(j,vmeas)]
+
 		# build dataframe
 		data = pd.DataFrame({
 			'Voltage (V)': v,
 			'Current Density (mA/cm2)': j,
 			'Current (A)': i,
-			'Measured Voltage (V)': vmeas
+			'Measured Voltage (V)': vmeas,
+			'Power Density (mW/cm2)': p,
 		})
 		
-		# save file and preview
+		# save csv
 		if light:
 			light_on_off = "light"
 		else:
@@ -210,8 +216,35 @@ class Control:
 		else:
 			scan_n = f'_{scan_number}'
 		data.to_csv(f'{name}{scan_n}_{dir}_{light_on_off}.csv')
-		self._preview(v, j, f'{name}{scan_n}_{dir}_{light_on_off}')
+
+		# preview
+		self._preview_jv(v, j, f'{name}{scan_n}_{dir}_{light_on_off}')
 		
+		return data
+
+
+	def _format_spo(self, v, i, vmeas, name):
+
+		# calc params
+		j = []
+		for value in i:
+			j.append(-value*1000/self.area) #amps to mA/cm2. sign flip for solar cell current convention)	
+		p = [num1*num2 for num1, num2 in zip(j,vmeas)]
+
+		# build dataframe
+		data = pd.DataFrame({
+			'Voltage (V)': v,
+			'Current Density (mA/cm2)': j,
+			'Current (A)': i,
+			'Measured Voltage (V)': vmeas,
+			'Power Density (mW/cm2)': p,
+		})
+
+		# save csv
+		data.to_csv(f'{name}_SPO.csv', sep=',')
+
+		# preview
+
 		return data
 
 
@@ -233,7 +266,7 @@ class Control:
 		jsc_val = isc*1000/self.area
 		self.close_shutter()
 		self.keithley.disable_source()
-		if not printed:
+		if printed:
 			print(f'Isc: {isc:.3f} A, Jsc: {jsc_val:.2f} mA/cm2')
 		return jsc_val
 
@@ -255,7 +288,7 @@ class Control:
 		voc_val = self._measure()[0]
 		self.close_shutter()
 		self.keithley.disable_source()
-		if not printed:
+		if printed:
 			print(f'Voc: {voc_val*1000:.2f} mV')
 		return voc_val
 
@@ -285,38 +318,38 @@ class Control:
 		# seperate on call using _jv_sweep and _format_jv functions for light and dark
 		if light:
 			if (direction == 'fwd'):
-				v, i, j, vmeas, light = self._jv_sweep(vstart = v0, vend = v1, vsteps = vsteps, light = True)
-				data = self._format_jv(v=v, i=i, j=j, vmeas=vmeas, light=light, name=name, dir='fwd', scan_number=None)
+				v, i, vmeas, light = self._jv_sweep(vstart = v0, vend = v1, vsteps = vsteps, light = True)
+				data = self._format_jv(v=v, i=i, vmeas=vmeas, light=light, name=name, dir='fwd', scan_number=None)
 			elif (direction == 'rev'):
-				v, i, j, vmeas, light = self._jv_sweep(vstart = v1, vend = v0, vsteps = vsteps, light = True)
-				data = self._format_jv(v=v, i=i, j=j, vmeas=vmeas, light=light, name=name, dir='rev', scan_number=None)
+				v, i, vmeas, light = self._jv_sweep(vstart = v1, vend = v0, vsteps = vsteps, light = True)
+				data = self._format_jv(v=v, i=i, vmeas=vmeas, light=light, name=name, dir='rev', scan_number=None)
 			elif (direction == 'fwdrev'):
-				v, i, j, vmeas, light = self._jv_sweep(vstart = v0, vend = v1, vsteps = vsteps, light = True)
-				data = self._format_jv(v=v, i=i, j=j, vmeas=vmeas, light=light, name=name, dir='fwd', scan_number=None)
-				v, i, j, vmeas, light = self._jv_sweep(vstart = v1, vend = v0, vsteps = vsteps, light = True)
-				data = self._format_jv(v=v, i=i, j=j, vmeas=vmeas, light=light, name=name, dir='rev', scan_number=None)
+				v, i, vmeas, light = self._jv_sweep(vstart = v0, vend = v1, vsteps = vsteps, light = True)
+				data = self._format_jv(v=v, i=i, vmeas=vmeas, light=light, name=name, dir='fwd', scan_number=None)
+				v, i, vmeas, light = self._jv_sweep(vstart = v1, vend = v0, vsteps = vsteps, light = True)
+				data = self._format_jv(v=v, i=i, vmeas=vmeas, light=light, name=name, dir='rev', scan_number=None)
 			elif (direction == 'revfwd'):
-				v, i, j, vmeas, light = self._jv_sweep(vstart = v1, vend = v0, vsteps = vsteps, light = True)
-				data = self._format_jv(v=v, i=i, j=j, vmeas=vmeas, light=light, name=name, dir='rev', scan_number=None)
-				v, i, j, vmeas, light = self._jv_sweep(vstart = v0, vend = v1, vsteps = vsteps, light = True)
-				data = self._format_jv(v=v, i=i, j=j, vmeas=vmeas, light=light, name=name, dir='fwd', scan_number=None)
+				v, i, vmeas, light = self._jv_sweep(vstart = v1, vend = v0, vsteps = vsteps, light = True)
+				data = self._format_jv(v=v, i=i, vmeas=vmeas, light=light, name=name, dir='rev', scan_number=None)
+				v, i, vmeas, light = self._jv_sweep(vstart = v0, vend = v1, vsteps = vsteps, light = True)
+				data = self._format_jv(v=v, i=i, vmeas=vmeas, light=light, name=name, dir='fwd', scan_number=None)
 		if not light:
 			if (direction == 'fwd'):
-				v, i, j, vmeas, light = self._jv_sweep(vstart = v0, vend = v1, vsteps = vsteps, light = False)
-				data = self._format_jv(v=v, i=i, j=j, vmeas=vmeas, light=light, name=name, dir='fwd', scan_number=None)
+				v, i, vmeas, light = self._jv_sweep(vstart = v0, vend = v1, vsteps = vsteps, light = False)
+				data = self._format_jv(v=v, i=i, vmeas=vmeas, light=light, name=name, dir='fwd', scan_number=None)
 			elif (direction == 'rev'):
-				v, i, j, vmeas, light = self._jv_sweep(vstart = v1, vend = v0, vsteps = vsteps, light = False)
-				data = self._format_jv(v=v, i=i, j=j, vmeas=vmeas, light=light, name=name, dir='rev', scan_number=None)
+				v, i, vmeas, light = self._jv_sweep(vstart = v1, vend = v0, vsteps = vsteps, light = False)
+				data = self._format_jv(v=v, i=i, vmeas=vmeas, light=light, name=name, dir='rev', scan_number=None)
 			elif (direction == 'fwdrev'):
-				v, i, j, vmeas, light = self._jv_sweep(vstart = v0, vend = v1, vsteps = vsteps, light = False)
-				data = self._format_jv(v=v, i=i, j=j, vmeas=vmeas, light=light, name=name, dir='fwd', scan_number=None)
-				v, i, j, vmeas, light = self._jv_sweep(vstart = v1, vend = v0, vsteps = vsteps, light = False)
-				data = self._format_jv(v=v, i=i, j=j, vmeas=vmeas, light=light, name=name, dir='rev', scan_number=None)
+				v, i, vmeas, light = self._jv_sweep(vstart = v0, vend = v1, vsteps = vsteps, light = False)
+				data = self._format_jv(v=v, i=i, vmeas=vmeas, light=light, name=name, dir='fwd', scan_number=None)
+				v, i, vmeas, light = self._jv_sweep(vstart = v1, vend = v0, vsteps = vsteps, light = False)
+				data = self._format_jv(v=v, i=i, vmeas=vmeas, light=light, name=name, dir='rev', scan_number=None)
 			elif (direction == 'revfwd'):
-				v, i, j, vmeas, light = self._jv_sweep(vstart = v1, vend = v0, vsteps = vsteps, light = False)
-				data = self._format_jv(v=v, i=i, j=j, vmeas=vmeas, light=light, name=name, dir='rev', scan_number=None)
-				v, i, j, vmeas, light = self._jv_sweep(vstart = v0, vend = v1, vsteps = vsteps, light = False)
-				data = self._format_jv(v=v, i=i, j=j, vmeas=vmeas, light=light, name=name, dir='fwd', scan_number=None)
+				v, i, vmeas, light = self._jv_sweep(vstart = v1, vend = v0, vsteps = vsteps, light = False)
+				data = self._format_jv(v=v, i=i, vmeas=vmeas, light=light, name=name, dir='rev', scan_number=None)
+				v, i, vmeas, light = self._jv_sweep(vstart = v0, vend = v1, vsteps = vsteps, light = False)
+				data = self._format_jv(v=v, i=i, vmeas=vmeas, light=light, name=name, dir='fwd', scan_number=None)
 
 
 	def spo(self, name, vstart, viter, vstep, delay):
@@ -334,9 +367,9 @@ class Control:
 		"""
 		
 		# setup v, vmeas, i arrays for MPP tracking
-		v = []
-		vmeas = []
-		i = []
+		v = [] # positive
+		vmeas = [] # positive
+		i = [] # negative
 		
 		# setup keithly config
 		self._source_voltage_measure_current()
@@ -364,18 +397,18 @@ class Control:
 		
 		# iterate
 		for n in range(0,viter):
-			
-			# determine next step, update vapplied
-			if vmeas[-1] > vmeas[-2]:
-				if i[-1] > i[-2]: # vmeas increased, i increaed --> move same direction
-					vapplied += v[-1]-v[-2] 
-				elif i[-1] <= i[-2]: # vmeas increased, i decreased --> move opposite direction
-					vapplied += v[-1]-v[-2] 
-			elif vmeas[-1] <= vmeas[-2]:
-				if i[-1] > i[-2]: # vmeas decreased, i increaed --> move opposite direction
-					vapplied += v[-1]-v[-2] 
-				elif i[-1] <= i[-2]: # vmeas decreased, i decreased --> move same direction
-					vapplied += v[-1]-v[-2] 
+
+			p0 = vmeas[-2]*i[-2]
+			p1 = vmeas[-1]*i[-1]
+
+			# print('-1',vmeas[-1],i[-1],p1)
+			# print('-2',vmeas[-2],i[-2],p0)
+
+			if p1 <= p0: 
+				vapplied += v[-1]-v[-2] # power increased -> same direction
+			else:
+				vapplied -= v[-1]-v[-2] # power decreased -> other direction
+
 			
 			# apply voltage, measure current and voltage
 			self.keithley.source_voltage = vapplied
@@ -390,21 +423,9 @@ class Control:
 		# shutoff keithley
 		self.keithley.disable_source()
 		self.close_shutter()
-
-		# Calcuated as needed, create Dataframe
-		j = []
-		for value in i:
-			j.append(-value*1000/self.area) #amps to mA/cm2. sign flip for solar cell current convention)	
-		p = [num1*num2 for num1, num2 in zip(i,vmeas)]
-
-		data_df = pd.DataFrame({
-			'Voltage (V)': v,
-			'Measured Voltage (V)': vmeas,
-			'Current (A)': i,
-			'Current Density (mA/cm2)': j,
-			'Power Density (mW/cm2)': p
-		})
-		data_df.to_csv(f'{name}_SPO.csv', sep=',')
+		
+		# save data
+		data = self._format_spo(v=v,i=i,vmeas=vmeas,name=name)
 
 
 	def jv_time(self, name, direction, vmin, vmax, vsteps = 50, light = True, preview = False, interval = 3600, interval_count = 24*7):
@@ -432,31 +453,52 @@ class Control:
 			else:
 				suffix = n
 					
+			# fwd is going to be from the lower abs v to higher abs v, reverse will be opposite
+			if abs(vmin) < abs(vmax):
+				v0 = vmin
+				v1 = vmax
+			elif abs(vmin) > abs(vmax):
+				v0 = vmax
+				v1 = vmin
+
+			# seperate on call using _jv_sweep and _format_jv functions for light and dark
 			if light:
 				if (direction == 'fwd'):
-					data = self._format_jv(self._jv_sweep(vstart = vmin,vend = vmax, vsteps = vsteps, light = True), name, 'fwd', suffix)
+					v, i, vmeas, light = self._jv_sweep(vstart = v0, vend = v1, vsteps = vsteps, light = True)
+					data = self._format_jv(v=v, i=i, vmeas=vmeas, light=light, name=name, dir='fwd', scan_number=n)
 				elif (direction == 'rev'):
-					data = self._format_jv(self._jv_sweep(vstart = vmax,vend = vmin, vsteps = vsteps, light = True), name, 'rev', suffix)
+					v, i, vmeas, light = self._jv_sweep(vstart = v1, vend = v0, vsteps = vsteps, light = True)
+					data = self._format_jv(v=v, i=i, vmeas=vmeas, light=light, name=name, dir='rev', scan_number=n)
 				elif (direction == 'fwdrev'):
-					data = self._format_jv(self._jv_sweep(vstart = vmin,vend = vmax, vsteps = vsteps, light = True), name, 'fwd', suffix)
-					data = self._format_jv(self._jv_sweep(vstart = vmax,vend = vmin, vsteps = vsteps, light = True), name, 'rev', suffix)
+					v, i, vmeas, light = self._jv_sweep(vstart = v0, vend = v1, vsteps = vsteps, light = True)
+					data = self._format_jv(v=v, i=i, vmeas=vmeas, light=light, name=name, dir='fwd', scan_number=n)
+					v, i, vmeas, light = self._jv_sweep(vstart = v1, vend = v0, vsteps = vsteps, light = True)
+					data = self._format_jv(v=v, i=i, vmeas=vmeas, light=light, name=name, dir='rev', scan_number=n)
 				elif (direction == 'revfwd'):
-					data = self._format_jv(self._jv_sweep(vstart = vmax,vend = vmin, vsteps = vsteps, light = True), name, 'rev', suffix)
-					data = self._format_jv(self._jv_sweep(vstart = vmin,vend = vmax, vsteps = vsteps, light = True), name, 'fwd', suffix)
-			
+					v, i, vmeas, light = self._jv_sweep(vstart = v1, vend = v0, vsteps = vsteps, light = True)
+					data = self._format_jv(v=v, i=i, vmeas=vmeas, light=light, name=name, dir='rev', scan_number=n)
+					v, i, vmeas, light = self._jv_sweep(vstart = v0, vend = v1, vsteps = vsteps, light = True)
+					data = self._format_jv(v=v, i=i, vmeas=vmeas, light=light, name=name, dir='fwd', scan_number=n)
 			if not light:
 				if (direction == 'fwd'):
-					data = self._format_jv(self._jv_sweep(vstart = vmin,vend = vmax, vsteps = vsteps, light = False), name, 'fwd', suffix)
+					v, i, vmeas, light = self._jv_sweep(vstart = v0, vend = v1, vsteps = vsteps, light = False)
+					data = self._format_jv(v=v, i=i, vmeas=vmeas, light=light, name=name, dir='fwd', scan_number=n)
 				elif (direction == 'rev'):
-					data = self._format_jv(self._jv_sweep(vstart = vmax,vend = vmin, vsteps = vsteps, light = False), name, 'rev', suffix)
+					v, i, vmeas, light = self._jv_sweep(vstart = v1, vend = v0, vsteps = vsteps, light = False)
+					data = self._format_jv(v=v, i=i, vmeas=vmeas, light=light, name=name, dir='rev', scan_number=n)
 				elif (direction == 'fwdrev'):
-					data = self._format_jv(self._jv_sweep(vstart = vmin,vend = vmax, vsteps = vsteps, light = False), name, 'fwd', suffix)
-					data = self._format_jv(self._jv_sweep(vstart = vmax,vend = vmin, vsteps = vsteps, light = False), name, 'rev', suffix)
+					v, i, vmeas, light = self._jv_sweep(vstart = v0, vend = v1, vsteps = vsteps, light = False)
+					data = self._format_jv(v=v, i=i, vmeas=vmeas, light=light, name=name, dir='fwd', scan_number=n)
+					v, i, vmeas, light = self._jv_sweep(vstart = v1, vend = v0, vsteps = vsteps, light = False)
+					data = self._format_jv(v=v, i=i, vmeas=vmeas, light=light, name=name, dir='rev', scan_number=n)
 				elif (direction == 'revfwd'):
-					data = self._format_jv(self._jv_sweep(vstart = vmax,vend = vmin, vsteps = vsteps, light = False), name, 'rev', suffix)
-					data = self._format_jv(self._jv_sweep(vstart = vmin,vend = vmax, vsteps = vsteps, light = False), name, 'fwd', suffix)
+					v, i, vmeas, light = self._jv_sweep(vstart = v1, vend = v0, vsteps = vsteps, light = False)
+					data = self._format_jv(v=v, i=i, vmeas=vmeas, light=light, name=name, dir='rev', scan_number=n)
+					v, i, vmeas, light = self._jv_sweep(vstart = v0, vend = v1, vsteps = vsteps, light = False)
+					data = self._format_jv(v=v, i=i, vmeas=vmeas, light=light, name=name, dir='fwd', scan_number=n)
 			
-			time.sleep(interval)
+			if n < interval_count-1:
+				time.sleep(interval)
 
 
 	def voc_time(self, name, interval = 3600, interval_count = 24*7, preview = False):
@@ -472,7 +514,7 @@ class Control:
 		
 		# create header
 		data_df = pd.DataFrame(columns = ["Time", "Voc (V)"])
-		data_df.to_csv(f'{name}_voc.csv', mode='a',header=False,sep=',')
+		data_df.to_csv(f'{name}_voc.csv', sep = ',')
 		del data_df
 		t = 0
 		
@@ -485,12 +527,13 @@ class Control:
 				suffix = f'{n}'
 			
 			voc_val = self.voc(printed = preview)
-			new_data_df = pd.DataFrame(t,voc_val).T
+			new_data_df = pd.DataFrame(data=zip([t],[voc_val]))
 			new_data_df.to_csv(f'{name}_voc.csv', mode='a', header=False, sep=',')
 			del new_data_df
-			
-			time.sleep(interval)
-			t += interval
+		
+			if n < interval_count-1:
+				time.sleep(interval)
+				t += interval
 
 
 	def jsc_time(self, name, interval = 3600, interval_count = 24*7, preview = False):
@@ -506,18 +549,20 @@ class Control:
 		
 		# create header
 		data_df = pd.DataFrame(columns = ["Time", "Jsc (mA/cm2)"])
-		data_df.to_csv(f'{name}_jsc.csv', mode='a',header=False,sep=',')
+		data_df.to_csv(f'{name}_jsc.csv', sep = ',')
 		del data_df
 		t = 0
 		
 		for n in range(0, interval_count):
-			voc_val = self.jsc(printed = preview)
-			new_data_df = pd.DataFrame(t,voc_val).T
+			jsc_val = self.jsc(printed = preview)
+			new_data_df = pd.DataFrame(data=zip([t],[jsc_val]))
 			new_data_df.to_csv(f'{name}_jsc.csv', mode='a', header=False, sep=',')
 			del new_data_df
 			
-			time.sleep(interval)
-			t += interval
+			if n < interval_count-1:
+				time.sleep(interval)
+				t += interval
+
 
 
 
