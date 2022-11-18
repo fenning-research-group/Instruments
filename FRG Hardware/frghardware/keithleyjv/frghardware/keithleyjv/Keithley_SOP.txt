@@ -1,0 +1,72 @@
+1. Open Anaconda Prompt (Anaconda3)
+2. Type ipython
+3. Type from frghardware.keithleyjv import control3
+4. Type c = control3.Control(address='GPIB0::22::INSTR')
+5. Set Directory. Type cd C:\Users\dcaka\Documents\JV_Data\YOURFOLDER
+6. Run desired commands.
+
+If connection fails:
+1. check for available addresses
+	import pyvisa
+	rm = pyvisa.ResourceManager()
+	rm.list_resources() #prints a list of available GPIB addresses
+2. connect to address of your choice
+	from frghardware.keithleyjv import control2
+	c = control2.Control(address='put-address-here')
+	if error->
+		if "timeout expired", then you have a valid address but the keithley is in an
+		unusable state - power cycle the keithley and try again
+		if "invalid resource reference...", then you have an invalid address.
+	
+Important options:
+-- Setting the Area: Type c.area = .07 (default)
+-- Change 2-4 Wire: c.keithley.wires = 4 (default)
+
+Important notes:
+-- The program is setup to work with Voc at V>0
+-- All Devices should be named: DEVID_PIXEL_SCAN
+
+c.jsc()
+
+c.voc()
+
+c.jv(name, direction, vmin, vmax, vsteps = 50, light = True, preview = True)
+	name (string): name of device
+	direction (string): direction -- fwd, rev, fwdrev, or revfwd
+	vmin (float): start voltage for JV sweep (V)
+	xmax (float): end voltage for JV sweep (V)
+	vsteps (int = 50): number of voltage steps between max and min
+	light (boolean = True): boolean to describe status of light
+	preview (boolean = True): boolean to determine if data is plotted
+
+c.spo(name, vstart, vstep, vdelay, interval, interval_count, preview = True)
+	name (string): name of device/file
+	vstart (foat): starting voltage SPO (V)
+	vstep (int): voltage to iterate SPO by (V)
+	vdelay (int): time to wait between setting voltage and measuring current (s)
+	interval (float) : time between measurements (s)
+	interval_count (int): number of times to repeat interval
+	preview (boolean = True): boolean to determine if data is plotted
+
+c.jsc_time(name, interval, interval_count, preview = True)
+	name (string): name of device
+	interval (float): time between JV scans (s)
+	interval_count (int): number of times to repeat interval
+	preview (boolean = True): boolean to determine if data is plotted
+
+cvoc_time(name, interval, interval_count, preview = True):
+	name (string) : name of device
+	interval (float) : time between JV scans (s)
+	interval_count (int): number of times to repeat interval
+	preview (boolean = True): boolean to determine if data is plotted
+
+c.jv_time(name, direction, vmin, vmax, interval, interval_count, vsteps = 50, light = True, preview = True):
+	name (string): name of device
+	direction (string): direction -- fwd, rev, fwdrev, or revfwd
+	vmin (float): minimum voltage for JV sweep (V)
+	vmax (float): maximum voltage for JV sweep (V)
+	interval (float): time between JV scans (s)
+	interval_count (int): number of times to repeat interval				
+	vsteps (int = 50): number of voltage steps between max and min
+	light (boolean = True): boolean to describe status of light
+	preview (boolean = True): boolean to determine if data is plotted
