@@ -409,6 +409,8 @@ class Control:
 		stime = time.time()
 		ctime = time.time() - stime
 		n = 0
+
+		# make two measurements, iterating voltage in + direction
 		while ctime < interval*(2):
 
 			# if we arent at the next time, sleep; else run
@@ -422,34 +424,47 @@ class Control:
 				v.append(vapplied)
 				i.append(tempi)
 				t.append(ctime)
+				print(vapplied,tempv,tempi,n)
 				n+=1 
 				vapplied += vstep
 			ctime = time.time() - stime
 
-		
-		while ctime < interval*(interval_count+1):
+		# until we have passed the interval 
+		while ctime < interval*(interval_count):
 
-			p0 = vmeas[-2]*i[-2]
-			p1 = vmeas[-1]*i[-1]
-			if p1 <= p0: 
-				vapplied += v[-1]-v[-2] # power increased -> same direction
-			else:
-				vapplied -= v[-1]-v[-2] # power decreased -> other direction
-
+			# if we arent at the next time, sleep; else run
 			if ctime < interval*n:
 				time.sleep(1e-3)
 			else:
-				# apply voltage, measure current and voltage
-				self.keithley.source_voltage = vapplied
-				time.sleep(vdelay)
-				tempv, tempi, _ = self._measure()
-				
-				# update dictionary & arrays
-				vmeas.append(tempv)
-				v.append(vapplied)
-				i.append(tempi)
-				t.append(ctime)
-				n+=1
+
+				# calculate last powers
+				p0 = vmeas[-2]*i[-2]
+				p1 = vmeas[-1]*i[-1]
+
+				# iterate in appropriate direction
+				if p1 <= p0: #p dec
+					if v[-1] < v[-2]: #v dec
+						vapplied += vstep 
+					else:
+						vapplied -= vstep
+				else: # p inc
+					if v[-1] > v[-2]: #v dec
+						vapplied -= vstep 
+					else:
+						vapplied += vstep
+
+					# apply voltage, measure current and voltage
+					self.keithley.source_voltage = vapplied
+					time.sleep(vdelay)
+					tempv, tempi, _ = self._measure()
+					
+					# update dictionary & arrays
+					vmeas.append(tempv)
+					v.append(vapplied)
+					i.append(tempi)
+					t.append(ctime)
+					print(vapplied,tempv,tempi,n)
+					n+=1
 			ctime = time.time() - stime
 		
 		# shutoff keithley
