@@ -133,8 +133,11 @@ class controlGeneric(object):
 			self.__flushinterval = DEFAULT_FLUSH_INTERVAL
 			reflectance[()] = self._baselinecorrectionroutine(wavelengths, signal, reference)
 
+<<<<<<< Updated upstream
 			completed = 1
 
+=======
+>>>>>>> Stashed changes
 	def scanline(self, label, axis, pmin, pmax, steps, wavelengths = None, p0 = None):
 		def preparefile(f):
 			dummy1d =  np.full((steps, ), np.nan)
