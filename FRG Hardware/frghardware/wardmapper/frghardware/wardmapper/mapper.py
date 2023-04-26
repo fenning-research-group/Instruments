@@ -1160,7 +1160,7 @@ class controlGeneric(object):
 
 		with h5py.File(fpath, 'w', swmr = True, libver = 'latest') as self.f:
 			
-			info, settings, baseline = self._save_generic(f = self.f, label = label, scantype = 'scanareaWaRD')
+			info, settings, baseline, completed = self._save_generic(f = self.f, label = label, scantype = 'scanareaWaRD')
 
 			## add scan parameters to settings
 			temp = settings.create_dataset('numx', data = np.array(x.shape[0]))
@@ -1253,6 +1253,7 @@ class controlGeneric(object):
 			temp = rawdata.create_dataset('delay_full', data = np.array(delay_full))
 			temp.attrs['description'] = 'Time (seconds) that each scan was acquired at. Measured as seconds since first scan point.'			
 
+			completed = 1
 		print('Data saved to {0}'.format(fpath))		
 
 	def _save_flyscanarea(self, label, x, y, delay, wavelengths, reflectance):
@@ -1882,6 +1883,7 @@ class controlNKT(controlGeneric):
 		self.select = Select(
 			port = 'COM16'
 			)
+		self.select.selectAOTF('ir')
 		self.select.setAOTF(1700, 0.6)
 		print("select+rf driver connected")
 
@@ -1909,6 +1911,7 @@ class controlNKT(controlGeneric):
 		self.heater.disconnect()
 
 	def __set_up_lia(self):
+		#https://www.thinksrs.com/downloads/pdfs/manuals/SR830m.pdf
 		input('Ensure that orange taped "mapper" cables are attached to the appropriate inputs on the SR830 Lock-In Amplifier under the optical table - press Enter to confirm')
 		self.lia.channel1 = 'R'
 		self.lia.filter_slope = 24
@@ -1917,7 +1920,8 @@ class controlNKT(controlGeneric):
 		self.lia.input_grounding = 'Float'
 		self.lia.input_notch_config = 'Both'
 		self.lia.sensitivity = 0.02 #2x10 mV
-		self.lia.set_scaling('R',0, 1.0)
+		# self.lia.set_scaling('R',0, 1.0)
+		self.lia.write('OEXP 3,0.0,0') #turn output expansion off.
 		self.lia.time_constant = .001 #1x1 ms
 		self.lia.reference_source = 'External'
 

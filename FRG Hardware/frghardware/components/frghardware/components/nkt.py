@@ -324,6 +324,10 @@ class Select(object):
 
 	def selectAOTF(self, index):
 		### chooses either IR or Vis AOTF. 0 = Vis, 1 = IR
+		if index in ['ir', 'IR']:
+			index = 1
+		if index in ['vis', 'Vis', 'VIS']:
+			index = 0
 		if index not in [0,1]:
 			print('Error: {0} is an invalid index. Set 0 for Vis, 1 for IR'.format(index))
 			return False
@@ -334,7 +338,8 @@ class Select(object):
 		leaveOn = False
 		if self.rfOn:
 			leaveOn = True
-			self.off()
+		self.off()
+		time.sleep(self.wlDelay)
 
 		result = nktdll.registerWriteU8(self.__handle, self.__address2, 0x34, index, -1)	#TODO set to 1, assuming that this corresponds to the IR aotf. may need to change this to properly select the IR aotf
 		if result != 0:
@@ -343,6 +348,7 @@ class Select(object):
 		self.currentAOTF = index
 
 		if leaveOn:
+			time.sleep(self.wlDelay)
 			self.on()
 
 		time.sleep(self.wlDelay)	#allow select to execute changes

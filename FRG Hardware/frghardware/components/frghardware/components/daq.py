@@ -91,7 +91,7 @@ class DAQ(object):
 	def counts(self):
 		return self.__countsPerChannel
 	
-	@rate.setter
+	@counts.setter
 	def counts(self, x):
 		# sets daq counting rate, adjusts countsPerChannel to preserve dwelltime
 		self.__countsPerChannel = round(x)  #only integer values allowed

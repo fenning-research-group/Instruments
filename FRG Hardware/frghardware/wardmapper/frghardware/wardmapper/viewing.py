@@ -93,10 +93,10 @@ def plotScanLine(filepath, ax = None):
 		reflectance = d['data']['reflectance'][()]
 		label = d['info']['name'][()].decode('utf-8')
 
-	ax.plot(pos, 100*reflectance.mean(axis = 1))
+	ax.plot(pos, reflectance.mean(axis = 1))
 	ax.set_title(f'{label}\n {idleaxis} = {idlepos}')
 
-	ax.set_ylabel('Average Reflectance (%)')
+	ax.set_ylabel('Average Reflectance')
 	ax.set_xlabel('{0} (mm)'.format(axis))
 
 	if showlater:
@@ -115,7 +115,7 @@ def plotScanPoint(filepath, ax = None):
 		label = d['info']['name'][()].decode('utf-8')
 
 	ax.plot(wavelengths, reflectance)
-	ax.set_ylabel('Reflectance (%)')
+	ax.set_ylabel('Reflectance')
 	ax.set_xlabel('Wavelength (nm)')
 
 	if showlater:
