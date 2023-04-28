@@ -4,14 +4,16 @@ import pickle as pkl
 import os
 import matplotlib.pyplot as plt
 from time import sleep
-# from pymeasure.instruments.srs import SR830
-from frgtools.sr830 import SR830
+
+from frghardware.plqy.sr830 import SR830
+from frghardware.plqy.ldc502 import LDC502
+from frghardware.plqy.ell6_slider import FilterSlider
+from frghardware.plqy.stepper_control import Stepper
+
 from tqdm.auto import tqdm
 import requests
 import io
-
-with open("FilterSlider_v1.py") as f:
-    exec(f.read())
+import json
 
 class PLQY:
 
@@ -25,19 +27,27 @@ class PLQY:
             emission_wl (float): mean emisssion wavelength of the sample
         """
 
-        with open("FilterSlider_v1.py") as f:
-            exec(f.read())
+        self.filterslider = FilterSlider('COM18')
+        print('\nConnected to Filter Slider')
 
-        self.filterslider = FilterSlider()    
         self.lia = SR830('GPIB0::8::INSTR') # connect to the lock-in amplifier
+        print('\nConnected to Lock-in Amplifier')
+
+        self.ldc = LDC502('COM22')
+        print('\nConnected to Laser Diode Driver')
+
+        self.stepper = Stepper('COM22')
+        print('\nConnected to Stepper Motor')
+        
         self.scan_types = { # look up table for the 6 types of scans and their corresponding instructions to the user
-            'in_lp' : 'Put sample in beam',
+            'in_lp' : '\nPut sample in beam',
             'in_nolp' : '\nKeep sample in beam, remove longpass',
             'out_lp' : '\nPut sample out of beam',
             'out_nolp' : '\nKeep sample out of beam, remove longpass',
             'empty_lp' : '\nRemove sample from integrating sphere',
             'empty_nolp' : '\nKeep sample out of integrating sphere, remove longpass'
         }
+
         self.sample_wl = emission_wl
         self.sample_resp = self._get_responsivity(self.sample_wl)
 
@@ -46,7 +56,13 @@ class PLQY:
 
         self.plus_minus = u"\u00B1" # this is the plus/minus unicode symbol. Makes printing this character easier
         self.data = {}
-        self.code = 'Updated March 22th, 2023'
+
+        self.frequency = self.lia.frequency
+        self.peak_voltage = self.lia.sine_voltage*(2**0.5)
+        self.laser_current = self.ldc.get_laser_current()
+        self.laser_temp = self.ldc.get_laser_temp()
+        self.time_constant = self.lia.time_constant
+        self.sensitivity  = self.lia.sensitivity
 
     def _take_meas(self, sample_name, scan_type, n_avg, time_constant):
         """internal function for taking a measurement
@@ -81,28 +97,88 @@ class PLQY:
 
         self.data[sample_name][scan_type] = np.array(raw) # add the collected data to the rest
     
-    def _get_responsivity(self, emission_wl):
-        """internal function to get the respnsivity of the detector at the emission wavelength
+
+    def take_PLQY(self, sample_name, n_avg, time_constant = 0.03):
+        """the user-facing function to trigger a PLQY scan sequence on a sample
 
         Args:
-            emission_wl (float): the mean emission wavelength of the sample
+            sample_name (str): the sample name you wish to use
+            n_avg (int): number of averages the user wishes to take on each of the six scans. 
+                         More is not always better as the laser will drift over the course of minutes.
+                         I find that 10 scans is reasonable.
+            time_constant(float): the length of the lock-in time constant in seconds
+        """ 
+        self.data[sample_name] = {}
 
-        Returns:
-            float: the responsivity, arbitrary units
+        os.mkdir(os.path.join(os.getcwd(), sample_name))
+
+        for scan_type in self.scan_types.keys():
+            if '_lp' in scan_type and '_nolp' not in scan_type:
+                # tell the user what to do
+                input(f'{self.scan_types[scan_type]}...\nPress Enter to take scan')
+                self.filterslider.right()
+                # once in place, take the measurement
+            else:
+                print(f'{self.scan_types[scan_type]}...\n')
+                self.filterslider.left()
+
+            self._take_meas(sample_name, scan_type, n_avg, time_constant)
+
+            self.filterslider.right()
+
+        # calculate PLQY from the data, and print for the user to see
+        self.data[sample_name]['plqy'], self.data[sample_name]['plqy_error'] = self._calc_plqy(self.data[sample_name])
+
+        #incorporating save function into take_PlQY:
+        temp = pd.DataFrame()
+        for k in self.data[sample_name].keys():
+            if 'plqy' not in k:
+                temp[k] = self.data[sample_name][k]
+            temp.to_csv(f'{k}.csv', index = False)
+
+        self.save_metadata(f'{sample_name}.json')
+
+    def save_metadata(self, filename):
+        metadata = {
+          'frequency': self.frequency,
+          'peak_voltage': self.peak_voltage,
+          'laser_current': self.laser_current,
+          'laser_temp': self.laser_temp,
+          'time_constant': self.time_constant,
+          'sensitivity': self.sensitivity
+        }
+        with open(filename, 'w') as f:
+            json.dump(metadata, f, indent=4)
+
+
+
+    def save(self):
+        """Save the raw data from each sample to an individual '.csv' file for later use
         """
-        try: # check to make sure the file is in the directory
-            # url = "https:/raw.githubusercontent.com/fenning-research-group/Python-Utilities/master/FrgTools/frgtools/Detector_Responsivity.csv"
-            # download = requests.get(url).content
-            fid = 'C:\\Users\\PVGroup\\Documents\\GitHub\\Python-Utilities\\FrgTools\\frgtools\\Detector_Responsivity.csv'
-            # resp = pd.read_csv(url)
-            resp = pd.read_csv(fid)
+        for k in self.data.keys():
+            temp = pd.DataFrame()
+            for kk in self.data[k].keys():
+                if 'plqy' not in kk:
+                    temp[kk] = self.data[k][kk]
+                temp.to_csv(f'{k}.csv', index = False)
 
+    def current_mod(max_current):
+        turn_on = 294.3
+        diff = max_current-turn_on
+        setpoint = 0.5*(turn_on+max_current)
+        voltage = (2**-0.5)*(diff*0.5)/100
+        return voltage, setpoint
+        
+    self.LDC.set_laserCurrent(setpoint)       
+     
+    self.LDC.set_laserCurrent(setpoint)        
+        
+      
+        
 
-            return float(resp['Responsivity'][resp['Wavelength'] == emission_wl])
-
-        except: # if not, tell the user to do so
-            print(f'Detector_Responsivity.csv not able to load...check download link in code or internet connectivity:\n{url}')
-
+             
+        
+        
 
     def _calc_plqy(self, data):
         """A function to calculate the PLQY based in a publication by de Mello et al.
@@ -113,7 +189,7 @@ class PLQY:
             data (dict): a dictionary containing the data. Data will be an atttribute of self
 
         Returns:
-            tuple: (PLQY, PLQY error), resported as fractional, not percentage
+            tuple: (PLQY, PLQY error), reported as fractional, not percentage
         """
 
         E_in = data['in_lp'].mean()
@@ -143,51 +219,28 @@ class PLQY:
 
         plqy = (E_in-(1-a)*E_out)/(X_empty*a)
         plqy_err = np.sqrt((E_in_err**2) + ((E_out_err + a_err)**2) + (X_empty_err**2))
+        print(f"PLQY = {plqy}{self.plus_minus}{plqy_err}")
 
         return plqy, plqy_err*plqy
 
-    def take_PLQY(self, sample_name, n_avg, time_constant = 0.03):
-        """the user-facing function to trigger a PLQY scan sequence on a sample
+    def _get_responsivity(self, emission_wl):
+        """internal function to get the respnsivity of the detector at the emission wavelength
 
         Args:
-            sample_name (str): the sample name you wish to use
-            n_avg (int): number of averages the user wishes to take on each of the six scans. 
-                         More is not always better as the laser will drift over the course of minutes.
-                         I find that 10 scans is reasonable.
-            time_constant(float): the length of the lock-in time constant in seconds
-        """ 
-        self.data[sample_name] = {}
-        for scan_type in self.scan_types.keys():
-            if '_lp' in scan_type and '_nolp' not in scan_type:
-                # tell the user what to do
-                input(f'{self.scan_types[scan_type]}...\nPress Enter to take scan')
-                self.filterslider.right()
-                # once in place, take the measurement
-            else:
-                print(f'{self.scan_types[scan_type]}...\n')
-                self.filterslider.left()
+            emission_wl (float): the mean emission wavelength of the sample
 
-
-            self._take_meas(sample_name, scan_type, n_avg, time_constant)
-
-            self.filterslider.right()
-
-        # calculate PLQY from the data, and print for the user to see
-        self.data[sample_name]['plqy'], self.data[sample_name]['plqy_error'] = self._calc_plqy(self.data[sample_name])
-        print(f"PLQY = {self.data[sample_name]['plqy']}{self.plus_minus}{self.data[sample_name]['plqy_error']}")
-        
-        # I added this in case something goes wrong so that data can be recovered if necessary
-        # I prefer to save data in '.csv' format
-        with open('PLQY_Data.pkl', 'wb') as f:
-            pkl.dump(self.data, f)
-
-
-    def save(self):
-        """Save the raw data from each sample to an individual '.csv' file for later use
+        Returns:
+            float: the responsivity, arbitrary units
         """
-        for k in self.data.keys():
-            temp = pd.DataFrame()
-            for kk in self.data[k].keys():
-                if 'plqy' not in kk:
-                    temp[kk] = self.data[k][kk]
-                temp.to_csv(f'{k}.csv', index = False)
+        try: # check to make sure the file is in the directory
+            # url = "https:/raw.githubusercontent.com/fenning-research-group/Python-Utilities/master/FrgTools/frgtools/Detector_Responsivity.csv"
+            # download = requests.get(url).content
+            fid = 'C:\\Users\\PVGroup\\Documents\\GitHub\\Python-Utilities\\FrgTools\\frgtools\\Detector_Responsivity.csv'
+            # resp = pd.read_csv(url)
+            resp = pd.read_csv(fid)
+
+
+            return float(resp['Responsivity'][resp['Wavelength'] == emission_wl])
+
+        except: # if not, tell the user to do so
+            print(f'Detector_Responsivity.csv not able to load...check download link in code or internet connectivity:\n{url}')

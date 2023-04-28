@@ -5,7 +5,7 @@ import time
 # Control code for the LDC500 series laser driver by Stanford Research Systems
 # Modeled after the control code from pymeasure for the SR830 lock-in amplifier
 
-class LDC500(Instrument):
+class LDC502(Instrument):
 
     POLLINGDELAY = 0.02
 

@@ -7,7 +7,7 @@ import struct
 
 class Stepper:
 
-    def __init__(self, port='COM19'):
+    def __init__(self, port):
 
         self.port = port
         self.POLLINGDELAY = 0.02
