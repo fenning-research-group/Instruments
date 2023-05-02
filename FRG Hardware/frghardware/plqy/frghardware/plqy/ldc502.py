@@ -7,34 +7,6 @@ import time
 
 class LDC502(Instrument):
 
-    POLLINGDELAY = 0.02
-
-    def get_laser_voltage(self):
-        v = self.ask("RVLD?")
-        time.sleep(POLLINGDELAY)
-        return v
-
-    def get_laser_current(self):
-        I = self.ask("RILD?")
-        time.sleep(POLLINGDELAY)
-        return
-
-    def get_laser_voltage(self):
-        self.ask("RVLD?")
-        time.sleep(POLLINGDELAY)
-
-    def get_laser_voltage(self):
-        self.ask("RVLD?")
-        time.sleep(POLLINGDELAY)
-
-    def get_laser_voltage(self):
-        self.ask("RVLD?")
-        time.sleep(POLLINGDELAY)
-
-    def get_laser_voltage(self):
-        self.ask("RVLD?")
-        time.sleep(POLLINGDELAY)
-
     def __init__(self, resourceName, **kwargs):
         super(LDC500, self).__init(
             resourceName,
@@ -42,13 +14,30 @@ class LDC502(Instrument):
             **kwargs
         )
 
+    POLLINGDELAY = 0.02
+
+    def get_laser_voltage(self):
+        v = self.ask("RVLD?")
+        time.sleep(self.POLLINGDELAY)
+        return float(v[:2])
+
+    def get_laser_current(self):
+        I = self.ask("RILD?")
+        time.sleep(self.POLLINGDELAY)
+        return float(I[:-2])
+
+    def get_laser_temp(self):
+        T = self.ask("TEMP?")
+        time.sleep(self.POLLINGDELAY)
+        return float(T[:-2])
+
     def set_Vmax(self, Vmax):
         self.write("SVLM %f" %Vmax)
-        time.sleep(POLLINGDELAY)
+        time.sleep(self.POLLINGDELAY)
 
     def set_Imax(self, Imax):
         self.write("SILM %f" %Imax)
-        time.sleep(POLLINGDELAY)
+        time.sleep(self.POLLINGDELAY)
 
     def set_laserOn(self):
         self.write("LDON ON")
@@ -56,23 +45,23 @@ class LDC502(Instrument):
 
     def set_laserOff(self):
         self.write("LDON OFF")
-        time.sleep(POLLINGDELAY)
+        time.sleep(self.POLLINGDELAY)
 
     def set_laserCurrent(self, I):
         self.write("SILD %f" %I)
-        time.sleep(POLLINGDELAY)
+        time.sleep(self.POLLINGDELAY)
 
     def set_tecTemp(self, T):
         self.write("TEMP %f" %T)
-        time.sleep(POLLINGDELAY)
+        time.sleep(self.POLLINGDELAY)
 
     def set_tecOn(self):
         self.write("TEON ON")
-        time.sleep(POLLINGDELAY)
+        time.sleep(self.POLLINGDELAY)
 
     def set_tecOff(self):
         self.write("TEON OFF")
-        time.sleep(POLLINGDELAY)
+        time.sleep(self.POLLINGDELAY)
 
     def set_laserRange(self, state):
         """ 
@@ -80,15 +69,15 @@ class LDC502(Instrument):
         For the LDC502, LOW == 1A and HIGH == 2A
         """
         self.write("RNGE %d" %state)
-        time.sleep(POLLINGDELAY)
+        time.sleep(self.POLLINGDELAY)
 
     def set_modulationOn(self):
         self.write("MODU ON")
-        time.sleep(POLLINGDELAY)
+        time.sleep(self.POLLINGDELAY)
 
     def set_modulationOff(self):
         self.write("MODU OFF")
-        time.sleep(POLLINGDELAY)
+        time.sleep(self.POLLINGDELAY)
 
     def set_laserControlMode(self, state):
         """
@@ -97,7 +86,7 @@ class LDC502(Instrument):
         2) constant power (state="CP")
         """
         self.write("SMOD %d" %state)
-        time.sleep(POLLINGDELAY)
+        time.sleep(self.POLLINGDELAY)
 
     def set_laserModulationBandwidth(self, state):
         """
@@ -106,16 +95,16 @@ class LDC502(Instrument):
         2) high bandwidth (1.2MHz in CC mode) (state="HIGH")
         """
         self.write("SIBW %d" %state)
-        time.sleep(POLLINGDELAY)
+        time.sleep(self.POLLINGDELAY)
 
 
 
 
  #    def set_blank(self):
  #        self.write("CMND")
- #        time.sleep(POLLINGDELAY)
+ #        time.sleep(self.POLLINGDELAY)
 
  #    def set_blank(self):
  #        self.write("CMND")
- #        time.sleep(POLLINGDELAY)
+ #        time.sleep(self.POLLINGDELAY)
  # 

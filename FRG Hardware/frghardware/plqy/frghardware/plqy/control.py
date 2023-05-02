@@ -39,7 +39,7 @@ class PLQY:
         self.stepper = Stepper('COM22')
         print('\nConnected to Stepper Motor')
         
-        self.scan_types = { # look up table for the 6 types of scans and their corresponding instructions to the user
+        self.scan_types = {
             'in_lp' : '\nPut sample in beam',
             'in_nolp' : '\nKeep sample in beam, remove longpass',
             'out_lp' : '\nPut sample out of beam',
@@ -64,24 +64,25 @@ class PLQY:
         self.time_constant = self.lia.time_constant
         self.sensitivity  = self.lia.sensitivity
 
-    def _take_meas(self, sample_name, scan_type, n_avg, time_constant):
-        """internal function for taking a measurement
+        self.stage_positions = {
+            'in' :  0.0,
+            'out' : 10.0,
+            'empty' : 30.0
+        }
+        self.LASERSTABILIZETIME = 30.0
 
-        Args:
-            sample_name (str): name of the sample defined by user
-            scan_type (str): one of the six scan conditions
-            n_avg (int): the number of times to query the lock-in amplifier. More is not always better, as the laser drifts over periods of minutes.
-        """
+    def _take_meas(self, sample_name, scan_type, n_avg, time_constant):
+
         self.lia.time_constant = time_constant
-        sleep(10*time_constant)
+        sleep(15*time_constant)
 
         self.lia.quick_range()
-            
-        sleep(15*time_constant) # let the signal settle
+        sleep(15*time_constant)
 
         if self.lia.sensitivity == 2e-9:
             print('QuickRange failed, trying again...')
             self.lia.quick_range()
+
             if self.lia.sensitivity != 2e-9:
                 print('Sensitivity is now: ', self.lia.sensitivity)
             else:
@@ -91,94 +92,76 @@ class PLQY:
         raw = []
         with tqdm(total=n_avg, position=0, leave=True) as pbar:
             for m in tqdm(range(n_avg), position = 0, leave = True):
-                raw.append(self.lia.get_magnitude()) # get the reading from the lock-in
-                sleep(time_constant) # wait for a time constant to avoid over sampling
+                raw.append(self.lia.get_magnitude())
+                sleep(time_constant)
                 pbar.update() 
 
-        self.data[sample_name][scan_type] = np.array(raw) # add the collected data to the rest
+        self.data[sample_name][scan_type] = np.array(raw)
     
 
-    def take_PLQY(self, sample_name, n_avg, time_constant = 0.03):
-        """the user-facing function to trigger a PLQY scan sequence on a sample
+    def take_PLQY(self, sample_name, max_current = 400.0, n_avg = 15, time_constant = 0.03, frequency_setpt = 993.0):
 
-        Args:
-            sample_name (str): the sample name you wish to use
-            n_avg (int): number of averages the user wishes to take on each of the six scans. 
-                         More is not always better as the laser will drift over the course of minutes.
-                         I find that 10 scans is reasonable.
-            time_constant(float): the length of the lock-in time constant in seconds
-        """ 
+        voltage_setpt, current_setpt = current_mod(max_current)
+        self.lia.sine_voltage = voltage_setpt
+        self.lia.frequency = frequency_setpt
+
+        print('\nSetting Laser Current and waiting to stabilize...')
+        if self.ldc.get_laser_current != current_setpt:
+            self.ldc.set_laser_current(current_setpt)
+            sleep(self.LASERSTABILIZETIME)
+        else:
+            pass
+        print('\nLaser Current Set and Stable.')
+
         self.data[sample_name] = {}
-
-        os.mkdir(os.path.join(os.getcwd(), sample_name))
+        # os.mkdir(os.path.join(os.getcwd(), sample_name))
 
         for scan_type in self.scan_types.keys():
-            if '_lp' in scan_type and '_nolp' not in scan_type:
-                # tell the user what to do
-                input(f'{self.scan_types[scan_type]}...\nPress Enter to take scan')
+
+            if '_lp' in scan_type:
                 self.filterslider.right()
-                # once in place, take the measurement
-            else:
-                print(f'{self.scan_types[scan_type]}...\n')
+            elif '_nolp' in scan_type:
                 self.filterslider.left()
+            else:
+                pass
+
+            if 'in_' in scan_type:
+                self.stepper.moveto(self.stage_positions['in'])
+            elif 'out_' in scan_type:
+                self.stepper.moveto(self.stage_positions['out'])
+            elif 'empty_' in scan_type:
+                self.stepper.moveto(self.stage_positions['empty'])
+            else:
+                pass
 
             self._take_meas(sample_name, scan_type, n_avg, time_constant)
-
             self.filterslider.right()
 
-        # calculate PLQY from the data, and print for the user to see
+        metadata = {
+          'frequency': self.lia.frequency,
+          'sine_voltage': self.lia.sine_voltage,
+          'time_constant': self.lia.time_constant,
+          'laser_current': self.ldc.get_laser_current(),
+          'laser_temp': self.ldc.get_laser_temp()
+        }
+        self.data[sample_name]['metadata'] = metadata
         self.data[sample_name]['plqy'], self.data[sample_name]['plqy_error'] = self._calc_plqy(self.data[sample_name])
 
-        #incorporating save function into take_PlQY:
         temp = pd.DataFrame()
-        for k in self.data[sample_name].keys():
-            if 'plqy' not in k:
-                temp[k] = self.data[sample_name][k]
-            temp.to_csv(f'{k}.csv', index = False)
+        for k in self.scan_types.keys():
+            temp[k] = self.data[sample_name][k]
+        temp.to_csv(f'{sample_name}.csv', index = False)
 
-        self.save_metadata(f'{sample_name}.json')
-
-    def save_metadata(self, filename):
-        metadata = {
-          'frequency': self.frequency,
-          'peak_voltage': self.peak_voltage,
-          'laser_current': self.laser_current,
-          'laser_temp': self.laser_temp,
-          'time_constant': self.time_constant,
-          'sensitivity': self.sensitivity
-        }
-        with open(filename, 'w') as f:
+        with open(f'{sample_name}.json', 'w') as f:
             json.dump(metadata, f, indent=4)
 
 
-
-    def save(self):
-        """Save the raw data from each sample to an individual '.csv' file for later use
-        """
-        for k in self.data.keys():
-            temp = pd.DataFrame()
-            for kk in self.data[k].keys():
-                if 'plqy' not in kk:
-                    temp[kk] = self.data[k][kk]
-                temp.to_csv(f'{k}.csv', index = False)
-
-    def current_mod(max_current):
+    def current_mod(self, max_current):
         turn_on = 294.3
         diff = max_current-turn_on
         setpoint = 0.5*(turn_on+max_current)
         voltage = (2**-0.5)*(diff*0.5)/100
         return voltage, setpoint
-        
-    self.LDC.set_laserCurrent(setpoint)       
-     
-    self.LDC.set_laserCurrent(setpoint)        
-        
-      
-        
-
-             
-        
-        
 
     def _calc_plqy(self, data):
         """A function to calculate the PLQY based in a publication by de Mello et al.
@@ -244,3 +227,15 @@ class PLQY:
 
         except: # if not, tell the user to do so
             print(f'Detector_Responsivity.csv not able to load...check download link in code or internet connectivity:\n{url}')
+
+
+
+    # def save(self):
+    #     """Save the raw data from each sample to an individual '.csv' file for later use
+    #     """
+    #     for k in self.data.keys():
+    #         temp = pd.DataFrame()
+    #         for kk in self.data[k].keys():
+    #             if 'plqy' not in kk:
+    #                 temp[kk] = self.data[k][kk]
+    #             temp.to_csv(f'{k}.csv', index = False)
