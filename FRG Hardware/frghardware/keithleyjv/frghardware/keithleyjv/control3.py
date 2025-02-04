@@ -16,8 +16,8 @@ class Control:
 		self.area = area
 		self.pause = 0.001
 		self.wires = 4
-		self.compliance_current = 1.05 # A
-		self.compliance_voltage = 2 # V
+		self.compliance_current = 1.05 #2 #1.05 # 1.05 # A
+		self.compliance_voltage = 20 #80 #2 # V
 		self.buffer_points = 2
 		self.counts = 2
 		self.__previewFigure = None
@@ -250,7 +250,7 @@ class Control:
 		# calc params
 		j = []
 		for value in i:
-			j.append(-value*1000/self.area) #amps to mA/cm2. sign flip for solar cell current convention)	
+			j.append(value*1000/self.area) #amps to mA/cm2. sign flip for solar cell current convention)	
 		p = [num1*num2 for num1, num2 in zip(j,vmeas)]
 
 		# build dataframe
@@ -422,7 +422,7 @@ class Control:
 				tempv, tempi, _ = self._measure()
 				vmeas.append(tempv)
 				v.append(vapplied)
-				i.append(tempi)
+				i.append(-1*tempi)
 				t.append(ctime)
 				print(vapplied,tempv,tempi,n)
 				n+=1 
@@ -436,11 +436,9 @@ class Control:
 			if ctime < interval*n:
 				time.sleep(1e-3)
 			else:
-
 				# calculate last powers
 				p0 = vmeas[-2]*i[-2]
 				p1 = vmeas[-1]*i[-1]
-
 				# iterate in appropriate direction
 				if p1 <= p0: #p dec
 					if v[-1] < v[-2]: #v dec
@@ -449,22 +447,22 @@ class Control:
 						vapplied -= vstep
 				else: # p inc
 					if v[-1] > v[-2]: #v dec
-						vapplied -= vstep 
+						vapplied += vstep 
 					else:
-						vapplied += vstep
+						vapplied -= vstep
 
-					# apply voltage, measure current and voltage
-					self.keithley.source_voltage = vapplied
-					time.sleep(vdelay)
-					tempv, tempi, _ = self._measure()
-					
-					# update dictionary & arrays
-					vmeas.append(tempv)
-					v.append(vapplied)
-					i.append(tempi)
-					t.append(ctime)
-					print(vapplied,tempv,tempi,n)
-					n+=1
+				# apply voltage, measure current and voltage
+				self.keithley.source_voltage = vapplied
+				time.sleep(vdelay)
+				tempv, tempi, _ = self._measure()
+				
+				# update dictionary & arrays
+				vmeas.append(tempv)
+				v.append(vapplied)
+				i.append(-1*tempi)
+				t.append(ctime)
+				print(f'Vapplied: {1000*vapplied:0.1f}mV, PCE: {-1000*vapplied*tempi/self.area:0.2f}%')
+				n+=1
 			ctime = time.time() - stime
 		
 		# shutoff keithley
@@ -485,7 +483,6 @@ class Control:
 				interval_count (int): number of times to repeat interval
 				preview (boolean = True): boolean to determine if data is plotted
 		"""
-		
 		# create header
 		data_df = pd.DataFrame(columns = ["Time", "Jsc (mA/cm2)"])
 		data_df.to_csv(f'{name}_jsc.csv', sep = ',')
